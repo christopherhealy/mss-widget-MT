@@ -2,9 +2,11 @@
 import pkg from "pg";
 const { Pool } = pkg;
 
+const isProd = process.env.NODE_ENV === "production";
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: isProd ? { rejectUnauthorized: false } : undefined,
 });
 
 export async function query(text, params) {
@@ -12,37 +14,42 @@ export async function query(text, params) {
   return res;
 }
 
-export async function insertSubmission(data) {
+/**
+ * Insert one submission row.
+ * Accepts either snake_case (from server) or camelCase (from widget) fields.
+ */
+export async function insertSubmission(body = {}) {
+  // Normalize fields to match the submissions table
+  const sub = {
+    school_id: body.school_id ?? body.schoolId ?? 1, // default demo school
+    assessment_id: body.assessment_id ?? body.assessmentId ?? null,
+    student_id: body.student_id ?? body.studentId ?? null,
+    teacher_id: body.teacher_id ?? body.teacherId ?? null,
+    ip: body.ip ?? null,
+    record_count: body.record_count ?? body.recordCount ?? null,
+    file_name: body.file_name ?? body.fileName ?? null,
+    length_sec: body.length_sec ?? body.lengthSec ?? null,
+    submit_time: body.submit_time ?? body.submitTime ?? null,
+    toefl: body.toefl ?? null,
+    ielts: body.ielts ?? null,
+    pte: body.pte ?? null,
+    cefr: body.cefr ?? null,
+    question: body.question ?? null,
+    transcript: body.transcript ?? null,
+    wpm: body.wpm ?? null,
+    meta: body.meta ? JSON.stringify(body.meta) : "{}", // jsonb/text column
+  };
+
+  const cols = Object.keys(sub);           // column names
+  const values = Object.values(sub);       // values in the same order
+  const placeholders = values.map((_, i) => `$${i + 1}`); // $1, $2, ...
+
   const sql = `
-    INSERT INTO submissions (
-      school_id, assessment_id, student_id, teacher_id,
-      ip, record_count, file_name, length_sec, submit_time,
-      toefl, ielts, pte, cefr, question, transcript, wpm, meta
-    )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+    INSERT INTO submissions (${cols.join(", ")})
+    VALUES (${placeholders.join(", ")})
     RETURNING id;
   `;
 
-  const values = [
-    data.school_id || 1,
-    data.assessment_id || null,
-    data.student_id || null,
-    data.teacher_id || null,
-    data.ip || null,
-    data.record_count || null,
-    data.file_name || null,
-    data.length_sec || null,
-    data.submit_time || null,
-    data.toefl || null,
-    data.ielts || null,
-    data.pte || null,
-    data.cefr || null,
-    data.question || null,
-    data.transcript || null,
-    data.wpm || null,
-    data.meta ? JSON.stringify(data.meta) : null,
-  ];
-
-  const result = await query(sql, values);
-  return result.rows[0];
+  const { rows } = await pool.query(sql, values);
+  return rows[0];
 }
