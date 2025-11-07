@@ -312,7 +312,13 @@
 <script>
 /* ===== basic state ===== */
 const $ = (id) => document.getElementById(id);
-const SERVICE_BASE = (window.SERVICE_BASE || 'https://msswidget-dev.onrender.com').replace(/\/+$/,'');
+
+// Choose correct base for API calls
+window.SERVICE_BASE = window.location.hostname.includes('localhost')
+  ? 'http://localhost:3000'
+  : 'https://mss-widget-mt.onrender.com';
+
+const SERVICE_BASE = window.SERVICE_BASE.replace(/\/+$/, '');
 
 let FORM = null, CONFIG = null, IMAGE = null;
 let idx = 0, chunks = [], mediaRecorder = null, recording = false, blob = null, url = null;
