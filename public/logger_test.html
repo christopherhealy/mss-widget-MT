@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Logger Test – MSS Widget Dev</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 30px; line-height: 1.6; background: #f9fafb; }
+  h1 { color: #1a5cff; }
+  input, textarea { width: 100%; max-width: 600px; padding: 10px; margin: 6px 0; border-radius: 8px; border: 1px solid #ccc; font: inherit; }
+  button { background: #1a5cff; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #174de3; }
+  pre { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; overflow-x: auto; }
+</style>
+</head>
+<body>
+  <h1>Logger Test</h1>
+  <p>This tool sends a sample payload to your <code>/log/submission</code> endpoint.</p>
+
+  <label>API URL:</label>
+  <input id="url" type="url" value="https://msswidget-dev.onrender.com/log/submission">
+
+  <label>Test Payload (JSON):</label>
+  <textarea id="payload" rows="6">
+{
+  "user": "test_user@example.com",
+  "score": 28,
+  "durationSec": 42,
+  "comment": "This is a test log entry from logger_test.html"
+}
+  </textarea>
+
+  <button id="sendBtn">Send Log</button>
+
+  <h3>Server Response:</h3>
+  <pre id="output">Waiting…</pre>
+
+<script>
+document.getElementById('sendBtn').addEventListener('click', async () => {
+  const url = document.getElementById('url').value.trim();
+  let body;
+  try { body = JSON.parse(document.getElementById('payload').value); }
+  catch (e) { alert('Invalid JSON in payload.'); return; }
+
+  const out = document.getElementById('output');
+  out.textContent = 'Sending...';
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    out.textContent = 'Error: ' + err.message;
+  }
+});
+</script>
+</body>
+</html>

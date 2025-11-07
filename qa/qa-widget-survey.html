@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MSS – QA: WidgetSurvey</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{
+  --bg:#f4f5f8; --card:#fff; --edge:#e5e7eb; --muted:#6b7280; --blue:#1a5cff;
+}
+body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);}
+.shell{max-width:980px;margin:16px auto;padding:0 14px}
+.head{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.title{font-weight:800;font-size:16px}
+.badge{font-size:12px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:16px;box-shadow:0 10px 28px rgba(15,23,42,.03);margin-bottom:14px}
+.card h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--edge);font-size:14px}
+.section{padding:14px}
+.row{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.label{font-size:12px;color:#374151}
+input[type="text"], textarea, select{border:1px solid var(--edge);border-radius:12px;padding:8px 10px;font:inherit;background:#fff}
+textarea{min-height:70px;resize:vertical}
+.btn{background:#1a5cff;color:#fff;border:none;border-radius:999px;padding:9px 14px;font-weight:600;cursor:pointer}
+.status{font-size:12px;margin-top:4px}
+.status.ok{color:#15803d}
+.status.err{color:#b91c1c}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="head">
+    <div class="title">QA – WidgetSurvey</div>
+    <div id="qaTesterLabel" class="badge"></div>
+    <a href="qa.html" style="margin-left:auto;font-size:13px;text-decoration:none;color:#1a5cff">← Back to QA Hub</a>
+  </div>
+
+  <div class="card">
+    <h3>Tester</h3>
+    <div class="section">
+      <div class="row">
+        <label class="label">Tester name</label>
+        <input id="tTester" type="text" placeholder="e.g. Chris">
+        <small class="label" style="color:var(--muted)">This is remembered across QA pages.</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Checklist – WidgetSurvey</h3>
+    <div class="section">
+      <div class="row"><label><input type="checkbox" id="c1"> Survey list loads from form.json</label></div>
+      <div class="row"><label><input type="checkbox" id="c2"> Add / delete question works</label></div>
+      <div class="row"><label><input type="checkbox" id="c3"> Reorder (if present) works</label></div>
+      <div class="row"><label><input type="checkbox" id="c4"> Save writes updated form.json</label></div>
+      <div class="row">
+        <label class="label">Comments</label>
+        <textarea id="tComments" placeholder="Describe issues (e.g. question not saving, index mismatch, etc.)"></textarea>
+      </div>
+      <div class="row">
+        <label class="label">Severity</label>
+        <select id="tSeverity">
+          <option>Info</option>
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+          <option>Critical</option>
+        </select>
+      </div>
+      <button id="btnSubmit" class="btn">Submit Ticket</button>
+      <div id="status" class="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const QA_ENDPOINT = 'http://localhost:3020/qa-log';
+const QA_TESTER_KEY = 'mssQA_tester';
+const COMPONENT = 'WidgetSurvey';
+
+function loadTester(){
+  try{
+    const saved = localStorage.getItem(QA_TESTER_KEY);
+    if(saved){
+      document.getElementById('tTester').value = saved;
+      document.getElementById('qaTesterLabel').textContent = 'Tester: '+saved;
+    }
+  }catch{}
+}
+loadTester();
+
+document.getElementById('tTester').addEventListener('input', e=>{
+  const val = e.target.value || '';
+  try{ localStorage.setItem(QA_TESTER_KEY, val); }catch{}
+  document.getElementById('qaTesterLabel').textContent = val ? 'Tester: '+val : '';
+});
+
+document.getElementById('btnSubmit').addEventListener('click', async ()=>{
+  const tester = document.getElementById('tTester').value.trim() || 'Unknown tester';
+  const passed = document.getElementById('c1').checked &&
+                 document.getElementById('c2').checked &&
+                 document.getElementById('c3').checked &&
+                 document.getElementById('c4').checked;
+  const comments = document.getElementById('tComments').value.trim();
+  const sev      = document.getElementById('tSeverity').value;
+  const st       = document.getElementById('status');
+
+  const payload = {
+    ts: new Date().toISOString(),
+    component: COMPONENT,
+    tester,
+    passed,
+    severity: sev,
+    comments
+  };
+
+  try{
+    const res = await fetch(QA_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    st.textContent = '✓ Ticket logged.';
+    st.className = 'status ok';
+  }catch(e){
+    st.textContent = '⚠︎ QA logger not reachable.';
+    st.className = 'status err';
+  }
+});
+</script>
+</body>
+</html>

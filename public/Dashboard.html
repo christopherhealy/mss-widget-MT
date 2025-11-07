@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MSS Score Results</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#f3f4f6;
+    --card:#ffffff;
+    --edge:#e5e7eb;
+    --muted:#6b7280;
+    --text:#111827;
+    --accent:#0f766e;
+    --accent-soft:#ecfdf5;
+    --accent-strong:#047857;
+    --shadow:0 18px 40px rgba(15,23,42,.08);
+  }
+
+.viz-frame{
+  width:100%;
+  height:260px;
+  border:0;
+  border-radius:12px;
+  margin-top:8px;
+}
+  *{box-sizing:border-box}
+  html,body{
+    margin:0;
+    padding:0;
+    height:100%;
+    font-family:-apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  body{
+    display:flex;
+    flex-direction:column;
+  }
+
+  .shell{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+  }
+
+  header{
+    padding:10px 16px;
+    border-bottom:1px solid var(--edge);
+    background:#f9fafb;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  header h1{
+    margin:0;
+    font-size:15px;
+    font-weight:700;
+  }
+  .btn-close{
+    border-radius:999px;
+    padding:6px 16px;
+    border:1px solid var(--edge);
+    background:#fff;
+    cursor:pointer;
+    font-weight:600;
+    font-size:12px;
+  }
+
+  .inner{
+    padding:14px 16px 18px;
+    max-width:1100px;
+    margin:0 auto;
+  }
+
+  .layout{
+    display:grid;
+    grid-template-columns:minmax(0,1.1fr) minmax(0,1.3fr);
+    gap:18px;
+  }
+  @media (max-width:900px){
+    .layout{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .card{
+    background:var(--card);
+    border-radius:18px;
+    border:1px solid var(--edge);
+    box-shadow:var(--shadow);
+    padding:18px 18px 16px;
+  }
+  .card h2{
+    margin:0 0 4px;
+    font-size:15px;
+    font-weight:700;
+  }
+  .sub{
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:14px;
+  }
+
+  /* Reserved visual shell (future CEFR gauge, etc.) */
+  .viz-shell{
+    border-radius:14px;
+    border:1px dashed #d1d5db;
+    background:#f9fafb;
+    padding:10px;
+    margin-top:12px;
+    text-align:center;
+    font-size:11px;
+    padding-bottom: 10px;
+    color:var(--muted);
+  }
+  .viz-shell strong{color:#4b5563;}
+
+  /* Overall block */
+  .overall-block{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .cefr-headline{
+    font-size:26px;
+    font-weight:800;
+    letter-spacing:.02em;
+  }
+  .cefr-headline span.level{
+    color:var(--accent-strong);
+  }
+  .overall-line{
+    font-size:12px;
+    color:var(--muted);
+  }
+  .overall-score{
+    font-size:34px;
+    font-weight:800;
+    line-height:1;
+    margin-top:4px;
+  }
+
+  .badge-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:8px;
+  }
+  .badge{
+    border-radius:999px;
+    padding:4px 10px;
+    border:1px solid var(--edge);
+    font-size:11px;
+    color:var(--muted);
+    background:#f9fafb;
+  }
+
+  /* Test equivalences */
+  .tests-card{
+    margin-top:14px;
+  }
+  .tests-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:8px;
+  }
+  @media (max-width:720px){
+    .tests-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  }
+  @media (max-width:520px){
+    .tests-grid{grid-template-columns:1fr;}
+  }
+  .pill{
+    border-radius:14px;
+    border:1px solid var(--edge);
+    padding:8px 10px;
+    font-size:12px;
+  }
+  .pill-title{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--muted);
+    margin-bottom:2px;
+  }
+  .pill-main{
+    font-size:17px;
+    font-weight:700;
+  }
+  .pill-sub{
+    font-size:11px;
+    color:var(--muted);
+    margin-left:4px;
+  }
+
+  /* Skills */
+  .skills-card{
+    margin-top:14px;
+  }
+  .skills-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  @media (max-width:720px){
+    .skills-grid{grid-template-columns:1fr;}
+  }
+  .skill{
+    border-radius:14px;
+    border:1px solid var(--edge);
+    padding:8px 10px;
+    font-size:12px;
+  }
+  .skill-title{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--muted);
+    margin-bottom:4px;
+  }
+  .skill-main{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .skill-score{
+    font-size:18px;
+    font-weight:700;
+  }
+  .skill-label{
+    border-radius:999px;
+    border:1px solid var(--edge);
+    padding:3px 8px;
+    font-size:11px;
+    background:#f9fafb;
+  }
+
+  /* Right column top: quick snapshot */
+  .snapshot-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    margin-top:4px;
+  }
+  @media (max-width:720px){
+    .snapshot-grid{grid-template-columns:1fr;}
+  }
+  .snap-tile{
+    border-radius:14px;
+    border:1px solid var(--edge);
+    padding:10px;
+    font-size:12px;
+    background:#f9fafb;
+  }
+  .snap-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--muted);
+    margin-bottom:4px;
+  }
+  .snap-main{
+    font-size:18px;
+    font-weight:700;
+  }
+
+  /* Transcript */
+  .tx-card{
+    margin-top:16px;
+  }
+  .tx-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+  }
+  .tx-sub{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:2px;
+  }
+  .tx-toggle{
+    border-radius:999px;
+    border:1px solid var(--edge);
+    background:#fff;
+    padding:6px 12px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .tx-toggle[disabled]{
+    opacity:.5;
+    cursor:not-allowed;
+  }
+  .tx-toggle-icon{
+    width:6px;
+    height:6px;
+    border-radius:999px;
+    border:1px solid var(--edge);
+    background:#f9fafb;
+  }
+  .tx-body{
+    margin-top:10px;
+    border-radius:12px;
+    border:1px solid var(--edge);
+    background:#f9fafb;
+    padding:10px 12px;
+    max-height:0;
+    overflow:hidden;
+    transition:max-height .25s ease;
+    font-size:13px;
+    line-height:1.5;
+    color:#111827;
+  }
+  .tx-body.open{
+    max-height:280px;
+    overflow:auto;
+  }
+  .tx-body p{
+    margin:0;
+    white-space:pre-wrap;
+  }
+
+  .footnote{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:8px;
+  }
+
+  /* Debug panel */
+  .debug-card{
+    margin-top:16px;
+    border-radius:14px;
+    border:1px solid var(--edge);
+    background:#f9fafb;
+    padding:10px;
+    font-size:11px;
+    color:var(--muted);
+  }
+  .debug-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+  }
+  .debug-toggle{
+    border-radius:999px;
+    border:1px solid var(--edge);
+    background:#fff;
+    padding:4px 10px;
+    font-size:11px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .debug-box{
+    margin-top:8px;
+    border-radius:10px;
+    border:1px solid var(--edge);
+    background:#111827;
+    color:#e5e7eb;
+    max-height:0;
+    overflow:hidden;
+    transition:max-height .25s ease;
+  }
+  .debug-box.open{
+    max-height:260px;
+    overflow:auto;
+  }
+  .debug-box pre{
+    margin:0;
+    padding:8px 10px;
+    font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size:11px;
+    white-space:pre;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  
+
+  <div class="inner">
+    <div class="layout">
+      <!-- LEFT COLUMN -->
+      <section class="card">
+        <div class="overall-block">
+          <div id="cefrHeadline" class="cefr-headline">
+            CEFR <span class="level">–</span>
+          </div>
+          <div class="overall-line">MySpeakingScore overall</div>
+          <div id="overallScore" class="overall-score">–</div>
+
+          <div class="badge-row">
+            <div class="badge" id="badgeCefr">CEFR –</div>
+            <div class="badge" id="badgeToefl">TOEFL –</div>
+            <div class="badge" id="badgeIelts">IELTS –</div>
+            <div class="badge" id="badgePte">PTE –</div>
+          </div>
+        </div>
+
+        <!-- Test Equivalences -->
+        <div class="tests-card">
+          <h2>Test equivalencies</h2>
+          <div class="sub">Approximate test scores based on your MSS result.</div>
+          <div class="tests-grid">
+            <div class="pill">
+              <div class="pill-title">TOEFL</div>
+              <div>
+                <span id="pillToefl" class="pill-main">–</span>
+                <span class="pill-sub">/ 30</span>
+              </div>
+            </div>
+            <div class="pill">
+              <div class="pill-title">IELTS</div>
+              <div>
+                <span id="pillIelts" class="pill-main">–</span>
+                <span class="pill-sub">band</span>
+              </div>
+            </div>
+            <div class="pill">
+              <div class="pill-title">PTE</div>
+              <div>
+                <span id="pillPte" class="pill-main">–</span>
+                <span class="pill-sub">score</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Skills -->
+        <div class="skills-card">
+          <h2>Subscores</h2>
+          <div class="sub">Estimated component skills from your speaking sample.</div>
+          <div class="skills-grid">
+            <div class="skill">
+              <div class="skill-title">Fluency</div>
+              <div class="skill-main">
+                <span id="skillFluencyScore" class="skill-score">–</span>
+                <span id="skillFluencyLabel" class="skill-label">–</span>
+              </div>
+            </div>
+            <div class="skill">
+              <div class="skill-title">Grammar</div>
+              <div class="skill-main">
+                <span id="skillGrammarScore" class="skill-score">–</span>
+                <span id="skillGrammarLabel" class="skill-label">–</span>
+              </div>
+            </div>
+            <div class="skill">
+              <div class="skill-title">Pronunciation</div>
+              <div class="skill-main">
+                <span id="skillPronScore" class="skill-score">–</span>
+                <span id="skillPronLabel" class="skill-label">–</span>
+              </div>
+            </div>
+            <div class="skill">
+              <div class="skill-title">Vocabulary</div>
+              <div class="skill-main">
+                <span id="skillVocabScore" class="skill-score">–</span>
+                <span id="skillVocabLabel" class="skill-label">–</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN -->
+      <section class="card">
+        <h2>Snapshot</h2>
+        <div class="sub">A quick at-a-glance summary for teachers and admins.</div>
+
+        <div class="snapshot-grid">
+          <div class="snap-tile">
+            <div class="snap-label">CEFR level</div>
+            <div id="snapCefr" class="snap-main">–</div>
+          </div>
+          <div class="snap-tile">
+            <div class="snap-label">MSS score</div>
+            <div id="snapScore" class="snap-main">–</div>
+          </div>
+          <div class="snap-tile">
+            <div class="snap-label">TOEFL</div>
+            <div id="snapToefl" class="snap-main">–</div>
+          </div>
+          <div class="snap-tile">
+            <div class="snap-label">IELTS</div>
+            <div id="snapIelts" class="snap-main">–</div>
+          </div>
+        </div>
+
+        <!-- Transcript -->
+        <div class="tx-card">
+          <div class="tx-head">
+            <div>
+              <h2 style="margin:10px 0 0">Transcript</h2>
+              <div class="tx-sub">Raw ASR transcript (un-edited)</div>
+            </div>
+            <button id="txToggle" class="tx-toggle" type="button" disabled>
+              <span class="tx-toggle-icon"></span>
+              <span id="txToggleLabel">Show transcript</span>
+            </button>
+          </div>
+          <div id="txBody" class="tx-body">
+            <p id="txText"></p>
+          </div>
+        </div>
+
+        <!-- RESERVED VISUAL SPACE (bottom-right) -->
+        <div id="vizShell" class="viz-shell">
+  <strong>CEFR visual</strong><br>
+  <span style="font-size:11px;">
+    Interactive gauge driven by CEFR level and overall MSS score.
+  </span>
+  <iframe
+    id="cefrGauge"
+    class="viz-frame"
+    src="mocks/mss-gauge1.html"
+    title="CEFR gauge"
+  ></iframe>
+</div>
+
+        <!-- DEBUG PANEL -->
+        <div class="debug-card">
+          <div class="debug-top">
+            <div>Debug: MSS JSON payload (hidden from students)</div>
+            <button id="debugToggle" class="debug-toggle" type="button">Show MSS result</button>
+          </div>
+          <div id="debugBox" class="debug-box">
+            <pre id="debugPre">(No MSS result yet)</pre>
+          </div>
+        </div>
+
+        <div class="footnote">
+          Values shown here come from the MSS API response. The full JSON is logged separately for reporting.
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="js/mss-core.js"></script>
+<script>
+  // Close button
+  function tryClose(){
+    try{
+      if (window.parent && window.parent !== window){
+        window.parent.postMessage({ type:'mss:dashboard:close' }, '*');
+      }
+      window.close();
+    }catch(e){
+      console.warn('close failed', e);
+    }
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const setText = (id, value) => {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = value == null || value === '' ? '–' : value;
+  };
+
+  // Render normalized MSSCore payload into the UI
+  function renderDashboard(m){
+    const cefr  = m.cefr || '–';
+    const score = m.score;
+
+    const headLevel = document.querySelector('#cefrHeadline .level');
+    if (headLevel) headLevel.textContent = cefr;
+
+    setText('overallScore', score != null ? score.toFixed(2) : '–');
+
+    setText('badgeCefr',  `CEFR ${cefr}`);
+    setText('badgeToefl', `TOEFL ${m.toefl ?? '–'}`);
+    setText('badgeIelts', `IELTS ${m.ielts ?? '–'}`);
+    setText('badgePte',   `PTE ${m.pte   ?? '–'}`);
+
+    // Test equivalencies
+    setText('pillToefl', m.toefl);
+    setText('pillIelts', m.ielts);
+    setText('pillPte',   m.pte);
+
+    // Snapshot tiles
+    setText('snapCefr',  cefr);
+    setText('snapScore', score != null ? score.toFixed(2) : '–');
+    setText('snapToefl', m.toefl);
+    setText('snapIelts', m.ielts);
+
+    // Subscores
+    setText('skillFluencyScore', m.fluency);
+    setText('skillGrammarScore', m.grammar);
+    setText('skillPronScore',    m.pronunciation);
+    setText('skillVocabScore',   m.vocabulary);
+
+    setText('skillFluencyLabel', MSSCore.ratingLabel(m.fluency));
+    setText('skillGrammarLabel', MSSCore.ratingLabel(m.grammar));
+    setText('skillPronLabel',    MSSCore.ratingLabel(m.pronunciation));
+    setText('skillVocabLabel',   MSSCore.ratingLabel(m.vocabulary));
+
+    // Transcript
+    const rawTx  = m.transcript || '';
+    const plain  = MSSCore.stripTranscript(rawTx);
+    const txBody   = $('txBody');
+    const txText   = $('txText');
+    const txToggle = $('txToggle');
+    const txLabel  = $('txToggleLabel');
+
+    if (!txBody || !txText || !txToggle || !txLabel) return;
+
+    if (!plain){
+      txText.textContent = '(Transcript not available for this submission.)';
+      txToggle.disabled = true;
+      txBody.classList.remove('open');
+      txLabel.textContent = 'Show transcript';
+    }else{
+      txText.textContent = plain;
+      txToggle.disabled = false;
+    }
+  }
+
+    // --- Update CEFR gauge iframe ---
+    try {
+      const gaugeFrame = document.getElementById('cefrGauge');
+      if (gaugeFrame && gaugeFrame.contentWindow) {
+        gaugeFrame.contentWindow.postMessage(
+          {
+            type: 'mss:gauge:update',
+            cefr: m.cefr,         // e.g. "C2"
+            score: m.score        // e.g. 3.18
+          },
+          '*'
+        );
+      }
+    } catch (e) {
+      console.warn('Gauge postMessage failed', e);
+    }
+
+  // Transcript toggle
+  function setupTranscriptToggle(){
+    const toggle = $('txToggle');
+    const body   = $('txBody');
+    const label  = $('txToggleLabel');
+    if (!toggle || !body || !label) return;
+
+    toggle.addEventListener('click', () => {
+      if (toggle.disabled) return;
+      const open = !body.classList.contains('open');
+      body.classList.toggle('open', open);
+      label.textContent = open ? 'Hide transcript' : 'Show transcript';
+    });
+  }
+
+  // --- Debug JSON panel ---
+  let lastRawMessage = null;
+
+  function renderDebugJson(){
+    const pre = $('debugPre');
+    if (!pre) return;
+    if (!lastRawMessage){
+      pre.textContent = '(No MSS result yet)';
+      return;
+    }
+    try{
+      pre.textContent = JSON.stringify(lastRawMessage, null, 2);
+    }catch(e){
+      pre.textContent = String(lastRawMessage);
+    }
+  }
+
+  function setupDebugToggle(){
+    const btn = $('debugToggle');
+    const box = $('debugBox');
+    if (!btn || !box) return;
+
+    btn.addEventListener('click', () => {
+      const open = !box.classList.contains('open');
+      box.classList.toggle('open', open);
+      btn.textContent = open ? 'Hide MSS result' : 'Show MSS result';
+    });
+  }
+
+  // Real data from Widget
+  // Real data from Widget – generic postMessage listener
+function handleMssMessage(ev) {
+  const d = ev.data;
+  if (!d) return;
+
+  // Accept several type variants, including current widget "mss-results"
+  const isTyped =
+    d.type === 'mss:result' ||
+    d.type === 'mss-result' ||
+    d.type === 'mssScore'   ||
+    d.type === 'mss-results';
+
+  let raw = null;
+
+  if (isTyped) {
+    raw = d.payload || d.result || d;
+  } else if (d.received || d.elsa_results || d.score) {
+    // fall-back: looks like an MSS payload even without a type
+    raw = d;
+  }
+
+  if (!raw) return;
+
+  const normalized = (window.MSSCore && MSSCore.normalizeMssPayload)
+    ? MSSCore.normalizeMssPayload(raw)
+    : raw;
+
+  console.log('📦 Dashboard received MSS result:', normalized, raw);
+  renderDashboard(normalized);
+}
+
+window.addEventListener('message', handleMssMessage);
+
+  // Mock when opened directly (no parent)
+  function maybeRenderMock(){
+    const isEmbedded = window.opener || window !== window.parent;
+    if (isEmbedded) return;
+
+    const mock = MSSCore.normalizeMssPayload({
+      received: {
+        score: 3.18,
+        transcript: 'this is a quick sample transcript from the mock payload.',
+        elsa_results: {
+          cefr_level: 'C2',
+          toefl_score: 29,
+          ielts_score: 8.5,
+          pte_score: 88,
+          fluency: 93,
+          grammar: 98,
+          pronunciation: 82,
+          vocabulary: 86
+        }
+      }
+    });
+
+    console.log('🧪 Dashboard mock payload', mock);
+    lastRawMessage = mock;
+    renderDashboard(mock);
+    renderDebugJson();
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+  setupTranscriptToggle();
+
+  const isEmbedded = (window.opener || window !== window.parent);
+  if (!isEmbedded) {
+    // opened directly in a tab → show the mock sample
+    maybeRenderMock();
+  }
+});
+</script>
+</body>
+</html>

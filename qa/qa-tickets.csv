@@ -1,0 +1,2 @@
+timestamp,tester,component,stepId,stepText,severity,steps,expected,actual,notes
+"2025-10-31T19:20:24.615Z","Chris","WidgetAdmin","3","try this","medium","1 do this then do that","I thought","something else","Notes"

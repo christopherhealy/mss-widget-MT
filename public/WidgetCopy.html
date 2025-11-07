@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MSS Widget</title>
+
+  <!-- default theme (will be replaced after we fetch config from Render) -->
+  <link id="themeCss" rel="stylesheet" href="/themes/mss-widget-default.css">
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:#f3f4f6;
+      padding:20px;
+    }
+    .mss-card {
+      max-width:720px;
+      margin:0 auto;
+      background:#fff;
+      border-radius:18px;
+      box-shadow:0 20px 40px rgba(15,23,42,.08);
+      padding:20px 22px 26px;
+    }
+    .mss-head {
+      display:flex;
+      gap:14px;
+      align-items:center;
+      margin-bottom:16px;
+    }
+    .mss-logo {
+      width:54px;
+      height:54px;
+      object-fit:contain;
+      background:#e5e7eb;
+      border-radius:14px;
+    }
+    .mss-brand {
+      font-size:1.1rem;
+      font-weight:700;
+    }
+    .mss-counter {
+      font-size:0.75rem;
+      color:#6b7280;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      margin-bottom:6px;
+    }
+    .mss-q {
+      font-size:1.1rem;
+      line-height:1.45;
+      margin-bottom:14px;
+    }
+    .mss-nav {
+      display:flex;
+      gap:10px;
+      margin-bottom:14px;
+    }
+    .mss-pill {
+      border:1px solid #d1d5db;
+      background:#fff;
+      border-radius:999px;
+      padding:6px 14px;
+      cursor:pointer;
+    }
+    .mss-actions {
+      background:#f9fafb;
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      padding:14px;
+    }
+    .mss-toolbar {
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:center;
+    }
+    .mss-btn {
+      background:#e5e7eb;
+      border:0;
+      border-radius:999px;
+      padding:7px 13px;
+      cursor:pointer;
+      font-size:0.85rem;
+    }
+    .mss-btn.primary {
+      background:#1d4ed8;
+      color:white;
+    }
+    .mss-recbar {
+      display:flex;
+      gap:6px;
+      align-items:center;
+      margin-top:12px;
+      justify-content:center;
+    }
+    .mss-dot {
+      width:9px;
+      height:9px;
+      border-radius:999px;
+      background:#d1d5db;
+    }
+    .mss-dot.on {
+      background:#f43f5e;
+      box-shadow:0 0 0 6px rgba(244,63,94,.22);
+    }
+    .mss-timer {
+      font-size:0.75rem;
+      color:#6b7280;
+    }
+    .mss-file {
+      display:none;
+    }
+    .mss-filebadge {
+      font-size:0.72rem;
+      color:#6b7280;
+      margin-top:6px;
+      text-align:center;
+    }
+    .mss-line {
+      height:3px;
+      border-radius:999px;
+      background:linear-gradient(90deg,#1d4ed8,#e5e7eb);
+      width:0%;
+      transition:width .2s ease;
+      margin-top:6px;
+    }
+    .mss-status {
+      margin-top:14px;
+      font-size:0.8rem;
+      text-align:center;
+    }
+    .mss-status.ok {
+      color:#15803d;
+    }
+    .mss-status.warn {
+      color:#b91c1c;
+    }
+    .mss-muted {
+      color:#6b7280;
+      font-size:0.8rem;
+    }
+
+    .mss-resultswrap { margin-top:12px }
+    .mss-debug { display:none; margin-top:10px }
+    .mss-debug pre { max-height:260px; overflow:auto; font-size:0.75rem; background:#111827; color:#e5e7eb; padding:8px; border-radius:8px; }
+    .mss-logstatus { font-size:12px; text-align:center; margin-top:6px; }
+    .mss-logstatus.ok { color:#16a34a; }
+    .mss-logstatus.err { color:#dc2626; }
+
+    /* Modal dashboard */
+    .mss-modal {
+      position:fixed;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:rgba(0,0,0,.45);
+      z-index:80;
+    }
+    .mss-modal .sheet {
+      width:min(960px,96vw);
+      height:min(720px,90vh);
+      background:#fff;
+      border-radius:16px;
+      border:1px solid #e5e7eb;
+      box-shadow:0 12px 36px rgba(0,0,0,.2);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+    .mss-modal header {
+      display:flex;
+      align-items:center;
+      padding:10px 12px;
+      border-bottom:1px solid #e5e7eb;
+    }
+    .mss-modal header .title { font-weight:800; }
+    .mss-modal header .grow { flex:1 }
+    .mss-modal iframe {
+      flex:1;
+      border:0;
+      width:100%;
+    }
+  </style>
+
+  <script>
+    // Service base: localhost vs Render
+    const SERVICE_BASE = window.location.hostname.includes('localhost')
+      ? 'http://localhost:3000'
+      : 'https://msswidget-dev.onrender.com';
+
+    console.log('🧩 MSS Widget using service base:', SERVICE_BASE);
+
+    // Theme loader – pulls theme from Render config
+    async function loadTheme() {
+      try {
+        const res = await fetch(
+          SERVICE_BASE + '/config/widget?ts=' + Date.now(),
+          { cache: 'no-store' }
+        );
+        const cfg = res.ok ? await res.json() : {};
+        const t = (cfg.theme || 'default').toLowerCase();
+        const file =
+          t === 'pink'  ? '/themes/mss-widget-pink.css'  :
+          t === 'apple' ? '/themes/mss-widget-apple.css' :
+                          '/themes/mss-widget-default.css';
+        const link = document.getElementById('themeCss');
+        link.onerror = () => link.setAttribute('href', '/themes/mss-widget-default.css');
+        link.setAttribute('href', file);
+      } catch (e) {
+        console.warn('Theme load failed; using default', e);
+        document.getElementById('themeCss').setAttribute('href', '/themes/mss-widget-default.css');
+      }
+    }
+    loadTheme();
+  </script>
+</head>
+<body>
+  <div class="mss-card">
+    <div class="mss-head">
+      <img id="logo" class="mss-logo" alt="Brand logo"/>
+      <div>
+        <div id="brand" class="mss-brand"></div>
+        <div id="powered" class="mss-muted">Loading config…</div>
+      </div>
+    </div>
+
+    <div id="counter" class="mss-counter"></div>
+    <div id="question" class="mss-q"></div>
+
+    <div class="mss-nav">
+      <button id="prevBtn" class="mss-pill">Previous</button>
+      <button id="nextBtn" class="mss-pill">Next</button>
+    </div>
+
+    <div class="mss-actions">
+      <div class="mss-toolbar">
+        <button id="recBtn"  class="mss-btn primary">Record your response</button>
+        <button id="stopBtn" class="mss-btn" disabled>Stop</button>
+
+        <label for="fileInput" class="mss-btn">Choose an audio file</label>
+        <input id="fileInput" class="mss-file" type="file" accept="audio/*"/>
+
+        <button id="clearFileBtn" class="mss-btn" style="display:none;">Clear file</button>
+      </div>
+
+      <div class="mss-recbar">
+        <span id="recDot" class="mss-dot"></span>
+        <span id="recState" class="mss-muted">Not recording</span>
+        <span id="timer" class="mss-timer"></span>
+      </div>
+
+      <div id="fileBadge" class="mss-filebadge"></div>
+
+      <div id="playerWrap" style="display:none; margin-top:8px; text-align:center;">
+        <audio id="player" controls preload="metadata" style="width:100%;"></audio>
+        <div class="mss-muted" id="lengthHint" style="margin-top:4px;"></div>
+      </div>
+
+      <div style="margin-top:10px; text-align:center;">
+        <button id="submitBtn" class="mss-btn" disabled>Submit for scoring</button>
+      </div>
+
+      <div class="mss-resultswrap">
+        <div id="progressText" class="mss-muted"></div>
+        <div id="progressLine" class="mss-line"></div>
+        <div id="logStatus" class="mss-logstatus"></div>
+      </div>
+    </div>
+
+    <div id="debugBtnRow" style="display:none;gap:8px;justify-content:center;margin-top:6px;">
+      <button id="toggleDebug" class="mss-btn">View Debug Log</button>
+    </div>
+    <div id="debugWrap" class="mss-debug">
+      <pre id="results" class="mss-results"></pre>
+    </div>
+
+    <div id="status" class="mss-status"></div>
+  </div>
+
+  <!-- Dashboard modal -->
+  <div id="dashModal" class="mss-modal" aria-hidden="true">
+    <div class="sheet">
+      <header>
+        <div class="title">MSS Score Results</div>
+        <div class="grow"></div>
+        <button id="closeDash" class="mss-btn">Close</button>
+      </header>
+      <iframe id="dashFrame" src="Dashboard.html"></iframe>
+    </div>
+  </div>
+
+<script>
+/* ===== Basic state ===== */
+const $ = id => document.getElementById(id);
+let FORM=null, CONFIG=null, IMAGE=null;
+let idx=0, chunks=[], mediaRecorder=null, recording=false, blob=null, url=null;
+let uploadedFile=null;
+let t0=0, tick=null;
+let submitTimerId=null, submitStart=0;
+let dashboardWindow=null;
+
+/* ===== Helpers ===== */
+function mmss(ms){
+  const s=Math.floor(ms/1000);
+  const m=Math.floor(s/60);
+  const r=s%60;
+  return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
+}
+function setStatus(msg, ok=true){
+  const el=$('status');
+  el.textContent=msg;
+  el.className='mss-status ' + (ok?'ok':'warn');
+}
+function getLogoFrom(img){
+  if(!img)return'';
+  for(const k of ['logoDataUrl','dataUrl','logo','src','url','path']){
+    if(img[k]) return String(img[k]);
+  }
+  return '';
+}
+function showDebug(obj){ $('results').textContent = JSON.stringify(obj, null, 2); }
+function appendAttempt(at){
+  const prev = $('results').textContent.trim();
+  const add = JSON.stringify(at, null, 2);
+  $('results').textContent = prev ? (prev + '\n' + add) : add;
+}
+
+/* Configurable duration */
+function getDurationBounds(){
+  const minS = Number(CONFIG?.audioMinSeconds ?? 30);
+  const maxS = Number(CONFIG?.audioMaxSeconds ?? 61);
+  return { minS, maxS };
+}
+
+/* Progress */
+function startProgress(label='Processing'){
+  submitStart = performance.now();
+  $('progressText').textContent = `${label}… 0.00s`;
+  $('progressLine').style.width = '5%';
+  submitTimerId = setInterval(()=>{
+    const s = ((performance.now()-submitStart)/1000).toFixed(2);
+    $('progressText').textContent = `${label}… ${s}s`;
+    const w = Math.min(95, 5 + (performance.now()-submitStart)/60);
+    $('progressLine').style.width = w + '%';
+  }, 120);
+}
+function stopProgress(finalLabel='Done'){
+  if (submitTimerId){
+    clearInterval(submitTimerId);
+    submitTimerId=null;
+  }
+  const s = ((performance.now()-submitStart)/1000).toFixed(2);
+  $('progressText').textContent = `${finalLabel} (${s}s)`;
+  $('progressLine').style.width = '100%';
+  setTimeout(()=>{
+    $('progressLine').style.transition = 'none';
+    $('progressLine').style.width='0%';
+    $('progressText').textContent='';
+    void $('progressLine').offsetWidth;
+    $('progressLine').style.transition = 'width .2s ease';
+  }, 600);
+}
+
+/* WAV transcode */
+async function blobToArrayBuffer(b){ return await b.arrayBuffer(); }
+function encodeWavFromAudioBuffer(abuf){
+  const chs = abuf.numberOfChannels, rate = abuf.sampleRate, len = abuf.length;
+  const bytesPerSample = 2, blockAlign = chs * bytesPerSample, dataBytes = len * blockAlign;
+  const buf = new ArrayBuffer(44 + dataBytes), v = new DataView(buf);
+  const w = (o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4,36+dataBytes,true); w(8,'WAVE');
+  w(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true);
+  v.setUint16(22,chs,true); v.setUint32(24,rate,true);
+  v.setUint32(28,rate*blockAlign,true); v.setUint16(32,blockAlign,true);
+  v.setUint16(34,16,true); w(36,'data'); v.setUint32(40,dataBytes,true);
+  const chData = Array.from({length:chs}, (_,i)=>abuf.getChannelData(i));
+  let off=44;
+  for(let i=0;i<len;i++){
+    for(let c=0;c<chs;c++){
+      let s = Math.max(-1, Math.min(1, chData[c][i]));
+      v.setInt16(off, s<0 ? s*0x8000 : s*0x7FFF, true);
+      off+=2;
+    }
+  }
+  return new Blob([buf],{type:'audio/wav'});
+}
+async function transcodeToWav(origBlob){
+  const arr = await blobToArrayBuffer(origBlob);
+  const ctx = new (window.AudioContext||window.webkitAudioContext)();
+  const abuf = await ctx.decodeAudioData(arr);
+  ctx.close();
+  return encodeWavFromAudioBuffer(abuf);
+}
+
+/* Access check */
+async function checkAccess(baseUrl, key){
+  try{
+    const url = baseUrl.replace(/\/+$/,'') + '/api/check-access';
+    const r = await fetch(url, {
+      headers:{ 'API-KEY': key, 'Accept': 'application/json' }
+    });
+    const body = await r.json().catch(()=>({}));
+    return { ok:r.ok, status:r.status, url, body };
+  }catch(e){
+    return { ok:false, status:0, url:'(check failed)', body:{error:String(e)} };
+  }
+}
+
+/* UI helpers */
+function hideDebug() {
+  $('debugBtnRow').style.display = 'none';
+  $('debugWrap').style.display = 'none';
+  $('logStatus').textContent = '';
+  $('logStatus').className = 'mss-logstatus';
+}
+function clearTimer(){
+  if (tick){
+    clearInterval(tick);
+    tick=null;
+  }
+  $('timer').textContent = '';
+}
+function stopTracks(){
+  try{ mediaRecorder?.stream?.getTracks?.().forEach(t=>t.stop()); }catch{}
+}
+function releaseBlobUrl(){
+  if (url){
+    try{ URL.revokeObjectURL(url); }catch{}
+    url = null;
+  }
+}
+function resetRecordingUI(msg='Not recording'){
+  recording = false; chunks = []; blob = null;
+  clearTimer(); stopTracks(); releaseBlobUrl();
+  $('recBtn').disabled = !!uploadedFile;
+  $('stopBtn').disabled = true;
+  $('submitBtn').disabled = !(uploadedFile || blob);
+  $('recDot').classList.remove('on');
+  $('recState').textContent = msg;
+  $('playerWrap').style.display = (uploadedFile || url) ? 'block' : 'none';
+  const p = $('player');
+  if (!uploadedFile){
+    try{ p.pause(); p.removeAttribute('src'); p.load(); }catch{}
+  }
+  $('lengthHint').textContent = '';
+  hideDebug();
+}
+
+/* Load config/data from Render */
+async function loadAll(){
+  const [f,c,i] = await Promise.allSettled([
+    fetch(SERVICE_BASE + '/config/forms?ts='+Date.now(), {cache:'no-store'}),
+    fetch(SERVICE_BASE + '/config/widget?ts='+Date.now(), {cache:'no-store'}),
+    fetch(SERVICE_BASE + '/config/images?ts='+Date.now(), {cache:'no-store'})
+  ]);
+
+  FORM   = f.status==='fulfilled' && f.value.ok ? await f.value.json() : { survey:[] };
+  CONFIG = c.status==='fulfilled' && c.value.ok ? await c.value.json() : {
+    editable:{},
+    api:{}, theme:'apple', audioMinSeconds:30, audioMaxSeconds:61,
+    logger:{ enabled:false, url:'' }
+  };
+  IMAGE  = i.status==='fulfilled' && i.value.ok ? await i.value.json() : {};
+
+  $('brand').textContent = FORM.headline || 'MySpeakingScore Widget';
+  $('powered').textContent =
+    (CONFIG.editable?.poweredByLabel === false) ? '' : (FORM.poweredByLabel || 'Powered by MSS Vox');
+
+  const logo=getLogoFrom(IMAGE);
+  if(logo) $('logo').src=logo;
+
+  renderQ();
+  resetRecordingUI();
+}
+
+/* Render Q */
+function renderQ(){
+  const s = Array.isArray(FORM.survey)?FORM.survey:[];
+  if(!s.length){
+    $('counter').textContent='';
+    $('question').textContent='(No questions found)';
+    return;
+  }
+  idx = Math.max(0,Math.min(idx,s.length-1));
+  $('counter').textContent=`Question ${idx+1} of ${s.length}`;
+  $('question').textContent=s[idx];
+}
+
+/* Recording */
+async function startRecording(){
+  if (uploadedFile){ return; }
+  hideDebug();
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    chunks=[];
+    mediaRecorder=new MediaRecorder(stream,{mimeType:'audio/webm'});
+    mediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+    mediaRecorder.onstop=finalizeRecording;
+
+    recording=true;
+    t0=performance.now();
+    tick=setInterval(()=>{
+      $('timer').textContent=mmss(performance.now()-t0);
+    },200);
+
+    $('recBtn').disabled=true;
+    $('stopBtn').disabled=false;
+    $('submitBtn').disabled=true;
+    $('recDot').classList.add('on');
+    $('recState').textContent='Recording…';
+    $('playerWrap').style.display='none';
+
+    mediaRecorder.start();
+    setStatus('Recording started');
+  }catch(err){
+    setStatus('Microphone permission denied',false);
+  }
+}
+function stopRecording(){
+  if(!mediaRecorder||!recording)return;
+  recording=false;
+  try{ mediaRecorder.stop(); }catch{}
+  stopTracks();
+  clearTimer();
+  $('recDot').classList.remove('on');
+  $('recState').textContent='Processing…';
+  $('stopBtn').disabled=true;
+}
+function finalizeRecording(){
+  blob=new Blob(chunks,{type:'audio/webm'});
+  releaseBlobUrl();
+  url=URL.createObjectURL(blob);
+
+  $('player').src=url;
+  $('playerWrap').style.display='block';
+  $('recState').textContent='Ready to review or submit';
+  $('recBtn').disabled=false;
+  $('submitBtn').disabled=false;
+  setStatus('Recording ready');
+
+  $('player').onloadedmetadata = () => {
+    const d = $('player').duration || 0;
+    const { minS, maxS } = getDurationBounds();
+    const mins = String(Math.floor(minS/60)).padStart(2,'0');
+    const secs = String(minS%60).padStart(2,'0');
+    const maxm = String(Math.floor(maxS/60)).padStart(2,'0');
+    const maxs = String(maxS%60).padStart(2,'0');
+    $('lengthHint').textContent = `Length: ${mmss(d*1000)} (must be ${mins}:${secs}–${maxm}:${maxs})`;
+  };
+}
+
+/* Upload (mutually exclusive) */
+$('fileInput')?.addEventListener('change', async (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if (!f){ return; }
+  uploadedFile = f;
+  $('fileBadge').textContent = `Selected: ${f.name} (${(f.size/1024/1024).toFixed(2)} MB)`;
+  $('clearFileBtn').style.display='inline-block';
+  $('recBtn').disabled = true;
+  $('stopBtn').disabled = true;
+
+  releaseBlobUrl();
+  url = URL.createObjectURL(f);
+  $('player').src = url;
+  $('playerWrap').style.display='block';
+  $('submitBtn').disabled = false;
+
+  hideDebug();
+  $('player').onloadedmetadata = () => {
+    const d = $('player').duration || 0;
+    const { minS, maxS } = getDurationBounds();
+    const mins = String(Math.floor(minS/60)).padStart(2,'0');
+    const secs = String(minS%60).padStart(2,'0');
+    const maxm = String(Math.floor(maxS/60)).padStart(2,'0');
+    const maxs = String(maxS%60).padStart(2,'0');
+    $('lengthHint').textContent = `Length: ${mmss(d*1000)} (must be ${mins}:${secs}–${maxm}:${maxs})`;
+  };
+});
+$('clearFileBtn')?.addEventListener('click', ()=>{
+  uploadedFile = null;
+  $('fileInput').value = '';
+  $('fileBadge').textContent = '';
+  $('clearFileBtn').style.display='none';
+  resetRecordingUI('File cleared — ready to record');
+});
+
+/* Submit */
+function getActiveAudioBlob(){
+  if (uploadedFile) return uploadedFile;
+  if (blob) return blob;
+  return null;
+}
+
+async function submitRecording(){
+  const base  = (CONFIG?.api?.baseUrl || '').trim();
+  const key   = (CONFIG?.api?.key || '').trim();
+  const secret= (CONFIG?.api?.secret || '').trim();
+
+  if (!key || !secret || !base) {
+    setStatus('Missing MSS API configuration (baseUrl / key / secret)', false);
+    appendAttempt({ error:'missing_credentials', base:!!base, key: !!key, secret: !!secret });
+    return;
+  }
+
+  const input = getActiveAudioBlob();
+  if (!input){
+    setStatus('No recording or file to submit', false);
+    return;
+  }
+
+  // Duration validation
+  const p = $('player'), dur = p?.duration || 0;
+  const { minS, maxS } = getDurationBounds();
+  if (!Number.isNaN(dur) && dur > 0 && (dur < minS || dur > maxS)){
+    setStatus(`Audio must be between ${minS} and ${maxS} seconds. Please try again.`, false);
+    appendAttempt({error:'duration_out_of_range', seconds: Math.round(dur), minS, maxS});
+    return;
+  }
+
+  // Prepare audio
+  setStatus('Preparing audio…');
+  startProgress('Submitting');
+  let wavBlob;
+  try{
+    if (uploadedFile && /^audio\/wav/i.test(uploadedFile.type)) wavBlob = uploadedFile;
+    else wavBlob = await transcodeToWav(input);
+  }catch(e){
+    stopProgress('Failed');
+    setStatus('Could not prepare audio', false);
+    appendAttempt({error:'wav_transcode_failed', message:String(e)});
+    return;
+  }
+
+  const pre = await checkAccess(base, key);
+  appendAttempt({ step:'check-access', ...pre });
+  if (!pre.ok){
+    stopProgress('Failed');
+    setStatus(`Access check failed (${pre.status})`, false);
+    return;
+  }
+
+  setStatus('Submitting to MSS…');
+
+  const endpoint = base.replace(/\/+$/,'') + '/api/codebot/vox';
+  const fd = new FormData();
+  fd.append('file', wavBlob, uploadedFile ? uploadedFile.name : 'answer.wav');
+
+  let submitSec = 0;
+  const tStart = performance.now();
+  try{
+    const headers = {
+      'API-KEY': key,
+      'X-API-SECRET': secret,
+      'Accept':'application/json'
+    };
+    const res = await fetch(endpoint, { method:'POST', headers, body: fd });
+    submitSec = Math.max(0, (performance.now()-tStart)/1000);
+    const body = await res.json().catch(()=>({}));
+    appendAttempt({
+      step:'vox',
+      status:res.status,
+      url:endpoint,
+      sent:{
+        fileName: uploadedFile ? uploadedFile.name : 'answer.wav',
+        fileType:wavBlob.type,
+        fileSize:wavBlob.size
+      },
+      headers: {
+        'X-RateLimit-Limit': res.headers.get('X-RateLimit-Limit'),
+        'X-RateLimit-Remaining': res.headers.get('X-RateLimit-Remaining')
+      },
+      body
+    });
+
+    if (res.ok){
+      stopProgress('Done');
+      setStatus('Submitted ✅');
+
+      // Debug button appears only on success
+      $('debugBtnRow').style.display='flex';
+      showDebug({ received: body });
+
+      // Stash last results so Dashboard.html can pull even if postMessage misses
+      try {
+        sessionStorage.setItem('mss-last-results', JSON.stringify(body));
+      } catch (e) {
+        console.warn('Could not store results in sessionStorage', e);
+      }
+
+      // Open dashboard modal
+      openDashboard();
+
+      // Push results to dashboard iframe too
+      try {
+        if (dashboardWindow) {
+          dashboardWindow.postMessage(
+            { type:'mss-results', payload: body },
+            '*'
+          );
+        }
+      } catch (e) {
+        console.warn('dash postMessage failed', e);
+      }
+
+      // Logging to CSV via Render
+      logResultToCsv(body, {
+        fileName: uploadedFile ? uploadedFile.name : 'answer.wav',
+        lengthSec: Math.round(dur || 0),
+        submitTime: Number(submitSec.toFixed(2)),
+        question: Array.isArray(FORM?.survey) ? (FORM.survey[idx] || '') : ''
+      });
+
+      $('submitBtn').disabled = false;
+    }else{
+      stopProgress('Failed');
+      setStatus(`Submit failed (${res.status})`, false);
+    }
+  }catch(err){
+    stopProgress('Failed');
+    setStatus('Network error', false);
+    appendAttempt({error:String(err)});
+  }
+}
+
+/* Logging helper with UI feedback */
+async function logResultToCsv(mssBody, meta){
+  const enabled = Boolean(CONFIG?.logger?.enabled);
+  if (!enabled) return;
+
+  const url = CONFIG?.logger?.url || (SERVICE_BASE.replace(/\/+$/,'') + '/log/submission');
+
+  const ipPlaceholder = ''; // server fills real IP
+  const ts = new Date().toISOString();
+
+  const toefl = mssBody?.elsa_results?.toefl_score ?? mssBody?.toefl_score ?? '';
+  const ielts = mssBody?.elsa_results?.ielts_score ?? mssBody?.ielts_score ?? '';
+  const pte   = mssBody?.elsa_results?.pte_score   ?? mssBody?.pte_score   ?? '';
+  const cefr  = (mssBody?.elsa_results?.cefr_level || mssBody?.cefr_level || '').toString().toUpperCase();
+
+  const transcript = (mssBody?.transcript || '').toString().trim();
+  let wpm = '';
+  try{
+    if (transcript) {
+      const words = transcript.split(/\s+/).filter(Boolean).length;
+      const minutes = Math.max(0.01, (meta.lengthSec || 0) / 60);
+      wpm = Math.round(words / minutes);
+    }
+  }catch{}
+
+  const payload = {
+    timestamp: ts,
+    ip: ipPlaceholder,
+    userId: '',
+    fileName: meta.fileName || '',
+    lengthSec: meta.lengthSec || '',
+    submitTime: meta.submitTime || '',
+    toefl, ielts, pte, cefr,
+    question: meta.question || '',
+    transcript,
+    wpm
+  };
+
+  const statusEl = $('logStatus');
+  try{
+    statusEl.textContent = 'Logging…';
+    statusEl.className = 'mss-logstatus';
+    const res = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const j = await res.json().catch(()=>({}));
+    if (res.ok && j?.ok){
+      statusEl.textContent = 'Logged ✓';
+      statusEl.className = 'mss-logstatus ok';
+      console.log('📝 Logged:', j.file);
+    }else{
+      statusEl.textContent = 'Log failed';
+      statusEl.className = 'mss-logstatus err';
+      console.warn('Logger responded error:', j);
+    }
+  }catch(e){
+    statusEl.textContent = 'Log error';
+    statusEl.className = 'mss-logstatus err';
+    console.warn('Logger unreachable:', e);
+  }
+}
+
+/* Dashboard modal */
+function openDashboard(){
+  const m = $('dashModal');
+  const f = $('dashFrame');
+  dashboardWindow = f.contentWindow;
+  m.style.display='flex'; m.setAttribute('aria-hidden','false');
+}
+function closeDashboard(){
+  const m = $('dashModal');
+  m.style.display='none'; m.setAttribute('aria-hidden','true');
+}
+$('closeDash').addEventListener('click', closeDashboard);
+$('dashModal').addEventListener('click', (e)=>{
+  if (e.target === $('dashModal')) closeDashboard();
+});
+
+/* Wire */
+window.addEventListener('DOMContentLoaded', async ()=>{
+  await loadAll();
+  $('recBtn').addEventListener('click',startRecording);
+  $('stopBtn').addEventListener('click',stopRecording);
+  $('submitBtn').addEventListener('click',submitRecording);
+  $('prevBtn').addEventListener('click',()=>{idx--;renderQ(); resetRecordingUI('Not recording'); hideDebug();});
+  $('nextBtn').addEventListener('click',()=>{idx++;renderQ(); resetRecordingUI('Not recording'); hideDebug();});
+  $('toggleDebug').addEventListener('click', ()=>{
+    const w = $('debugWrap');
+    w.style.display = (w.style.display==='block'?'none':'block');
+  });
+});
+</script>
+</body>
+</html>

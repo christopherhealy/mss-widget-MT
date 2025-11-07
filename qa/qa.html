@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MSS – QA Suite</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{
+  --bg:#f4f5f8; --card:#fff; --edge:#e5e7eb; --muted:#6b7280; --blue:#1a5cff;
+}
+body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#111827}
+.top{max-width:1100px;margin:14px auto 10px;padding:0 14px;display:flex;gap:12px;align-items:center}
+.topTitle{font-weight:800;font-size:16px}
+.topRight{margin-left:auto;display:flex;gap:8px;align-items:center}
+.badge{font-size:11px;color:#6b7280}
+.btnLink{background:#fff;border:1px solid var(--edge);border-radius:999px;padding:6px 10px;font-size:13px;text-decoration:none;color:#111;font-weight:600}
+.shell{max-width:1100px;margin:0 auto;padding:0 14px 24px;display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:flex-start}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:16px;box-shadow:0 12px 30px rgba(15,23,42,.03)}
+.card h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--edge);font-size:14px}
+.section{padding:14px}
+.row{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.label{font-size:12px;color:#374151}
+input[type="text"], textarea, select{border:1px solid var(--edge);border-radius:12px;padding:8px 10px;font:inherit;width:100%;background:#fff}
+textarea{min-height:90px;resize:vertical}
+small.muted{color:var(--muted)}
+.list{display:flex;flex-direction:column;gap:8px}
+.list a{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid transparent;background:#fff;border-radius:12px;text-decoration:none;color:#111}
+.list a:hover{border-color:rgba(26,92,255,.25);background:rgba(26,92,255,.02)}
+.tag{background:rgba(26,92,255,.1);color:#1a5cff;font-size:11px;padding:3px 8px;border-radius:999px}
+.status{font-size:12px;margin-top:4px}
+.status.ok{color:#15803d}
+.status.err{color:#b91c1c}
+@media(max-width:990px){
+  .shell{grid-template-columns:1fr}
+  .top{flex-wrap:wrap}
+  .topRight{margin-left:0}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="topTitle">MSS QA Suite</div>
+  <div id="qaTesterLabel" class="badge"></div>
+  <div class="topRight">
+    <a class="btnLink" href="../index.html">Back to Index</a>
+  </div>
+</div>
+
+<div class="shell">
+  <!-- LEFT: Navigation -->
+  <div class="card">
+    <h3>QA Modules</h3>
+    <div class="section list">
+  <!-- Widget and Config QA -->
+  <a href="qa-widgetadmin.html">
+    <span>WidgetAdmin UI / config</span>
+    <span class="tag">Form-based</span>
+  </a>
+
+  <a href="qa-widget-survey.html">
+    <span>WidgetSurvey (questions)</span>
+    <span class="tag">Form-based</span>
+  </a>
+
+  <a href="qa-widget.html">
+    <span>Widget (runtime)</span>
+    <span class="tag">Form-based</span>
+  </a>
+
+  <a href="qa-dashboard.html">
+    <span>Dashboard (CEFR gauge)</span>
+    <span class="tag">Form-based</span>
+  </a>
+
+  <a href="qa-report.html">
+    <span>Report builder</span>
+    <span class="tag">Form-based</span>
+  </a>
+</div>
+  </div>
+
+  <!-- RIGHT: QA capture (quick ticket) -->
+  <div class="card">
+    <h3>Quick QA Note</h3>
+    <div class="section">
+      <div class="row">
+        <label class="label">Tester name</label>
+        <input id="tTester" type="text" placeholder="e.g. Chris Healy">
+        <small class="muted">This name will be reused on other QA pages.</small>
+      </div>
+      <div class="row">
+        <label class="label">Note</label>
+        <textarea id="tNote" placeholder="Environment, observations, browser, etc."></textarea>
+      </div>
+      <div class="row">
+        <label class="label">Severity</label>
+        <select id="tSeverity">
+          <option>Info</option>
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+          <option>Critical</option>
+        </select>
+      </div>
+      <button id="btnSubmit" style="background:#1a5cff;color:#fff;border:none;border-radius:999px;padding:9px 14px;font-weight:600;cursor:pointer">Submit quick note</button>
+      <div id="logStatus" class="status"></div>
+      <small class="muted">QA logger: http://localhost:3020/qa-log</small>
+    </div>
+  </div>
+</div>
+
+<script>
+const QA_ENDPOINT = 'http://localhost:3020/qa-log';
+const QA_TESTER_KEY = 'mssQA_tester';
+
+function loadTester(){
+  try{
+    const saved = localStorage.getItem(QA_TESTER_KEY);
+    if(saved){
+      document.getElementById('tTester').value = saved;
+      document.getElementById('qaTesterLabel').textContent = 'Tester: ' + saved;
+    }
+  }catch{}
+}
+loadTester();
+
+document.getElementById('tTester').addEventListener('input', e=>{
+  const val = e.target.value || '';
+  try{ localStorage.setItem(QA_TESTER_KEY, val); }catch{}
+  document.getElementById('qaTesterLabel').textContent = val ? 'Tester: '+val : '';
+});
+
+document.getElementById('btnSubmit').addEventListener('click', async ()=>{
+  const tester = document.getElementById('tTester').value.trim() || 'Unknown tester';
+  const note   = document.getElementById('tNote').value.trim();
+  const sev    = document.getElementById('tSeverity').value;
+  const st     = document.getElementById('logStatus');
+
+  const payload = {
+    ts: new Date().toISOString(),
+    component: 'QA-Hub',
+    tester,
+    severity: sev,
+    passed: false,
+    comments: note
+  };
+
+  try{
+    const res = await fetch(QA_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    st.textContent = '✓ Logged to QA CSV.';
+    st.className = 'status ok';
+    document.getElementById('tNote').value='';
+  }catch(err){
+    st.textContent = '⚠︎ Logger not reachable.';
+    st.className = 'status err';
+  }
+});
+</script>
+</body>
+</html>

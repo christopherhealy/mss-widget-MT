@@ -1,0 +1,12 @@
+timestamp,component,stepId,result
+"2025-10-31T19:23:13.244Z","WidgetAdmin","WA-01","pass"
+"2025-10-31T19:23:13.244Z","WidgetAdmin","WA-02","pass"
+"2025-10-31T19:23:13.244Z","WidgetAdmin","WA-03","fail"
+"2025-10-31T19:23:13.244Z","WidgetAdmin","WA-04","pass"
+"2025-10-31T19:23:13.244Z","WidgetAdmin","WA-05","fail"
+"2025-10-31T19:23:13.244Z","WidgetAdmin","WA-06","pass"
+
+
+
+
+

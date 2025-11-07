@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Widget – Reports</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #111827;
+      background: #f3f4f6;
+    }
+    body {
+      margin: 0;
+      padding: 16px;
+      background: #f3f4f6;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .topbar .group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    label {
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+    input[type="text"],
+    input[type="search"],
+    select {
+      font: inherit;
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid #d1d5db;
+      min-width: 80px;
+    }
+    input[type="search"] {
+      min-width: 200px;
+    }
+    button {
+      font: inherit;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #2563eb;
+      color: white;
+      border-color: #2563eb;
+    }
+    button.primary:hover {
+      background: #1d4ed8;
+    }
+    button:hover {
+      background: #e5e7eb;
+    }
+    .meta {
+      font-size: 11px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    thead {
+      background: #f9fafb;
+    }
+    th, td {
+      font-size: 12px;
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: top;
+    }
+    th {
+      font-weight: 600;
+      color: #4b5563;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .rowhead {
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .muted {
+      color: #9ca3af;
+      font-size: 11px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 70px;
+      font: inherit;
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid #d1d5db;
+      resize: vertical;
+    }
+    .warn {
+      color: #b91c1c;
+    }
+    @media (max-width: 800px) {
+      th:nth-child(3),
+      td:nth-child(3),
+      th:nth-child(4),
+      td:nth-child(4) {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>MSS Widget – Reports</h1>
+
+  <div class="topbar">
+    <div class="group">
+      <label for="base">Service URL</label>
+      <input id="base" type="text" size="30" placeholder="(auto)" />
+    </div>
+    <div class="group">
+      <label for="adm">Admin key</label>
+      <input id="adm" type="text" size="14" placeholder="optional" />
+    </div>
+    <div class="group">
+      <label for="q">Search</label>
+      <input id="q" type="search" placeholder="Question, CEFR, name…" />
+    </div>
+    <div class="group">
+      <label for="limit">Rows</label>
+      <select id="limit">
+        <option value="50">Last 50</option>
+        <option value="100" selected>Last 100</option>
+        <option value="200">Last 200</option>
+        <option value="500">Last 500</option>
+        <option value="100000">All</option>
+      </select>
+    </div>
+    <div class="group">
+      <button id="refresh" class="primary">Refresh</button>
+      <button id="downloadCsv">Download CSV</button>
+    </div>
+  </div>
+
+  <div id="meta" class="meta"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 14%">Timestamp / ID</th>
+        <th style="width: 22%">File / User</th>
+        <th style="width: 15%">Scores</th>
+        <th style="width: 24%">Question</th>
+        <th>Teacher / Notes</th>
+      </tr>
+    </thead>
+    <tbody id="body">
+      <tr>
+        <td colspan="5" class="muted" style="padding: 16px">
+          Loading…
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Modal dialog -->
+  <div id="dlg-overlay" style="
+    display:none; position:fixed; inset:0;
+    background:rgba(15,23,42,0.45);
+    align-items:center; justify-content:center;
+    z-index:9999;">
+    <div style="
+      background:white;
+      border-radius:12px;
+      box-shadow:0 18px 45px rgba(15,23,42,0.35);
+      width:min(90%, 380px);
+      padding:20px 22px 18px;
+      text-align:left;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div id="dlg-title" style="font-size:15px;font-weight:600;color:#111827;">
+          Notice
+        </div>
+      </div>
+      <div id="dlg-message" style="font-size:13px;color:#4b5563;margin-bottom:18px;"></div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button id="dlg-ok" class="primary" style="padding:7px 18px;font-size:13px;">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ------------------------------------------------------------------
+       CONFIG / ENV
+    ------------------------------------------------------------------ */
+    const SERVICE_BASE = window.location.hostname.includes("localhost")
+      ? "http://localhost:3000"
+      : "https://msswidget-dev.onrender.com";
+
+    const mode = SERVICE_BASE.includes("localhost") ? "LOCAL DEV" : "RENDER PROD";
+    console.log(`🧩 MSS Reports running in ${mode} mode`);
+
+    const $ = (id) => document.getElementById(id);
+
+    const state = {
+      headers: [],
+      rows: [],
+      filtered: [],
+    };
+
+    /* ------------------------------------------------------------------
+       DIALOG
+    ------------------------------------------------------------------ */
+    function showDialog(title, message, onClose) {
+      const overlay = $("dlg-overlay");
+      const titleEl = $("dlg-title");
+      const msgEl = $("dlg-message");
+      const okBtn = $("dlg-ok");
+
+      titleEl.textContent = title || "Notice";
+      msgEl.textContent = message || "";
+
+      overlay.style.display = "flex";
+
+      const close = () => {
+        overlay.style.display = "none";
+        okBtn.removeEventListener("click", close);
+        if (onClose) onClose();
+      };
+
+      okBtn.addEventListener("click", close);
+    }
+
+    /* ------------------------------------------------------------------
+       HELPERS
+    ------------------------------------------------------------------ */
+    function hdrs() {
+      const h = {};
+      const k = $("adm").value.trim();
+      if (k) h["X-ADMIN-KEY"] = k;
+      return h;
+    }
+
+    function fmtDate(s) {
+      if (!s) return "";
+      try {
+        return new Date(s).toLocaleString();
+      } catch {
+        return s;
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    }
+
+    function escapeAttr(s) {
+      return String(s).replace(/"/g, "&quot;");
+    }
+
+    function cssEsc(s) {
+      return String(s).replace(/"/g, "&quot;");
+    }
+
+    function csvEscape(v) {
+      if (v == null) return "";
+      const s = String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    /* ------------------------------------------------------------------
+       RENDERING
+    ------------------------------------------------------------------ */
+    function rowHtml(r) {
+      const len = r.lengthSec ? ` • ${Number(r.lengthSec).toFixed(0)}s` : "";
+      const scores = [
+        r.toefl ? `TOEFL ${r.toefl}` : "",
+        r.ielts ? `IELTS ${r.ielts}` : "",
+        r.cefr ? `CEFR ${r.cefr}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      const teacher = r.teacher || "";
+      const note = r.note || "";
+
+      const ipLine = r.ip ? `IP: ${r.ip}` : "";
+      const rcLine =
+        r.recordCount && Number(r.recordCount) > 0
+          ? `recs: ${r.recordCount}`
+          : "";
+
+      const metaBits = [ipLine, rcLine].filter(Boolean).join(" · ");
+
+      return `
+        <tr>
+          <td>
+            <div class="rowhead">${fmtDate(r.timestamp) || "(no ts)"}</div>
+            <div class="muted">${r.id}</div>
+          </td>
+          <td>
+            <div><b>${r.fileName || "(recorded)"}</b>${len}</div>
+            <div class="muted">${metaBits}</div>
+          </td>
+          <td>${scores || '<span class="muted">—</span>'}</td>
+          <td>${escapeHtml(r.question || "")}</td>
+          <td>
+            <input
+              type="text"
+              placeholder="Teacher"
+              value="${escapeAttr(teacher)}"
+              data-teacher="${cssEsc(r.id)}"
+              style="width:100%;margin-bottom:6px"
+            >
+            <textarea
+              placeholder="Notes for student…"
+              data-note="${cssEsc(r.id)}"
+            >${escapeHtml(note)}</textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+              <button data-save="${cssEsc(r.id)}" class="primary">Save Note</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    function render() {
+      const qv = $("q").value.trim().toLowerCase();
+      state.filtered = state.rows.filter((r) => {
+        if (!qv) return true;
+        const hay = [
+          r.timestamp,
+          r.fileName,
+          r.cefr,
+          r.toefl,
+          r.ielts,
+          r.question,
+          r.teacher,
+          r.note,
+          r.ip,
+          r.recordCount,
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(qv);
+      });
+
+      const tbody = $("body");
+
+      if (!state.filtered.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="5" class="muted" style="padding:16px">No rows.</td></tr>';
+        return;
+      }
+
+      // newest first
+      const ordered = state.filtered.slice().reverse();
+      tbody.innerHTML = ordered.map((r) => rowHtml(r)).join("");
+
+      // wire Save Note buttons
+      for (const r of ordered) {
+        const btn = document.querySelector(`button[data-save="${cssEsc(r.id)}"]`);
+        const ta = document.querySelector(`textarea[data-note="${cssEsc(r.id)}"]`);
+        const tchr = document.querySelector(
+          `input[data-teacher="${cssEsc(r.id)}"]`
+        );
+        if (btn && ta && tchr) {
+          btn.addEventListener("click", () =>
+            saveNote(r.id, tchr.value.trim(), ta.value.trim())
+          );
+        }
+      }
+    }
+
+    /* ------------------------------------------------------------------
+       LOAD ROWS FROM /log/submissions
+    ------------------------------------------------------------------ */
+    async function loadRows() {
+      const baseInput = $("base").value.trim() || SERVICE_BASE;
+      const base = baseInput.replace(/\/+$/, "");
+      const limit = parseInt($("limit").value, 10) || 100;
+
+      $("body").innerHTML =
+        '<tr><td colspan="5" class="muted" style="padding:16px">Loading…</td></tr>';
+      $("meta").textContent = "";
+
+      try {
+        const res = await fetch(`${base}/log/submissions?ts=${Date.now()}`, {
+          headers: hdrs(),
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        const allRows = data.rows || [];
+        state.headers = data.headers || [];
+
+        const start = Math.max(0, allRows.length - limit);
+        state.rows = allRows.slice(start);
+
+        render();
+        $("meta").textContent = `${state.rows.length} row(s) • ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        console.error("loadRows error", err);
+        $("body").innerHTML =
+          '<tr><td colspan="5" class="warn" style="padding:16px">Load failed.</td></tr>';
+        $("meta").textContent = `Error: ${err.message}`;
+      }
+    }
+
+    /* ------------------------------------------------------------------
+       SAVE NOTE VIA PUT /log/submission
+    ------------------------------------------------------------------ */
+    async function saveNote(id, teacher, note) {
+      const baseInput = $("base").value.trim() || SERVICE_BASE;
+      const base = baseInput.replace(/\/+$/, "");
+
+      try {
+        const res = await fetch(`${base}/log/submission`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...hdrs(),
+          },
+          body: JSON.stringify({
+            id,
+            updates: { teacher, note },
+          }),
+        });
+
+        let ok = res.ok;
+        try {
+          const data = await res.json();
+          if (data && data.ok === false) ok = false;
+        } catch {
+          /* ignore JSON parse errors */
+        }
+
+        await loadRows();
+        if (ok) {
+          showDialog("Report", "✅ Notes saved for this submission.");
+        } else {
+          showDialog("Report", "⚠️ Save failed. Please try again.");
+        }
+      } catch (err) {
+        console.error("saveNote error", err);
+        showDialog("Report", "⚠️ Save failed. Please try again.");
+      }
+    }
+
+    /* ------------------------------------------------------------------
+       DOWNLOAD CSV (client-side)
+    ------------------------------------------------------------------ */
+    function downloadCsv() {
+      if (!state.headers.length || !state.rows.length) {
+        showDialog("Download CSV", "There’s no data to download yet.");
+        return;
+      }
+
+      const lines = [];
+      lines.push(state.headers.join(","));
+      state.rows.forEach((row) => {
+        const cols = state.headers.map((h) => csvEscape(row[h] ?? ""));
+        lines.push(cols.join(","));
+      });
+
+      const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "msswidget-log.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    /* ------------------------------------------------------------------
+       WIRE UI + BOOT
+    ------------------------------------------------------------------ */
+    $("refresh").addEventListener("click", loadRows);
+    $("downloadCsv").addEventListener("click", downloadCsv);
+    $("limit").addEventListener("change", loadRows);
+    $("q").addEventListener("input", render);
+
+    // initial load
+    loadRows();
+  </script>
+</body>
+</html>

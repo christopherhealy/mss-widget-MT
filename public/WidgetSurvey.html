@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>My Speaking Score – All-in-One Question Editor</title>
+<link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css">
+<style>
+  :root { --mss-blue:#1a5cff; --mss-text:#222; --mss-muted:#6b7280; --mss-edge:#e5e7eb; }
+  body{
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:#f7f7f8;margin:0;display:flex;flex-direction:column;align-items:center;
+    min-height:100vh;padding:24px;gap:18px;
+  }
+  .card{
+    width:980px; max-width:95vw; background:#fff; border:1px solid var(--mss-edge);
+    border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.06); overflow:hidden;
+  }
+  .head{display:flex;justify-content:space-between;align-items:center;
+    padding:14px 16px;border-bottom:1px solid var(--mss-edge)}
+  .title{font-weight:700}
+  .muted{color:#6b7280; font-size:12px}
+  .body{padding:14px}
+
+  .row{
+    display:grid; grid-template-columns: 48px 1fr auto; align-items:start;
+    gap:12px; padding:10px 12px; border:1px solid var(--mss-edge); border-radius:12px;
+    margin-bottom:10px; background:#fff;
+    transition:border-color .15s, box-shadow .15s, opacity .15s;
+  }
+  .row.dragging{ opacity:.7; border-color:#93c5fd; box-shadow:0 6px 20px rgba(2,132,199,.15); }
+  .placeholder{
+    height:64px; border:2px dashed #93c5fd; border-radius:12px; background:#eff6ff;
+    margin-bottom:10px;
+  }
+
+  .idx{
+    width:40px;height:40px;border-radius:10px;border:1px solid var(--mss-edge);
+    display:flex;align-items:center;justify-content:center;font-weight:600;background:#f9fafb;
+    user-select:none; cursor:grab;
+    transition:background .15s, border-color .15s, color .15s;
+  }
+  .idx:active{ cursor:grabbing; background:#eef2ff; border-color:#c7d2fe; color:#374151; }
+
+  .qtext{white-space:pre-line}
+  .qfirst{font-weight:600}
+
+  .ctrls{display:flex;gap:6px;flex-wrap:wrap}
+  .btn{
+    border-radius:999px; padding:8px 10px; border:1px solid var(--mss-edge);
+    background:#fff; cursor:pointer; font-weight:600; font-size:13px;
+  }
+  .btn.primary{background:var(--mss-blue); color:#fff; border-color:transparent}
+  .btn.ghost{background:#fff}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .toolbar .spacer{flex:1}
+  #status{font-size:13px;margin-left:auto}
+
+  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2100}
+  .modal{width:min(700px,95vw);background:#fff;border:1px solid var(--mss-edge);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden}
+  .modalHead{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--mss-edge)}
+  .modalBody{padding:12px}
+  .modalFoot{display:flex;gap:8px;justify-content:flex-end;padding:12px;border-top:1px solid var(--mss-edge)}
+  .ta{width:100%;min-height:200px;border:1px solid var(--mss-edge);border-radius:12px;padding:12px;font:inherit}
+
+  .finishOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2100}
+  .finishDlg{width:min(420px,94vw);background:#fff;border:1px solid var(--mss-edge);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:18px}
+  .finishDlg h3{margin:0 0 8px 0;font-size:16px}
+  .finishDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
+  .finishBtns{display:flex;gap:8px;justify-content:flex-end}
+
+  .confirmOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2200}
+  .confirmDlg{width:min(420px,94vw);background:#fff;border:1px solid var(--mss-edge);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:18px}
+  .confirmDlg h3{margin:0 0 8px 0;font-size:16px}
+  .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
+  .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="head">
+      <div>
+        <div class="title">All-in-One Questions</div>
+        <div class="muted">Drag with the index circle, edit in place, add/remove, import/export. Saves only the <code>survey</code> order & content.</div>
+      </div>
+      <div class="muted" id="meta">Loading…</div>
+    </div>
+
+    <div class="body">
+      <div class="toolbar" style="margin-bottom:10px;">
+        <button id="addBtnTop" type="button" class="btn">＋ Add</button>
+
+        <div class="spacer"></div>
+
+        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px;">
+          <input id="importJson" type="file" accept="application/json" style="display:none;"/>
+          Import
+        </label>
+
+        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px;">
+          <input id="importCsv" type="file" accept=".csv,text/csv" style="display:none;"/>
+          CSV Import
+        </label>
+
+        <button id="exportBtnTop" type="button" class="btn">Export</button>
+        <button id="saveToFileBtnTop" type="button" class="btn">Save to file…</button>
+        <button id="finishedBtnTop" type="button" class="btn primary">Finished…</button>
+        <span id="status" class="muted"></span>
+      </div>
+
+      <div id="list"></div>
+
+      <div class="toolbar" style="margin-top:10px;">
+        <button id="addBtnBottom" type="button" class="btn">＋ Add</button>
+
+        <div class="spacer"></div>
+
+        <button id="exportBtnBottom" type="button" class="btn">Export</button>
+        <button id="saveToFileBtnBottom" type="button" class="btn">Save to file…</button>
+        <button id="finishedBtnBottom" type="button" class="btn primary">Finished…</button>
+      </div>
+    </div>
+
+    <div class="footer" style="padding:12px 16px; border-top:1px solid var(--mss-edge); font-size:12px; color:#6b7280">
+      Tip: <b>Export</b> downloads <code>form.json</code>. <b>Save to file…</b> overwrites the chosen file without “form (3)”.
+    </div>
+  </div>
+
+  <!-- Add/Edit modal -->
+  <div id="aeOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Add or Edit Question">
+      <div class="modalHead"><div id="aeTitle" class="title">Add Question</div></div>
+      <div class="modalBody">
+        <textarea id="aeTextarea" class="ta" placeholder="Type the question here…"></textarea>
+      </div>
+      <div class="modalFoot">
+        <button id="aeCancel" type="button" class="btn">Cancel</button>
+        <button id="aeSave" type="button" class="btn">Save</button>
+        <button id="aeSaveNew" type="button" class="btn">Save & New</button>
+        <button id="aeClose" type="button" class="btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Finished dialog -->
+  <div id="finishOverlay" class="finishOverlay" aria-hidden="true">
+    <div class="finishDlg">
+      <h3>Do you want to save your changes before leaving?</h3>
+      <p><b>Save</b> writes to <code>form.json</code> (clean filename) or downloads if blocked.</p>
+      <div class="finishBtns">
+        <button id="finishCancel" type="button" class="btn">Cancel</button>
+        <button id="finishNoSave" type="button" class="btn">Don't Save</button>
+        <button id="finishSave" type="button" class="btn primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div id="confirmOverlay" class="confirmOverlay" aria-hidden="true">
+    <div class="confirmDlg">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p id="confirmMsg">Are you sure?</p>
+      <div class="confirmBtns">
+        <button id="confirmCancel" type="button" class="btn">Cancel</button>
+        <button id="confirmOk" type="button" class="btn primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  
+
+/* ------------------------------------------------------------------
+   CONFIG
+------------------------------------------------------------------ */
+const API_BASE = "https://msswidget-dev.onrender.com";  // Render service
+const SERVICE_BASE = window.location.hostname.includes('localhost')
+  ? 'http://localhost:3000'
+  : 'https://msswidget-dev.onrender.com';
+
+/* ------------------------------------------------------------------
+   ENVIRONMENT CHECK (just for debugging)
+------------------------------------------------------------------ */
+const mode = SERVICE_BASE.includes('localhost') ? 'LOCAL DEV' : 'RENDER PROD';
+console.log(`🧩 MSS Widget running in ${mode} mode`);
+
+  /* ========= state ========= */
+  let schema = null;
+  let survey = [];
+  let _fileHandle = null;
+  let aeMode = 'add'; // 'add' | 'edit'
+  let aeIndex = -1;
+  let aeDirty = false;
+
+  /* ========= helpers ========= */
+  const $ = (id)=>document.getElementById(id);
+  function setStatus(msg, ok=true){
+    const el = $('status');
+    el.textContent = (ok ? '✅ ' : '⚠️ ') + msg;
+    el.style.color = ok ? 'green' : '#b45309';
+    clearTimeout(setStatus._t);
+    setStatus._t = setTimeout(()=>{ el.textContent=''; }, 1800);
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+  function summarize(q){
+    const parts = String(q).split(/\n+/);
+    const head = escapeHtml(parts[0] || '');
+    const rest = escapeHtml(parts.slice(1).join('\n'));
+    return `<div class="qtext"><div class="qfirst">${head}</div>${rest ? `<div class="muted" style="margin-top:4px;white-space:pre-line">${rest}</div>` : ''}</div>`;
+  }
+  function getMerged(){ return { ...schema, survey: survey.slice() }; }
+
+  /* ========= render list ========= */
+  function move(idx, dir){
+    const j = idx + dir;
+    if (j < 0 || j >= survey.length) return;
+    const tmp = survey[idx]; survey[idx] = survey[j]; survey[j] = tmp;
+    render();
+  }
+  function moveTo(idx, dest){
+    if (dest < 0) dest = 0;
+    if (dest > survey.length - 1) dest = survey.length - 1;
+    if (idx === dest) return;
+    const item = survey.splice(idx,1)[0];
+    survey.splice(dest,0,item);
+    render();
+  }
+  function render(){
+    const list = $('list');
+    if (!survey.length){
+      list.innerHTML = `<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>`;
+      return;
+    }
+    list.innerHTML = survey.map((q, i) => `
+      <div class="row" data-idx="${i}" draggable="true">
+        <div class="idx" title="Drag to reorder">${i+1}</div>
+        <div>${summarize(q)}</div>
+        <div class="ctrls">
+          <button type="button" class="btn" data-act="edit">Edit</button>
+          <button type="button" class="btn" data-act="top">Top</button>
+          <button type="button" class="btn" data-act="up">Up</button>
+          <button type="button" class="btn" data-act="down">Down</button>
+          <button type="button" class="btn" data-act="bottom">Bottom</button>
+          <button type="button" class="btn" data-act="remove">✕</button>
+        </div>
+      </div>
+    `).join('');
+    wireDnd(list);
+  }
+
+  /* ========= drag & drop ========= */
+  function wireDnd(container){
+    let placeholder = null, draggingRow = null, dragSrcIndex = null;
+
+    container.querySelectorAll('.row').forEach(row => {
+      row.dataset.allow = "";
+      row.addEventListener('dragstart', onDragStart);
+      row.addEventListener('dragend', onDragEnd);
+      row.querySelector('.idx').addEventListener('pointerdown', () => { row.dataset.allow = "1"; }, {passive:true});
+    });
+
+    container.addEventListener('dragover', onDragOver);
+    container.addEventListener('drop', onDrop);
+
+    function onDragStart(e){
+      const row = e.currentTarget;
+      if (row.dataset.allow !== "1"){ e.preventDefault(); return; }
+      row.dataset.allow = "";
+
+      draggingRow = row;
+      dragSrcIndex = Number(row.getAttribute('data-idx'));
+      row.classList.add('dragging');
+
+      placeholder = document.createElement('div');
+      placeholder.className = 'placeholder';
+      placeholder.style.height = row.getBoundingClientRect().height + 'px';
+      row.after(placeholder);
+
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('text/plain', String(dragSrcIndex));
+        const h = row.querySelector('.idx') || row;
+        e.dataTransfer.setDragImage(h, 16, 16);
+      } catch {}
+    }
+    function onDragOver(e){
+      if (!draggingRow || !placeholder) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const after = getAfterRow(container, e.clientY);
+      if (after == null) container.appendChild(placeholder);
+      else container.insertBefore(placeholder, after);
+    }
+    function onDrop(e){
+      if (!draggingRow || !placeholder) return;
+      e.preventDefault();
+      let targetIndex = 0;
+      for (const child of container.children){
+        if (child === placeholder) break;
+        if (child.classList.contains('row')) targetIndex++;
+      }
+      const from = dragSrcIndex;
+      if (from < targetIndex) targetIndex--;
+      cleanup();
+      if (from == null || from === targetIndex) return;
+      const [m] = survey.splice(from, 1);
+      survey.splice(targetIndex, 0, m);
+      render();
+    }
+    function onDragEnd(){ cleanup(); }
+    function cleanup(){
+      container.querySelectorAll('.row').forEach(r => r.dataset.allow = "");
+      if (draggingRow) draggingRow.classList.remove('dragging');
+      draggingRow = null; dragSrcIndex = null;
+      if (placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+      placeholder = null;
+    }
+    function getAfterRow(container, y){
+      const rows = [...container.querySelectorAll('.row:not(.dragging)')];
+      return rows.reduce((closest, child)=>{
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height/2;
+        return (offset < 0 && offset > closest.offset) ? { offset, element: child } : closest;
+      }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }
+  }
+
+  /* ========= Add/Edit modals ========= */
+  function openAddModal(){
+    aeMode = 'add'; aeIndex = -1; aeDirty = false;
+    $('aeTitle').textContent = 'Add Question';
+    $('aeTextarea').value = '';
+    showOverlay('aeOverlay', true);
+  }
+  function openEditModal(index){
+    aeMode = 'edit'; aeIndex = index; aeDirty = false;
+    $('aeTitle').textContent = 'Edit Question';
+    $('aeTextarea').value = survey[index] || '';
+    showOverlay('aeOverlay', true);
+  }
+  function showOverlay(id, show){
+    const el = $(id);
+    el.style.display = show ? 'flex' : 'none';
+    el.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
+  function wireAddEdit(){
+    const ta = $('aeTextarea');
+    ta.addEventListener('input', ()=> aeDirty = true);
+
+    $('aeCancel').addEventListener('click', ()=>{
+      $('aeTextarea').value = '';
+      aeDirty = false;
+      showOverlay('aeOverlay', false);
+    });
+    $('aeSave').addEventListener('click', ()=>{
+      const v = ta.value.trim();
+      if (!v){ setStatus('Nothing to save', false); return; }
+      if (aeMode === 'add'){ survey.push(v); }
+      else if (aeMode === 'edit' && aeIndex > -1) { survey[aeIndex] = v; }
+      aeDirty = false;
+      render(); setStatus('Saved');
+    });
+    $('aeSaveNew').addEventListener('click', ()=>{
+      const v = ta.value.trim();
+      if (!v){ setStatus('Nothing to save', false); return; }
+      if (aeMode === 'edit' && aeIndex > -1) { survey[aeIndex] = v; }
+      else { survey.push(v); }
+      render(); ta.value = ''; aeMode = 'add'; aeIndex = -1; aeDirty = false;
+      setStatus('Saved. Ready for next.');
+    });
+    $('aeClose').addEventListener('click', async ()=>{
+      if (aeDirty && $('aeTextarea').value.trim()){
+        const choice = await triConfirm('Save your question?', 'No', 'Cancel', 'Save');
+        if (choice === 'save'){
+          const v = $('aeTextarea').value.trim();
+          if (aeMode === 'add') survey.push(v);
+          else if (aeMode === 'edit' && aeIndex > -1) survey[aeIndex] = v;
+          render(); aeDirty = false; showOverlay('aeOverlay', false); setStatus('Saved');
+        } else if (choice === 'nosave'){
+          aeDirty = false; showOverlay('aeOverlay', false);
+        }
+      } else {
+        showOverlay('aeOverlay', false);
+      }
+    });
+  }
+
+  async function confirmRemove(index){
+    const ok = await twoBtnConfirm('Remove this question?', 'Cancel', 'Remove');
+    if (!ok) return;
+    survey.splice(index, 1);
+    render(); setStatus('Question removed');
+  }
+
+  /* ========= Import/Export ========= */
+  function exportJson(){
+    const merged = getMerged();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(merged, null, 2)], { type:'application/json' }));
+    a.setAttribute('download', 'form.json');
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(a.href), 1000);
+    setStatus('Exported');
+  }
+  function wireImportJson(){
+    const f = $('importJson');
+    f.addEventListener('change', async (e)=>{
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try{
+        const parsed = JSON.parse(await file.text());
+        if (!parsed || typeof parsed !== 'object') throw new Error('Invalid JSON object.');
+        schema = parsed;
+        survey = Array.isArray(parsed.survey) ? parsed.survey.slice() : [];
+        setStatus('Imported JSON'); render();
+        $('meta').textContent = (schema.headline || 'My Speaking Score') + ' • ' + (new Date()).toLocaleString();
+      }catch(err){ alert('Import failed: ' + err.message); }
+    });
+  }
+  function wireImportCsv(){
+    const f = $('importCsv');
+    f.addEventListener('change', async (e)=>{
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const rows = parseCSV(await file.text());
+      if (!rows.length){ setStatus('CSV is empty', false); return; }
+
+      const col = findSingleDataColumn(rows);
+      if (col === -1){ alert('CSV must contain exactly one column with data.'); return; }
+
+      const first = String(rows[0][col] ?? '').trim().toLowerCase();
+      const hasHeader = (first === 'name' || first === 'title');
+
+      const start = hasHeader ? 1 : 0;
+      const questions = rows.slice(start).map(r => normalizeCell(r[col])).filter(Boolean);
+
+      if (!questions.length){ setStatus('No questions parsed', false); return; }
+
+      const choice = await triConfirm('Append to existing questions?', 'Replace', 'Cancel', 'Append');
+      if (choice === 'cancel') return;
+
+      if (choice === 'save'){ survey = survey.concat(questions); }
+      else if (choice === 'nosave'){ survey = questions.slice(); }
+      render(); setStatus('CSV imported');
+    });
+  }
+  function normalizeCell(s){
+    if (s == null) return '';
+    let t = String(s).replace(/\r\n/g, '\n').trim();
+    t = t.replace(/\n+/g, ' // ').replace(/\s*\/\/\s*/g, ' // ');
+    return t;
+  }
+  function parseCSV(text){
+    const rows = []; let field = '', row = [], inQuotes = false;
+    for (let i=0; i<text.length; i++){
+      const c = text[i], next = text[i+1];
+      if (inQuotes){
+        if (c === '"' && next === '"'){ field += '"'; i++; }
+        else if (c === '"'){ inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"'){ inQuotes = true; }
+        else if (c === ','){ row.push(field); field = ''; }
+        else if (c === '\n'){ row.push(field); field = ''; rows.push(row); row = []; }
+        else if (c !== '\r'){ field += c; }
+      }
+    }
+    row.push(field); rows.push(row);
+    while (rows.length && rows[rows.length-1].every(v => String(v).trim() === '')) rows.pop();
+    return rows;
+  }
+  function findSingleDataColumn(rows){
+    let maxCols = Math.max(...rows.map(r => r.length));
+    let idx = -1;
+    for (let c=0;c<maxCols;c++){
+      let hasData = rows.some(r => r[c] != null && String(r[c]).trim() !== '');
+      if (hasData){ if (idx !== -1) return -1; idx = c; }
+    }
+    return idx;
+  }
+
+  /* ========= Save to file picker ========= */
+  async function saveToFilePicker(jsonObj, suggestedName='form.json'){
+    const blob = new Blob([JSON.stringify(jsonObj, null, 2)], { type:'application/json' });
+    if (!('showSaveFilePicker' in window)){
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.setAttribute('download', suggestedName);
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=> URL.revokeObjectURL(a.href), 1000);
+      return 'download';
+    }
+    try{
+      if (_fileHandle){
+        const perm = await _fileHandle.requestPermission({ mode:'readwrite' });
+        if (perm === 'granted'){
+          const w = await _fileHandle.createWritable();
+          await w.write(blob); await w.close(); return 'saved';
+        }
+      }
+      _fileHandle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{ description:'JSON', accept:{ 'application/json':['.json'] } }]
+      });
+      const w = await _fileHandle.createWritable();
+      await w.write(blob); await w.close();
+      return 'saved';
+    }catch(e){ console.warn('Save canceled/failed:', e); return 'canceled'; }
+  }
+
+  /* ========= Finish flow ========= */
+  function showFinishDialog(){
+    return new Promise(resolve=>{
+      const ov = $('finishOverlay');
+      ov.style.display='flex'; ov.setAttribute('aria-hidden','false');
+      $('finishSave').onclick   = ()=>{ ov.style.display='none'; ov.setAttribute('aria-hidden','true'); resolve('save'); };
+      $('finishNoSave').onclick = ()=>{ ov.style.display='none'; ov.setAttribute('aria-hidden','true'); resolve('nosave'); };
+      $('finishCancel').onclick = ()=>{ ov.style.display='none'; ov.setAttribute('aria-hidden','true'); resolve('cancel'); };
+    });
+  }
+
+  // -------- Save to SERVER (Render) with file fallback --------
+  async function saveToServer(){
+    const payload = getMerged();
+
+    try{
+      const res = await fetch(`${SERVICE_BASE}/config/forms`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          // If you later add ADMIN_WRITE_KEY on Render, you can send it here:
+          // 'X-ADMIN-KEY': 'your-admin-key-here'
+        },
+        body: JSON.stringify(payload, null, 2)
+      });
+
+      if (!res.ok){
+        throw new Error('HTTP ' + res.status);
+      }
+
+      setStatus('Saved to server');
+      return 'server';
+    }catch(err){
+      console.error('Remote save failed, falling back to file:', err);
+      setStatus('Server save failed, saving to file instead', false);
+      const r = await saveToFilePicker(payload, 'form.json');
+      return r; // 'saved' | 'download' | 'canceled'
+    }
+  }
+
+   async function finishedFlow(){
+    const choice = await showFinishDialog();
+
+    if (choice === 'save'){
+      // First try saving to the central server (Render)
+      const r = await saveToServer();
+      if (r === 'server'){
+        setStatus('Saved to server');
+      } else if (r === 'saved'){
+        setStatus('Saved to file');
+      } else if (r === 'download'){
+        setStatus('Downloaded');
+      }
+      await smartGoHome();
+    } else if (choice === 'nosave'){
+      await smartGoHome();
+    }
+    // 'cancel' → do nothing
+  }
+
+  /* ========= tiny confirms ========= */
+  function twoBtnConfirm(title, cancelLabel='Cancel', okLabel='OK'){
+    return new Promise(resolve=>{
+      const ov = $('confirmOverlay');
+      $('confirmTitle').textContent = title;
+      $('confirmMsg').textContent = '';
+      const ok = $('confirmOk'); const cancel = $('confirmCancel');
+      ok.textContent = okLabel; cancel.textContent = cancelLabel;
+      ov.style.display='flex'; ov.setAttribute('aria-hidden','false');
+      const cleanup = (val)=>{ ov.style.display='none'; ov.setAttribute('aria-hidden','true'); ok.onclick = cancel.onclick = null; resolve(val); };
+      ok.onclick = ()=> cleanup(true);
+      cancel.onclick = ()=> cleanup(false);
+    });
+  }
+  function triConfirm(title, leftLabel='No', middleLabel='Cancel', rightLabel='Yes'){
+    return new Promise(resolve=>{
+      const ov = $('confirmOverlay');
+      $('confirmTitle').textContent = title;
+      $('confirmMsg').textContent = '';
+      const ok = $('confirmOk'); const cancel = $('confirmCancel');
+
+      const wrap = ok.parentNode;
+      wrap.innerHTML = '';
+      const left = Object.assign(document.createElement('button'), { className:'btn', type:'button', textContent:leftLabel });
+      const mid  = Object.assign(document.createElement('button'), { className:'btn', type:'button', textContent:middleLabel });
+      const right= Object.assign(document.createElement('button'), { className:'btn primary', type:'button', textContent:rightLabel });
+      wrap.appendChild(left); wrap.appendChild(mid); wrap.appendChild(right);
+
+      ov.style.display='flex'; ov.setAttribute('aria-hidden','false');
+
+      const cleanup = ()=>{ ov.style.display='none'; ov.setAttribute('aria-hidden','true'); wrap.innerHTML=''; wrap.appendChild(cancel); wrap.appendChild(ok); };
+      left.onclick  = ()=>{ cleanup(); resolve('nosave'); };
+      mid.onclick   = ()=>{ cleanup(); resolve('cancel'); };
+      right.onclick = ()=>{ cleanup(); resolve('save'); };
+    });
+  }
+
+  /* ========= load initial (Render first, local fallback) ========= */
+  async function load(){
+    try{
+      const r = await fetch(`${SERVICE_BASE}/config/forms?ts=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('remote forms fetch failed: ' + r.status);
+      schema = await r.json();
+    }catch(err){
+      console.warn('[WidgetSurvey] remote load failed, falling back to local form.json', err);
+      const res = await fetch('form.json?ts=' + Date.now(), { cache: 'no-store' });
+      schema = await res.json();
+    }
+    survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
+    $('meta').textContent = (schema.headline || 'My Speaking Score') + ' • ' + (new Date()).toLocaleString();
+    render();
+  }
+
+  /* ========= event delegation for row buttons ========= */
+  function wireRowActions(){
+    const listEl = $('list');
+    listEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const row = btn.closest('.row');
+      if (!row) return;
+      const i = Number(row.getAttribute('data-idx'));
+      switch (btn.dataset.act) {
+        case 'edit':   openEditModal(i); break;
+        case 'top':    moveTo(i, 0); break;
+        case 'up':     move(i, -1); break;
+        case 'down':   move(i, +1); break;
+        case 'bottom': moveTo(i, survey.length - 1); break;
+        case 'remove': confirmRemove(i); break;
+      }
+    });
+  }
+
+  /* ========= boot ========= */
+  window.addEventListener('DOMContentLoaded', ()=>{
+    load();
+
+    // row actions
+    wireRowActions();
+
+    // Add buttons
+    $('addBtnTop').addEventListener('click', openAddModal);
+    $('addBtnBottom').addEventListener('click', openAddModal);
+
+    // modals
+    wireAddEdit();
+
+    // Export
+    $('exportBtnTop').addEventListener('click', exportJson);
+    $('exportBtnBottom').addEventListener('click', exportJson);
+
+    // Save to file
+    const saveMerged = async ()=> {
+      const r = await saveToFilePicker(getMerged(), 'form.json');
+      setStatus(r==='saved' ? 'Saved to file' : r==='download' ? 'Downloaded' : 'Canceled', r!=='canceled');
+    };
+    $('saveToFileBtnTop').addEventListener('click', saveMerged);
+    $('saveToFileBtnBottom').addEventListener('click', saveMerged);
+
+    // Finished
+    $('finishedBtnTop').addEventListener('click', finishedFlow);
+    $('finishedBtnBottom').addEventListener('click', finishedFlow);
+
+    // Imports
+    wireImportJson();
+    wireImportCsv();
+  });
+</script>
+</body>
+</html>

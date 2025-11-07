@@ -1,0 +1,17 @@
+{
+  "headline": "CEFR Assessment ",
+  "recordButton": "Record your response",
+  "previousButton": "Previous",
+  "nextButton": "Next",
+  "uploadButton": "Choose an audio file",
+  "stopButton": "Stop",
+  "poweredByLabel": "Powered by MSS Vox",
+  "NotRecordingLabel": "Not recording",
+  "SubmitForScoringButton": "Submit for scoring",
+  "survey": [
+    "What is on your bucket list? Describe why it's so important to you.\n\nTell us why it's on the list, and why you have not done it yet.",
+    "Should kids get paid an allowance for doing household chores?\n\nTell us what you think are the pros and cons - and what you would recommend to new parents.",
+    "Do you think it’s better to study alone or with others? \n\nGive reasons for your answer.",
+    "What is your favourite kind of music? \n\nTell me why you like it and how you tend to enjoy it."
+  ]
+}

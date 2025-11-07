@@ -1,0 +1,165 @@
+/* ===== MSS Widget – Master (Apple-inspired) ============================= */
+/* Everything lives here so admins can swap the whole file to theme.       */
+/* Feel free to tweak variables only to re-skin without touching layout.   */
+
+:root{
+  /* palette */
+  --mss-bg:              #0b1020;               /* behind the card */
+  --mss-card-bg:         rgba(255,255,255,.28); /* glass */
+  --mss-card-stroke:     rgba(255,255,255,.28);
+  --mss-card-shadow:     0 10px 50px rgba(0,0,0,.25);
+
+  --mss-text:            #0e1116;
+  --mss-text-on-glass:   #0e1116;
+  --mss-muted:           #6b7280;
+  --mss-edge:            #e5e7eb;
+
+  --mss-accent:          #0a84ff;               /* iOS blue */
+  --mss-accent-ghost:    rgba(10,132,255,.10);
+  --mss-danger:          #ef4444;
+
+  --mss-pill-bg:         rgba(255,255,255,.55);
+  --mss-pill-stroke:     rgba(0,0,0,.06);
+
+  --mss-radius-xl:       20px;
+  --mss-radius-lg:       14px;
+  --mss-radius:          12px;
+
+  --mss-pad:             14px;
+  --mss-gap:             10px;
+
+  --mss-font:            -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                         "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  margin:0;
+  background:
+    radial-gradient(1000px 1000px at 20% -10%, rgba(120,184,255,.25), transparent 60%),
+    radial-gradient(700px 700px at 110% 10%, rgba(255,148,255,.18), transparent 55%),
+    var(--mss-bg);
+  font-family:var(--mss-font);
+  color:var(--mss-text);
+}
+
+/* ===== Card ============================================================= */
+.mss-card{
+  width:min(860px, 94vw);
+  margin:24px auto;
+  border-radius:calc(var(--mss-radius-xl) + 2px);
+  background:var(--mss-card-bg);
+  border:1px solid var(--mss-card-stroke);
+  box-shadow:var(--mss-card-shadow);
+  backdrop-filter:saturate(140%) blur(14px);
+  -webkit-backdrop-filter:saturate(140%) blur(14px);
+  overflow:hidden;
+}
+.mss-head{
+  padding:22px 18px 8px;
+  display:grid;
+  justify-items:center;
+  background:linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.24));
+}
+.mss-logo{
+  width:138px;height:138px;object-fit:contain;border-radius:16px;
+  background:rgba(255,255,255,.6); border:1px dashed rgba(0,0,0,.08);
+}
+.mss-brand{ margin-top:10px; font-weight:800 }
+.mss-body{ padding:18px }
+
+/* ===== Top row: question + nav aligned ================================= */
+.mss-toprow{
+  display:flex; align-items:flex-start; justify-content:space-between;
+  gap:12px; margin-bottom:8px;
+}
+.mss-qwrap{ flex:1; min-width:0 }
+.mss-counter{ color:var(--mss-muted); font-size:12px; margin-bottom:6px }
+.mss-q{ font-size:16px; line-height:1.55; white-space:pre-line }
+.mss-qnav{ display:flex; gap:8px; align-self:flex-start; white-space:nowrap }
+
+@media (max-width:720px){
+  .mss-toprow{ flex-direction:column; align-items:stretch }
+  .mss-qnav{ justify-content:flex-end; margin-top:8px }
+}
+
+/* ===== Buttons & pills ================================================== */
+.mss-btn, .mss-pill{
+  appearance:none; border:1px solid var(--mss-pill-stroke);
+  background:var(--mss-pill-bg);
+  color:var(--mss-text-on-glass);
+  border-radius:999px; padding:12px 16px; font-weight:700; cursor:pointer;
+  transition:transform .06s ease, box-shadow .2s ease, background .2s ease;
+}
+.mss-pill{ padding:10px 18px; font-weight:600 }
+.mss-btn:hover, .mss-pill:hover{ transform:translateY(-1px) }
+.mss-btn:active, .mss-pill:active{ transform:translateY(0) }
+.mss-btn:disabled, .mss-pill:disabled{ opacity:.55; cursor:not-allowed; transform:none }
+
+.mss-btn.primary{
+  background:var(--mss-accent); border-color:transparent; color:#fff;
+  box-shadow:0 6px 18px rgba(10,132,255,.32);
+}
+.mss-btn.primary:disabled{ background:#8dbfff; box-shadow:none }
+
+/* Destructive / clear */
+.mss-btn.danger{
+  background:rgba(239,68,68,.08); border-color:rgba(239,68,68,.18); color:#b91c1c;
+}
+
+/* ===== Action bar (Choose / Record / Clear) ============================ */
+.mss-actionbar{ display:flex; gap:12px; flex-wrap:wrap; }
+
+/* ===== Recording status + timer ======================================= */
+.mss-recbar{ display:flex; align-items:center; gap:8px; min-height:22px; margin-top:6px }
+.mss-dot{ width:10px; height:10px; border-radius:50%; background:#ef4444; display:none }
+.mss-dot.on{ display:inline-block; animation:mssPulse 1s infinite }
+@keyframes mssPulse{ 0%{opacity:1} 50%{opacity:.35} 100%{opacity:1} }
+
+.mss-muted{ color:var(--mss-muted); font-size:12px }
+.mss-timer{ font-variant-numeric:tabular-nums }
+
+/* ===== Native audio player ============================================ */
+.mss-playerwrap{ display:none; margin-top:8px; text-align:center }
+.mss-playerwrap.show{ display:block }
+.mss-playerwrap audio{ width:100% }
+
+/* ===== Status + results =============================================== */
+.mss-status{ margin-top:10px; font-size:13px; text-align:center }
+.mss-status.ok{ color:#065f46 }
+.mss-status.warn{ color:#b45309 }
+
+.mss-results{
+  margin-top:12px; padding:12px; max-height:280px; overflow:auto;
+  font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  background:rgba(255,255,255,.5); border:1px solid rgba(0,0,0,.06);
+  border-radius:12px; white-space:pre-wrap;
+}
+
+/* ===== Footer powered-by ============================================== */
+.mss-powered{ color:var(--mss-muted); font-size:12px; text-align:center; margin-top:12px }
+
+/* ===== Modal overlay (used by dashboard, finish, etc.) ================= */
+.mss-overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(15,18,24,.45); z-index:1000 }
+.mss-overlay.show{ display:flex }
+.mss-dlg{
+  width:min(920px, 96vw); background:rgba(255,255,255,.75);
+  border:1px solid rgba(255,255,255,.35); box-shadow:var(--mss-card-shadow);
+  backdrop-filter:saturate(140%) blur(18px); -webkit-backdrop-filter:saturate(140%) blur(18px);
+  border-radius:18px; padding:18px;
+}
+.mss-dlg h4{ margin:0 0 6px }
+.mss-dlgBtns{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px }
+
+/* ===== Utility spacing for sections =================================== */
+.mss-section{ padding:var(--mss-pad); background:rgba(255,255,255,.55);
+  border:1px solid rgba(0,0,0,.06); border-radius:var(--mss-radius-lg) }
+.mss-row{ display:flex; gap:var(--mss-gap); flex-wrap:wrap; align-items:center }
+
+/* ===== Pills used for small nav (Back / Next) ========================== */
+.mss-qnav .mss-pill{ min-width:110px; text-align:center }
+
+/* ===== Small helpers =================================================== */
+.hide{ display:none !important }

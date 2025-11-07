@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Configuration Setup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --edge: #e5e7eb;
+      --muted: #6b7280;
+      --text: #111827;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --accent-strong: #1d4ed8;
+      --danger: #b91c1c;
+      --shadow: 0 18px 40px rgba(15,23,42,.08);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--edge);
+      background: #f9fafb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    header .sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .shell {
+      flex: 1;
+      padding: 14px 16px 20px;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--edge);
+      box-shadow: var(--shadow);
+      padding: 16px 18px 18px;
+    }
+    .card h2 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .card .sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .field {
+      margin-top: 10px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .field small {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    input[type="text"],
+    input[type="number"],
+    input[type="password"],
+    select,
+    textarea {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--edge);
+      padding: 7px 9px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 70px;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .row > .field {
+      flex: 1 1 0;
+      min-width: 140px;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+    }
+    .pill-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .pill-checkbox {
+      border-radius: 999px;
+      border: 1px solid var(--edge);
+      padding: 4px 9px;
+      font-size: 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f9fafb;
+    }
+    .pill-checkbox input {
+      width: 12px;
+      height: 12px;
+    }
+    .btn-row {
+      margin-top: 14px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      border-radius: 999px;
+      border: 1px solid var(--edge);
+      padding: 7px 14px;
+      background: #f9fafb;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent-strong);
+      color: #fff;
+    }
+    button.secondary {
+      background: #fff;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .status {
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .status.ok { color: #15803d; }
+    .status.err { color: var(--danger); }
+    .status.neutral { color: var(--muted); }
+    .json-box {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+      background: #020617;
+      color: #e5e7eb;
+      border-radius: 10px;
+      padding: 10px;
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      margin-left: 6px;
+    }
+    .footnote {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>MSS Configuration Setup</h1>
+    <div class="sub">Edit <code>config.json</code> values in real time.</div>
+  </div>
+  <div class="sub">
+    <span id="envTag" class="tag">–</span>
+  </div>
+</header>
+
+<div class="shell">
+  <div class="layout">
+    <!-- LEFT: MAIN CONFIG FORM -->
+    <section class="card">
+      <h2>Core settings</h2>
+      <div class="sub">Theme, behaviour, API &amp; logging.</div>
+
+      <!-- Admin key (optional) -->
+      <div class="field">
+        <label for="adminKey">Admin write key (optional)</label>
+        <input id="adminKey" type="password" placeholder="Only if ADMIN_WRITE_KEY is set on Render" />
+        <small>If left blank, writes are allowed when no ADMIN_WRITE_KEY is configured on the server.</small>
+      </div>
+
+      <!-- Theme + upload / audio bounds -->
+      <div class="row">
+        <div class="field">
+          <label for="theme">Theme</label>
+          <select id="theme">
+            <option value="apple">Apple</option>
+            <option value="pink">Pink</option>
+            <option value="default">Default</option>
+          </select>
+          <small>Controls which CSS theme the widget loads.</small>
+        </div>
+        <div class="field">
+          <label>Upload behaviour</label>
+          <div class="checkbox-row">
+            <input id="permitUpload" type="checkbox" />
+            <span>Allow “Choose an audio file” (Permitupload)</span>
+          </div>
+          <small>When off, widget runs in record-only mode (no upload / clear file controls).</small>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="audioMin">Minimum audio seconds</label>
+          <input id="audioMin" type="number" min="0" />
+          <small>Widget enforces this on submit (e.g. 20).</small>
+        </div>
+        <div class="field">
+          <label for="audioMax">Maximum audio seconds</label>
+          <input id="audioMax" type="number" min="0" />
+          <small>Upper bound for answer length (e.g. 100).</small>
+        </div>
+      </div>
+
+      <hr style="margin:14px 0; border:none; border-top:1px solid var(--edge);" />
+
+      <!-- API block -->
+      <h2>VoX API</h2>
+      <div class="sub">Direct VoX endpoint on <code>https://app.myspeakingscore.com/api/vox</code>.</div>
+
+      <div class="field">
+        <div class="checkbox-row">
+          <input id="apiEnabled" type="checkbox" />
+          <span>Enable API calls</span>
+        </div>
+        <small>If disabled, widget will not submit recordings to MSS.</small>
+      </div>
+
+      <div class="field">
+        <label for="apiBase">API baseUrl</label>
+        <input id="apiBase" type="text" placeholder="https://app.myspeakingscore.com" />
+        <small>Should normally be <code>https://app.myspeakingscore.com</code>.</small>
+      </div>
+
+      <div class="field">
+        <label for="apiKey">API-KEY</label>
+        <input id="apiKey" type="text" autocomplete="off" />
+      </div>
+
+      <div class="field">
+        <label for="apiSecret">X-API-SECRET</label>
+        <input id="apiSecret" type="password" autocomplete="off" />
+      </div>
+
+      <hr style="margin:14px 0; border:none; border-top:1px solid var(--edge);" />
+
+      <!-- Logger block -->
+      <h2>Logging</h2>
+      <div class="sub">Optional CSV logging endpoint hosted on Render.</div>
+
+      <div class="field">
+        <div class="checkbox-row">
+          <input id="logEnabled" type="checkbox" />
+          <span>Enable logging</span>
+        </div>
+        <small>When enabled, widget POSTs summary data to the logger URL after a successful submission.</small>
+      </div>
+
+      <div class="field">
+        <label for="logUrl">Logger URL</label>
+        <input id="logUrl" type="text" placeholder="https://msswidget-dev.onrender.com/log/submission" />
+        <small>Default in dev: <code>/log/submission</code> on your Render service.</small>
+      </div>
+
+      <div class="btn-row">
+        <button id="reloadBtn" type="button" class="secondary">Reload from server</button>
+        <button id="saveBtn" type="button" class="primary">Save configuration</button>
+        <span id="status" class="status neutral"></span>
+      </div>
+
+      <div class="footnote">
+        Changes are saved to <code>config.json</code> on the server. Test widgets will pick up the new settings on page refresh.
+      </div>
+    </section>
+
+    <!-- RIGHT: EDITABLE FLAGS + RAW JSON -->
+    <section class="card">
+      <h2>Editable fields</h2>
+      <div class="sub">
+        Toggle which label fields are editable in widget/admin experiences
+        (the <code>editable</code> map in <code>config.json</code>).
+      </div>
+
+      <div id="editableContainer" class="pill-checkboxes">
+        <!-- dynamically filled with checkboxes from config.editable -->
+      </div>
+
+      <hr style="margin:14px 0; border:none; border-top:1px solid var(--edge);" />
+
+      <h2>Raw config</h2>
+      <div class="sub">Read-only view of the current config as JSON (for sanity checks / support).</div>
+      <div id="rawJson" class="json-box">{}</div>
+    </section>
+  </div>
+</div>
+
+<script>
+  // --------- SERVICE_BASE detection (same pattern as Widget) ----------
+  const SERVICE_BASE = (window.location.hostname.includes('localhost')
+    ? 'http://localhost:3000'
+    : 'https://msswidget-dev.onrender.com'
+  ).replace(/\/+$/,'');
+
+  const $ = (id) => document.getElementById(id);
+
+  let CURRENT_CONFIG = null; // raw object as loaded
+
+  function setStatus(msg, kind = 'neutral') {
+    const el = $('status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'status ' + kind;
+  }
+
+  function updateEnvTag() {
+    const tag = $('envTag');
+    if (!tag) return;
+    const isLocal = window.location.hostname.includes('localhost');
+    tag.textContent = isLocal ? 'LOCAL DEV' : 'RENDER PROD';
+  }
+
+  // --------- Load config from server ----------
+  async function fetchConfig() {
+    setStatus('Loading…', 'neutral');
+    try {
+      const res = await fetch(SERVICE_BASE + '/config/widget?ts=' + Date.now(), {
+        cache: 'no-store'
+      });
+      if (!res.ok) {
+        setStatus('Failed to load config (' + res.status + ')', 'err');
+        return;
+      }
+      const cfg = await res.json();
+      CURRENT_CONFIG = cfg;
+      hydrateFormFromConfig(cfg);
+      setStatus('Loaded', 'ok');
+    } catch (e) {
+      console.warn('fetchConfig error', e);
+      setStatus('Network error while loading config', 'err');
+    }
+  }
+
+  // --------- Fill the UI from config.json ----------
+  function hydrateFormFromConfig(cfg) {
+    // Theme
+    $('theme').value = (cfg.theme || 'apple').toLowerCase();
+
+    // Upload behaviour
+    $('permitUpload').checked = cfg.Permitupload !== false; // default true
+
+    // Audio bounds
+    $('audioMin').value = Number(cfg.audioMinSeconds ?? 30);
+    $('audioMax').value = Number(cfg.audioMaxSeconds ?? 61);
+
+    // API
+    const api = cfg.api || {};
+    $('apiEnabled').checked = api.enabled !== false;
+    $('apiBase').value = api.baseUrl || '';
+    $('apiKey').value = api.key || '';
+    $('apiSecret').value = api.secret || '';
+
+    // Logger
+    const logger = cfg.logger || {};
+    $('logEnabled').checked = !!logger.enabled;
+    $('logUrl').value = logger.url || '';
+
+    // Editable map (generic)
+    const editable = cfg.editable || {};
+    const container = $('editableContainer');
+    container.innerHTML = '';
+    Object.keys(editable).forEach((key) => {
+      const checked = !!editable[key];
+      const pill = document.createElement('label');
+      pill.className = 'pill-checkbox';
+      pill.innerHTML = `
+        <input type="checkbox" data-editable-key="${key}" ${checked ? 'checked' : ''}/>
+        <span>${key}</span>
+      `;
+      container.appendChild(pill);
+    });
+
+    // Raw JSON
+    $('rawJson').textContent = JSON.stringify(cfg, null, 2);
+  }
+
+  // --------- Build config object to send back ----------
+  function buildConfigFromForm() {
+    // Start from deep-ish copy of CURRENT_CONFIG so we preserve unknown keys
+    const base = JSON.parse(JSON.stringify(CURRENT_CONFIG || {}));
+
+    // Theme
+    base.theme = $('theme').value || 'apple';
+
+    // Upload behaviour
+    base.Permitupload = $('permitUpload').checked;
+
+    // Audio bounds
+    const minS = Number($('audioMin').value || 0);
+    const maxS = Number($('audioMax').value || 0);
+    base.audioMinSeconds = Number.isFinite(minS) && minS >= 0 ? minS : 30;
+    base.audioMaxSeconds = Number.isFinite(maxS) && maxS > 0 ? maxS : 61;
+
+    // API
+    base.api = base.api || {};
+    base.api.enabled = $('apiEnabled').checked;
+    base.api.baseUrl = $('apiBase').value.trim();
+    base.api.key = $('apiKey').value.trim();
+    base.api.secret = $('apiSecret').value.trim();
+
+    // Logger
+    base.logger = base.logger || {};
+    base.logger.enabled = $('logEnabled').checked;
+    base.logger.url = $('logUrl').value.trim();
+
+    // Editable map
+    base.editable = base.editable || {};
+    const editInputs = document.querySelectorAll('[data-editable-key]');
+    editInputs.forEach((input) => {
+      const k = input.getAttribute('data-editable-key');
+      base.editable[k] = input.checked;
+    });
+
+    return base;
+  }
+
+  // --------- Save config to server ----------
+  async function saveConfig() {
+    if (!CURRENT_CONFIG) {
+      setStatus('No config loaded yet', 'err');
+      return;
+    }
+
+    const payload = buildConfigFromForm();
+    const adminKey = $('adminKey').value.trim();
+
+    setStatus('Saving…', 'neutral');
+    $('saveBtn').disabled = true;
+
+    try {
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (adminKey) {
+        headers['X-ADMIN-KEY'] = adminKey;
+      }
+
+      const res = await fetch(SERVICE_BASE + '/config/widget', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.warn('Save failed', res.status, body);
+        setStatus('Save failed (' + res.status + '): ' + (body.error || 'Unknown error'), 'err');
+        $('saveBtn').disabled = false;
+        return;
+      }
+
+      const body = await res.json().catch(() => ({}));
+      if (!body.ok) {
+        setStatus('Save error: ' + (body.error || 'Unknown error'), 'err');
+        $('saveBtn').disabled = false;
+        return;
+      }
+
+      // Update in-memory copy & raw JSON
+      CURRENT_CONFIG = payload;
+      $('rawJson').textContent = JSON.stringify(payload, null, 2);
+      setStatus('Saved', 'ok');
+      $('saveBtn').disabled = false;
+
+    } catch (e) {
+      console.warn('saveConfig error', e);
+      setStatus('Network error while saving config', 'err');
+      $('saveBtn').disabled = false;
+    }
+  }
+
+  // --------- Wire up events ----------
+  window.addEventListener('DOMContentLoaded', () => {
+    updateEnvTag();
+    fetchConfig();
+
+    $('reloadBtn').addEventListener('click', () => {
+      fetchConfig();
+    });
+
+    $('saveBtn').addEventListener('click', () => {
+      saveConfig();
+    });
+  });
+</script>
+</body>
+</html>

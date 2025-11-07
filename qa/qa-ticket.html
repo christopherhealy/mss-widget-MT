@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MSS QA – Ticket</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { margin:0; background:#f6f7fb; font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    .shell {
+      max-width:720px; margin:18px auto; background:#fff; border:1px solid #e5e7eb;
+      border-radius:16px; padding:16px 16px 18px; box-shadow:0 10px 28px rgba(0,0,0,.05);
+    }
+    h1 { margin:0 0 10px 0; font-size:16px; }
+    .row { margin-bottom:12px; }
+    label { display:block; font-weight:600; margin-bottom:4px; }
+    input[type="text"], textarea, select {
+      width:100%; padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px; font:inherit;
+    }
+    textarea { min-height:90px; resize:vertical; }
+    .btn { border:1px solid #e5e7eb; background:#fff; padding:8px 12px; border-radius:999px; cursor:pointer; font-weight:600; }
+    .btn.primary { background:#1a5cff; border-color:transparent; color:#fff; }
+    .muted { color:#6b7280; font-size:12px; }
+    .ok { color:#065f46; margin-top:6px; font-size:13px; }
+    .err { color:#b91c1c; margin-top:6px; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <h1>QA Ticket</h1>
+    <p class="muted">Use this form to log a failure from the QA checklist. Most fields below will be prefilled when launched from QA Admin.</p>
+
+    <div class="row">
+      <label for="tester">Tester name</label>
+      <input id="tester" type="text" placeholder="e.g. Chris H.">
+    </div>
+
+    <div class="row">
+      <label for="component">Component</label>
+      <input id="component" type="text" placeholder="WidgetAdmin / Widget / Survey">
+    </div>
+
+    <div class="row">
+      <label for="stepId">Step ID</label>
+      <input id="stepId" type="text" placeholder="e.g. WA-03">
+    </div>
+
+    <div class="row">
+      <label for="stepText">Step / Instruction</label>
+      <textarea id="stepText" placeholder="Step description will appear here"></textarea>
+    </div>
+
+    <div class="row">
+      <label for="severity">Severity</label>
+      <select id="severity">
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="low">Low</option>
+        <option value="blocker">Blocker</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="steps">Steps to Reproduce</label>
+      <textarea id="steps" placeholder="1) Open WidgetAdmin 2) Disable label 3) Still shows in preview..."></textarea>
+    </div>
+
+    <div class="row">
+      <label for="expected">Expected Result</label>
+      <textarea id="expected" placeholder="What should have happened?"></textarea>
+    </div>
+
+    <div class="row">
+      <label for="actual">Actual Result</label>
+      <textarea id="actual" placeholder="What actually happened?"></textarea>
+    </div>
+
+    <div class="row">
+      <label for="notes">Notes</label>
+      <textarea id="notes" placeholder="Browser, OS, screenshots, etc."></textarea>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end; align-items:center;">
+      <span id="msg" class="muted"></span>
+      <button class="btn primary" id="submitBtn">Submit ticket</button>
+    </div>
+  </div>
+
+<script>
+const TICKET_ENDPOINT = 'http://localhost:3020/qa-ticket';
+
+function qs(k){ return new URLSearchParams(location.search).get(k) || ''; }
+
+function prefill(){
+  const comp = qs('component');
+  const stepId = qs('stepId');
+  const stepText = qs('stepText');
+
+  if (comp) document.getElementById('component').value = comp;
+  if (stepId) document.getElementById('stepId').value = stepId;
+  if (stepText) document.getElementById('stepText').value = stepText;
+}
+
+async function submitTicket(){
+  const payload = {
+    tester:   document.getElementById('tester').value.trim(),
+    component:document.getElementById('component').value.trim(),
+    severity: document.getElementById('severity').value,
+    stepId:   document.getElementById('stepId').value.trim(),
+    stepText: document.getElementById('stepText').value.trim(),
+    steps:    document.getElementById('steps').value.trim(),
+    expected: document.getElementById('expected').value.trim(),
+    actual:   document.getElementById('actual').value.trim(),
+    notes:    document.getElementById('notes').value.trim(),
+  };
+
+  const msg = document.getElementById('msg');
+  msg.textContent = 'Saving…';
+
+  try{
+    const res = await fetch(TICKET_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    if (res.ok){
+      msg.textContent = '✅ Ticket saved';
+      msg.className = 'ok';
+    } else {
+      msg.textContent = '⚠️ Ticket save failed ('+res.status+')';
+      msg.className = 'err';
+    }
+  }catch(e){
+    msg.textContent = '⚠️ Network error';
+    msg.className = 'err';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  prefill();
+  document.getElementById('submitBtn').addEventListener('click', submitTicket);
+});
+</script>
+</body>
+</html>

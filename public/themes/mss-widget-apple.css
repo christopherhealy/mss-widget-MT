@@ -1,0 +1,282 @@
+/* mss-widget-apple.css
+   Glassmorphism + Apple-inspired styling for MSS Widget
+*/
+
+/* ---------- Base / tokens ---------- */
+:root {
+  --apple-accent: #007aff;
+  --apple-text: #111827;
+  --apple-muted: #6b7280;
+  --apple-edge: rgba(255,255,255,.45);
+  --apple-bg: #eef1f6;
+  --apple-glass: rgba(255,255,255,.65);
+  --apple-shadow: 0 20px 50px rgba(0,0,0,.10);
+  --apple-radius: 20px;
+  --apple-radius-pill: 999px;
+  --apple-focus: rgba(0,122,255,.35);
+}
+
+/* ---------- Page ---------- */
+html, body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #f6f7fb 0%, #e9edf6 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+               "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--apple-text);
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: max(16px, env(safe-area-inset-top))
+           max(16px, env(safe-area-inset-right))
+           max(16px, env(safe-area-inset-bottom))
+           max(16px, env(safe-area-inset-left));
+}
+
+/* ---------- Card ---------- */
+.mss-card {
+  width: 420px;
+  max-width: 94vw;
+  border-radius: var(--apple-radius);
+  background: var(--apple-glass);
+  border: 1px solid var(--apple-edge);
+  box-shadow: var(--apple-shadow);
+  overflow: hidden;
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  transition: transform .2s ease, box-shadow .2s ease;
+  padding-left: 0.8rem;
+  padding-right: 0.8rem;
+}
+.mss-card:focus-within {
+  box-shadow: 0 24px 60px rgba(0,0,0,.14);
+}
+
+/* ---------- Header ---------- */
+.mss-head {
+  padding: 22px 18px 10px;
+  display: grid;
+  justify-items: center;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.55) 100%),
+    radial-gradient(1200px 300px at 50% -120px, rgba(0,122,255,.10), transparent 60%);
+  border-bottom: 1px solid rgba(255,255,255,.35);
+}
+.mss-logo {
+  width: 180px;
+  height: 180px;
+  object-fit: contain;
+  border-radius: 16px;
+  background: rgba(255,255,255,.55);
+  border: 1px dashed rgba(0,0,0,.08);
+}
+.mss-brand {
+  margin-top: 10px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: .2px;
+}
+
+/* ---------- Body ---------- */
+.mss-body {
+  padding: 16px 16px 18px;
+}
+.mss-counter {
+  color: var(--apple-muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.mss-q {
+  font-size: 16px;
+  line-height: 1.5;
+  white-space: pre-line;
+  text-align: left;
+}
+
+/* ---------- Unified Button Layout ---------- */
+.mss-btn {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin: 8px auto;
+  text-align: center;
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+  border-radius: 10px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+/* Primary (blue) button */
+.mss-btn.primary {
+  background: linear-gradient(180deg, #0a84ff 0%, var(--apple-accent) 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.35) inset,
+    0 10px 20px rgba(10,132,255,.20);
+}
+.mss-btn.primary:hover {
+  filter: saturate(1.05) brightness(1.02);
+}
+
+/* Secondary (gray) buttons */
+.mss-btn:not(.primary) {
+  background: #f3f4f6;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+}
+.mss-btn:hover { background: rgba(255,255,255,.95); }
+.mss-btn:active { transform: translateY(1px); }
+.mss-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--apple-focus);
+}
+
+/* Toolbar (Record / Stop / Choose File) */
+.mss-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Navigation buttons (Previous / Next) */
+.mss-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.mss-pill {
+  padding: 10px 18px;
+  border-radius: var(--apple-radius-pill);
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.85);
+  cursor: pointer;
+  min-width: 120px;
+  text-align: center;
+  transition: background .15s ease, transform .05s ease, box-shadow .15s ease;
+  box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 10px 18px rgba(0,0,0,.02);
+  backdrop-filter: saturate(180%) blur(6px);
+}
+.mss-pill:hover { background: rgba(255,255,255,.95); }
+.mss-pill:active { transform: translateY(1px); }
+.mss-pill:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--apple-focus); }
+
+/* Submit button alignment */
+#submitBtn {
+  max-width: 280px;
+  margin: 10px auto;
+  display: block;
+}
+
+/* ---------- “Submitted ✅” Status ---------- */
+.mss-status.ok {
+  background: rgba(16,185,129,.15);
+  color: #047857;
+  border-radius: 999px;
+  padding: 6px 14px;
+  display: inline-block;
+  font-size: 0.9rem;
+  margin: 10px auto;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid rgba(16,185,129,.25);
+}
+.mss-status.ok::before {
+  content: "✅ ";
+}
+
+/* ---------- Recording indicators ---------- */
+.mss-recbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-height: 20px;
+}
+.mss-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff453a;
+  display: none;
+}
+.mss-dot.on { display: inline-block; animation: pulse 1s infinite; }
+@keyframes pulse { 0%{opacity:1} 50%{opacity:.4} 100%{opacity:1} }
+.mss-timer { font-variant-numeric: tabular-nums; }
+
+/* ---------- Muted text ---------- */
+.mss-muted {
+  color: var(--apple-muted);
+  font-size: 12px;
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* ---------- Dialog ---------- */
+.mss-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.35);
+  z-index: 60;
+  backdrop-filter: blur(6px);
+}
+.mss-dlg {
+  width: min(440px, 94vw);
+  background: rgba(255,255,255,.72);
+  border: 1px solid var(--apple-edge);
+  border-radius: 16px;
+  box-shadow: var(--apple-shadow);
+  padding: 18px;
+  backdrop-filter: saturate(180%) blur(16px);
+}
+.mss-dlg h4 { margin: 0 0 6px 0; font-weight: 700; }
+.mss-dlg p  { margin: 6px 0 0 0; color: var(--apple-muted); }
+.mss-dlgBtns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* ---------- Audio console ---------- */
+audio {
+  width: 100%;
+  border-radius: 12px;
+  background: rgba(255,255,255,.85);
+}
+
+/* ---------- Responsive Tweaks ---------- */
+@media (max-width: 400px) {
+  .mss-btn {
+    max-width: 240px;
+    font-size: 0.85rem;
+    padding: 0.6rem 0.8rem;
+  }
+  .mss-nav { gap: 0.5rem; }
+  .mss-card { padding-left: 0.6rem; padding-right: 0.6rem; }
+  #submitBtn { max-width: 240px; }
+}
+
+@media (max-width: 480px) {
+  .mss-card { width: 100%; max-width: 92vw; }
+  .mss-logo { width: 150px; height: 150px; }
+  .mss-brand { font-size: 18px; }
+  .mss-q { font-size: 15px; }
+}
+
+/* ---------- Reduce motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .mss-card, .mss-btn, .mss-pill { transition: none !important; }
+  .mss-dot.on { animation: none; }
+}

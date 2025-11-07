@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MySpeakingScore Widget Suite</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(180deg,#f8fafc,#e2e8f0);
+    margin: 0; padding: 0;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #1e293b;
+  }
+  .card {
+    background: #fff;
+    padding: 30px 40px;
+    border-radius: 20px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.08);
+    max-width: 480px;
+    text-align: center;
+  }
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.4em;
+  }
+  p {
+    color: #475569;
+    font-size: 1rem;
+    margin-top: 0;
+  }
+  .links {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .btn {
+    background: #1d4ed8;
+    color: white;
+    border: none;
+    border-radius: 999px;
+    padding: 12px 20px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background .2s ease;
+  }
+  .btn:hover {
+    background: #1e40af;
+  }
+  .status {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎙 MySpeakingScore Widget Suite</h1>
+    <p>Launch any module below. The system will automatically wake up the Render backend.</p>
+    <div class="links">
+      <button class="btn" onclick="openTool('Widget.html')">Open Widget</button>
+      <button class="btn" onclick="openTool('WidgetSurvey.html')">Open Widget Survey</button>
+      <button class="btn" onclick="openTool('WidgetAdmin.html')">Open Widget Admin</button>
+    </div>
+    <div id="status" class="status">Warming up Render…</div>
+  </div>
+
+<script>
+/* ------------------------------------------------------------------
+   CONFIG: detect environment and choose Render vs localhost
+------------------------------------------------------------------ */
+const SERVICE_BASE = window.location.hostname.includes('localhost')
+  ? 'http://localhost:3000'
+  : 'https://msswidget-dev.onrender.com';
+
+const mode = SERVICE_BASE.includes('localhost') ? 'LOCAL DEV' : 'RENDER PROD';
+console.log(`🧩 Index running in ${mode} mode`);
+
+/* ------------------------------------------------------------------
+   Wake up Render backend (free-tier warm-up)
+------------------------------------------------------------------ */
+async function wakeRender() {
+  const url = SERVICE_BASE.replace(/\/+$/, '') + '/config/widget?ts=' + Date.now();
+  const statusEl = document.getElementById('status');
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.ok) {
+      statusEl.textContent = '✅ Backend awake and ready.';
+      console.log('✅ Render awake:', url);
+    } else {
+      statusEl.textContent = '⚠️ Backend responded, but not OK (' + res.status + ').';
+      console.log('⚠️ Render responded:', res.status);
+    }
+  } catch (err) {
+    document.getElementById('status').textContent = '⏱ Render may still be waking up…';
+    console.warn('⏱ Render may still be waking up…', err);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Navigation
+------------------------------------------------------------------ */
+function openTool(page) {
+  window.open(page, '_blank', 'noopener');
+}
+
+window.addEventListener('DOMContentLoaded', wakeRender);
+</script>
+</body>
+</html>
