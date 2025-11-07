@@ -2,10 +2,12 @@
   "name": "mss-widget-service",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "db:init": "psql $DATABASE_URL -f schema/init.sql"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "pg": "^8.16.3"
   }
 }
