@@ -1,5 +1,6 @@
 // server.js (ESM, works with "type": "module")
 import express from "express";
+import { insertSubmission } from "./db.js";
 import cors from "cors";
 import fs from "fs/promises";
 import path from "path";
@@ -186,7 +187,9 @@ app.put("/config/images", async (req, res) => {
   }
 });
 
-/* ---------- LOGGING ENDPOINT ---------- */
+
+/* ---------- LOGGING ENDPOINT MT---------- */
+
 function csvEscape(v) {
   if (v == null) return "";
   const s = String(v);
@@ -223,7 +226,8 @@ function parseCsvLine(line) {
   return out;
 }
 
-// APPEND new log
+// APPEND new log (widget uses this)
+// Also mirrors into Postgres (multi-tenant DB) when DATABASE_URL is set
 app.post("/log/submission", async (req, res) => {
   try {
     const body = req.body || {};
@@ -235,6 +239,7 @@ app.post("/log/submission", async (req, res) => {
     const ip = rawIp.split(",")[0].trim();
     body.ip = ip;
 
+    // --- write to CSV (for existing report UI) ---
     const rowValues = headers.map((h) => body[h] ?? "");
     const line = rowValues.map(csvEscape).join(",") + "\n";
 
@@ -242,88 +247,128 @@ app.post("/log/submission", async (req, res) => {
     try {
       await fs.access(LOG_CSV);
     } catch {
+      // file doesn’t exist yet → write header row
       prefix = headers.join(",") + "\n";
     }
     await fs.appendFile(LOG_CSV, prefix + line, "utf8");
-    res.json({ ok: true });
+
+    // --- ALSO write to Postgres (non-fatal if it fails) ---
+    let dbOk = false;
+    let dbError = null;
+
+    if (process.env.DATABASE_URL) {
+      try {
+        await insertSubmission({
+          school_id: body.schoolId || 1, // demo school for now
+          assessment_id: body.assessmentId || null,
+          student_id: body.studentId || null,
+          teacher_id: body.teacherId || null,
+          ip,
+          record_count: body.recordCount ?? null,
+          file_name: body.fileName ?? null,
+          length_sec: body.lengthSec ?? null,
+          submit_time: body.submitTime ?? null,
+          toefl: body.toefl ?? null,
+          ielts: body.ielts ?? null,
+          pte: body.pte ?? null,
+          cefr: body.cefr ?? null,
+          question: body.question ?? null,
+          transcript: body.transcript ?? null,
+          wpm: body.wpm ?? null,
+          meta: body.meta || null,
+        });
+        dbOk = true;
+      } catch (err) {
+        console.error("DB insert error:", err);
+        dbError = err.message || String(err);
+      }
+    }
+
+    // tell the client what happened
+    res.json({ ok: true, dbOk, dbError });
   } catch (e) {
     console.error("POST /log/submission error:", e);
     res.status(500).json({ ok: false, error: "log failed" });
   }
 });
 
-// READ all logs
-app.get("/log/submissions", async (req, res) => {
-  try {
-    let csv;
-    try {
-      csv = await fs.readFile(LOG_CSV, "utf8");
-    } catch {
-      return res.json({ headers: [], rows: [] });
-    }
-    const trimmed = csv.trim();
-    if (!trimmed) return res.json({ headers: [], rows: [] });
-
-    const lines = trimmed.split(/\r?\n/);
-    const headers = parseCsvLine(lines[0]);
-    const rows = lines
-      .slice(1)
-      .filter((l) => l.trim())
-      .map((line, idx) => {
-        const cols = parseCsvLine(line);
-        const row = { id: idx };
-        headers.forEach((h, i) => (row[h] = cols[i] ?? ""));
-        return row;
-      });
-    res.json({ headers, rows });
-  } catch (e) {
-    console.error("GET /log/submissions error:", e);
-    res.status(500).json({ ok: false, error: "failed to read log" });
-  }
-});
-
-// UPDATE single log row
+// UPDATE a single CSV row (used by Report UI when teacher edits notes)
 app.put("/log/submission", async (req, res) => {
   try {
     const body = req.body || {};
     const id = Number(body.id);
     const updates = body.updates || {};
-    if (!Number.isInteger(id) || id < 0)
-      return res.status(400).json({ ok: false, error: "invalid id" });
+
+    if (!Number.isInteger(id) || id < 0) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "id (row index) is required" });
+    }
+    if (!updates || typeof updates !== "object") {
+      return res
+        .status(400)
+        .json({ ok: false, error: "updates object is required" });
+    }
 
     let csv;
     try {
       csv = await fs.readFile(LOG_CSV, "utf8");
     } catch {
-      return res.status(404).json({ ok: false, error: "log not found" });
+      return res.status(404).json({ ok: false, error: "log file not found" });
     }
 
-    const lines = csv.trim().split(/\r?\n/);
-    if (lines.length < 2)
-      return res.status(400).json({ ok: false, error: "log empty" });
+    const trimmed = csv.trim();
+    if (!trimmed) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "log is empty or only has header" });
+    }
+
+    const lines = trimmed.split(/\r?\n/);
+    if (lines.length < 2) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "log is empty or only has header" });
+    }
 
     const headers = parseCsvLine(lines[0]);
-    const rows = lines.slice(1).map(parseCsvLine);
-    if (id >= rows.length)
-      return res.status(400).json({ ok: false, error: "out of range" });
+    const rowLines = lines.slice(1).filter((l) => l.trim() !== "");
 
-    const current = rows[id];
+    if (id >= rowLines.length) {
+      return res.status(400).json({ ok: false, error: "row id out of range" });
+    }
+
+    const parsedRows = rowLines.map((line) => parseCsvLine(line));
+
+    const targetCols = parsedRows[id];
     const rowObj = {};
-    headers.forEach((h, i) => (rowObj[h] = current[i] ?? ""));
-    Object.entries(updates).forEach(([k, v]) => {
-      if (headers.includes(k)) rowObj[k] = v == null ? "" : String(v);
+    headers.forEach((h, i) => {
+      rowObj[h] = targetCols[i] ?? "";
     });
 
-    rows[id] = headers.map((h) => rowObj[h] ?? "");
-    const out = [headers.join(","), ...rows.map((r) => r.map(csvEscape).join(","))];
-    await fs.writeFile(LOG_CSV, out.join("\n") + "\n", "utf8");
+    // apply updates only for known headers
+    Object.entries(updates).forEach(([key, val]) => {
+      if (headers.includes(key)) {
+        rowObj[key] = val == null ? "" : String(val);
+      }
+    });
+
+    const updatedCols = headers.map((h) => rowObj[h] ?? "");
+    parsedRows[id] = updatedCols;
+
+    const outLines = [
+      headers.join(","), // keep existing header
+      ...parsedRows.map((cols) => cols.map(csvEscape).join(",")),
+    ];
+
+    await fs.writeFile(LOG_CSV, outLines.join("\n") + "\n", "utf8");
+
     res.json({ ok: true });
   } catch (e) {
     console.error("PUT /log/submission error:", e);
-    res.status(500).json({ ok: false, error: "update failed" });
+    res.status(500).json({ ok: false, error: "failed to update log" });
   }
 });
-
 /* ---------- health ---------- */
 app.get("/health", (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });

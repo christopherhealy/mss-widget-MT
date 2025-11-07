@@ -863,7 +863,10 @@
           body: JSON.stringify(payload),
         });
 
+        
+
         const j = await res.json().catch(() => ({}));
+        console.log("Log response from server:", j);
 
         if (res.ok && (j.ok === true || j.ok === undefined)) {
           if (statusEl) {
