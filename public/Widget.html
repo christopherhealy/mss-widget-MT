@@ -313,12 +313,15 @@
 /* ===== basic state ===== */
 const $ = (id) => document.getElementById(id);
 
-// Choose correct base for API calls
+// Decide service base *first*
 window.SERVICE_BASE = window.location.hostname.includes('localhost')
   ? 'http://localhost:3000'
   : 'https://mss-widget-mt.onrender.com';
 
-const SERVICE_BASE = window.SERVICE_BASE.replace(/\/+$/, '');
+// Now create the constant that everything else uses
+const $ = (id) => document.getElementById(id);
+const SERVICE_BASE = (window.SERVICE_BASE || 'https://mss-widget-mt.onrender.com').replace(/\/+$/,'');
+
 
 let FORM = null, CONFIG = null, IMAGE = null;
 let idx = 0, chunks = [], mediaRecorder = null, recording = false, blob = null, url = null;
