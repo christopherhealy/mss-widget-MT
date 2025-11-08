@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS UI Style Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Later: this should come from a shared CSS file like themes/mss-core.css -->
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --edge: #e5e7eb;
+      --muted: #6b7280;
+      --ink: #0f172a;
+      --accent: #2563eb;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+      --shadow-soft: 0 20px 40px rgba(15,23,42,.08);
+      --font-base: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 20px 40px;
+      font-family: var(--font-base);
+      background: radial-gradient(circle at top, #e5edff, #f3f4f6 36%);
+      color: var(--ink);
+    }
+
+    .shell {
+      max-width: 980px;
+      margin: 0 auto;
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-soft);
+      padding: 24px 26px 30px;
+      border: 1px solid var(--edge);
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.3rem;
+      font-weight: 800;
+    }
+
+    header p {
+      margin: 4px 0 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--edge);
+      background: #f9fafb;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    section {
+      margin-top: 22px;
+    }
+
+    section h2 {
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: .16em;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+
+    .sg-table {
+      border-radius: 14px;
+      border: 1px solid var(--edge);
+      overflow: hidden;
+    }
+
+    .sg-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 2.4fr);
+      gap: 0;
+      padding: 10px 14px;
+      border-top: 1px solid var(--edge);
+      align-items: center;
+      background: #fff;
+    }
+
+    .sg-row:first-child {
+      border-top: 0;
+    }
+
+    .sg-row:nth-child(odd) {
+      background: #f9fafb;
+    }
+
+    .sg-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .sg-meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .sg-meta code {
+      font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #e5e7eb;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 0.73rem;
+    }
+
+    .sg-live {
+      text-align: center;
+    }
+
+    .sg-code {
+      font-size: 0.75rem;
+      font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #0b1120;
+      color: #e5e7eb;
+      padding: 6px 8px;
+      border-radius: 8px;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* --- Shared MSS button + pill styles (Widget & Report) --- */
+
+    .mss-btn,
+    .btn {
+      background: #e5e7eb;
+      border: 0;
+      border-radius: var(--radius-pill);
+      padding: 7px 13px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      line-height: 1.2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: var(--ink);
+      transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.08s ease;
+    }
+
+    .mss-btn.primary,
+    .btn.primary {
+      background: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 10px 20px rgba(37,99,235,.25);
+    }
+
+    .mss-btn.primary:hover,
+    .btn.primary:hover {
+      background: #1d4ed8;
+      transform: translateY(-0.5px);
+      box-shadow: 0 14px 28px rgba(37,99,235,.3);
+    }
+
+    .mss-btn:hover,
+    .btn:hover {
+      background: #d4d4d8;
+    }
+
+    .btn.outline {
+      background: #ffffff;
+      border: 1px solid var(--edge);
+      box-shadow: none;
+    }
+
+    .btn.outline:hover {
+      background: #f3f4f6;
+    }
+
+    .mss-pill {
+      border: 1px solid var(--edge);
+      background: #ffffff;
+      border-radius: var(--radius-pill);
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .mss-pill:hover {
+      background: #f3f4f6;
+    }
+
+    /* Inputs / selects used in Report + Admin */
+
+    .mss-input,
+    .sg-demo input[type="text"],
+    .sg-demo select {
+      border-radius: 999px;
+      border: 1px solid var(--edge);
+      padding: 7px 12px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      outline: none;
+      min-width: 0;
+    }
+
+    .mss-input:focus,
+    .sg-demo input[type="text"]:focus,
+    .sg-demo select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(37,99,235,.2);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--edge);
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      background: #f9fafb;
+      gap: 6px;
+    }
+
+    .chip-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      opacity: .7;
+    }
+
+    .sg-demo {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 800px) {
+      .sg-row {
+        grid-template-columns: minmax(0, 1.8fr);
+        row-gap: 8px;
+      }
+      .sg-live {
+        justify-self: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <h1>MSS UI Style Guide</h1>
+        <p>Buttons & controls currently used in Widget, Report, and Admin tools.</p>
+      </div>
+      <span class="badge">v0.1 · audit only</span>
+    </header>
+
+    <!-- Buttons -->
+    <section>
+      <h2>Buttons</h2>
+      <div class="sg-table">
+
+        <!-- Primary action -->
+        <div class="sg-row">
+          <div>
+            <div class="sg-label">Primary action button</div>
+            <div class="sg-meta">
+              Class: <code>.mss-btn.primary</code> / <code>.btn.primary</code><br />
+              Used in: <code>Widget.html</code> (“Record your response”, “Submit for scoring”),
+              <code>report.html</code> (“Refresh”)
+              <br />
+              Props: filled, accent background, soft shadow, pill radius.
+            </div>
+          </div>
+          <div class="sg-live">
+            <button class="mss-btn primary">Primary action</button>
+          </div>
+          <div class="sg-code">
+&lt;button class="mss-btn primary"&gt;
+  Primary action
+&lt;/button&gt;
+          </div>
+        </div>
+
+        <!-- Secondary / default -->
+        <div class="sg-row">
+          <div>
+            <div class="sg-label">Secondary / default button</div>
+            <div class="sg-meta">
+              Class: <code>.mss-btn</code> / <code>.btn</code><br />
+              Used in: Widget “Stop”, “Clear file”, “Close”, Admin and Report secondary actions.<br />
+              Props: neutral gray background, pill radius, hover darkens.
+            </div>
+          </div>
+          <div class="sg-live">
+            <button class="mss-btn">Secondary button</button>
+          </div>
+          <div class="sg-code">
+&lt;button class="mss-btn"&gt;
+  Secondary button
+&lt;/button&gt;
+          </div>
+        </div>
+
+        <!-- Outline -->
+        <div class="sg-row">
+          <div>
+            <div class="sg-label">Outline button</div>
+            <div class="sg-meta">
+              Class: <code>.btn.outline</code><br />
+              Used in: <code>report.html</code> (“Download CSV”).<br />
+              Props: white background, 1px border, subtle hover.
+            </div>
+          </div>
+          <div class="sg-live">
+            <button class="btn outline">Outline button</button>
+          </div>
+          <div class="sg-code">
+&lt;button class="btn outline"&gt;
+  Outline button
+&lt;/button&gt;
+          </div>
+        </div>
+
+        <!-- Nav pill -->
+        <div class="sg-row">
+          <div>
+            <div class="sg-label">Navigation pill</div>
+            <div class="sg-meta">
+              Class: <code>.mss-pill</code><br />
+              Used in: <code>Widget.html</code> (“Previous”, “Next” question).<br />
+              Props: bordered pill, white background, hover gray.
+            </div>
+          </div>
+          <div class="sg-live sg-demo">
+            <button class="mss-pill">Previous</button>
+            <button class="mss-pill">Next</button>
+          </div>
+          <div class="sg-code">
+&lt;button class="mss-pill"&gt;Previous&lt;/button&gt;
+&lt;button class="mss-pill"&gt;Next&lt;/button&gt;
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Inputs / selects -->
+    <section>
+      <h2>Inputs & Filters</h2>
+      <div class="sg-table">
+
+        <div class="sg-row">
+          <div>
+            <div class="sg-label">Search / filter input</div>
+            <div class="sg-meta">
+              Classes: <code>.mss-input</code> (proposed shared), or plain
+              <code>&lt;input type="text"&gt;</code> styled in Report/Admin.<br />
+              Used in: <code>report.html</code> filter box (“student, question, CEFR…”).
+            </div>
+          </div>
+          <div class="sg-live sg-demo">
+            <input type="text" class="mss-input" placeholder="Filter by student, question, CEFR…" />
+          </div>
+          <div class="sg-code">
+&lt;input type="text" class="mss-input"
+  placeholder="Filter by student, question, CEFR…" /&gt;
+          </div>
+        </div>
+
+        <div class="sg-row">
+          <div>
+            <div class="sg-label">Limit select</div>
+            <div class="sg-meta">
+              Control: <code>&lt;select&gt;</code><br />
+              Used in: <code>report.html</code> (“Last 100 / 50 / 25…”).<br />
+              Styled with the same pill geometry as inputs.
+            </div>
+          </div>
+          <div class="sg-live sg-demo">
+            <select>
+              <option>Last 25</option>
+              <option>Last 50</option>
+              <option>Last 100</option>
+            </select>
+          </div>
+          <div class="sg-code">
+&lt;select&gt;
+  &lt;option&gt;Last 25&lt;/option&gt;
+  &lt;option&gt;Last 50&lt;/option&gt;
+  &lt;option&gt;Last 100&lt;/option&gt;
+&lt;/select&gt;
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Chips / tags -->
+    <section>
+      <h2>Chips & Tags</h2>
+      <div class="sg-table">
+        <div class="sg-row">
+          <div>
+            <div class="sg-label">Score / CEFR chip</div>
+            <div class="sg-meta">
+              Class: <code>.chip</code><br />
+              Used in: <code>report.html</code> for CEFR / score badges and filters.<br />
+              Props: small pill, subtle border, accent dot.
+            </div>
+          </div>
+          <div class="sg-live sg-demo">
+            <span class="chip">
+              <span class="chip-dot"></span>
+              CEFR C2
+            </span>
+            <span class="chip">
+              <span class="chip-dot"></span>
+              TOEFL 29
+            </span>
+          </div>
+          <div class="sg-code">
+&lt;span class="chip"&gt;
+  &lt;span class="chip-dot"&gt;&lt;/span&gt;
+  CEFR C2
+&lt;/span&gt;
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>
