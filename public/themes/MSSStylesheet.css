@@ -1,0 +1,861 @@
+/* ========== MSS Shared Design System ========== */
+
+/* ---------- Root tokens ---------- */
+:root {
+  --mss-bg: #f3f4f6;
+  --mss-surface: #ffffff;
+  --mss-surface-soft: #f9fafb;
+  --mss-border: #e5e7eb;
+  --mss-border-subtle: #e5e7eb;
+  --mss-border-strong: #d1d5db;
+
+  --mss-text: #111827;
+  --mss-muted: #6b7280;
+  --mss-heading: #0f172a;
+
+  --mss-primary: #1d4ed8;
+  --mss-primary-soft: #eff6ff;
+
+  --mss-danger: #b91c1c;
+  --mss-success: #15803d;
+
+  --mss-radius-lg: 16px;
+  --mss-radius-md: 10px;
+  --mss-radius-pill: 999px;
+
+  --mss-shadow-soft: 0 20px 40px rgba(15, 23, 42, 0.08);
+  --mss-shadow-card: 0 18px 40px rgba(15, 23, 42, 0.10);
+
+  --mss-font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+/* ---------- Root layout ---------- */
+
+.mss-root {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--mss-font-sans);
+  background: radial-gradient(circle at top, #e5edff 0, #f3f4f6 40%, #e5e7eb 100%);
+  color: var(--mss-text);
+}
+
+/* Top bar (admins) */
+.mss-top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(10px);
+  background: linear-gradient(
+    to bottom,
+    rgba(248, 250, 252, 0.98),
+    rgba(248, 250, 252, 0.94),
+    rgba(248, 250, 252, 0.9)
+  );
+  border-bottom: 1px solid rgba(209, 213, 219, 0.7);
+}
+
+.mss-top-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* generic row + stack */
+.mss-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mss-stack-tight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* top bar text */
+.mss-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--mss-heading);
+}
+
+.mss-subtext {
+  font-size: 0.82rem;
+  color: var(--mss-muted);
+}
+
+/* admin nav buttons group */
+.mss-admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Shell + layout for admin pages */
+.mss-shell {
+  max-width: 1120px;
+  margin: 18px auto 32px;
+  padding: 0 18px 24px;
+}
+
+.mss-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 900px) {
+  .mss-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Typography utilities ---------- */
+
+.mss-muted {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.mss-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.mss-chip code {
+  background: transparent;
+  padding: 0;
+}
+
+/* ---------- Cards ---------- */
+
+.mss-card {
+  background: var(--mss-surface);
+  border-radius: var(--mss-radius-lg);
+  border: 1px solid rgba(209, 213, 219, 0.7);
+  box-shadow: var(--mss-shadow-card);
+  padding: 16px 18px 18px;
+}
+
+.mss-card-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--mss-border-subtle);
+  margin-bottom: 12px;
+}
+
+.mss-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--mss-heading);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mss-card-subtitle {
+  margin-top: 3px;
+  font-size: 0.8rem;
+  color: var(--mss-muted);
+}
+
+/* ---------- Buttons ---------- */
+
+.mss-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  background: #e5e7eb;
+  color: #111827;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease,
+    transform 0.08s ease, box-shadow 0.12s ease;
+  white-space: nowrap;
+}
+
+.mss-btn:hover {
+  background: #d1d5db;
+}
+
+.mss-btn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.mss-btn-primary {
+  background: var(--mss-primary);
+  border-color: var(--mss-primary);
+  color: #ffffff;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.25);
+}
+
+.mss-btn-primary:hover {
+  background: #1d4fd8;
+  border-color: #1d4fd8;
+}
+
+.mss-btn-ghost {
+  background: #ffffff;
+  border-color: var(--mss-border);
+  color: var(--mss-text);
+}
+
+.mss-btn-ghost:hover {
+  background: #f9fafb;
+  border-color: var(--mss-border-strong);
+}
+
+.mss-btn-wide {
+  width: 100%;
+  justify-content: center;
+}
+
+.mss-btn-small {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.mss-btn-pill {
+  border-radius: var(--mss-radius-pill);
+}
+
+/* ---------- Form fields ---------- */
+
+.mss-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.mss-field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.mss-field-half {
+  flex: 1;
+}
+
+.mss-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--mss-heading);
+}
+
+.mss-input,
+.mss-textarea,
+.mss-select {
+  width: 100%;
+  border-radius: 11px;
+  border: 1px solid var(--mss-border);
+  padding: 7px 10px;
+  font-size: 0.85rem;
+  font-family: var(--mss-font-sans);
+  background: var(--mss-surface-soft);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.mss-input:focus,
+.mss-textarea:focus,
+.mss-select:focus {
+  border-color: var(--mss-primary);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35);
+  background: #ffffff;
+}
+
+.mss-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* file input is usually hidden and driven by button */
+.mss-input-file {
+  font-size: 0.8rem;
+}
+
+/* File upload control */
+.mss-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.mss-file-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  font-size: 13px;
+  font-weight: 500;
+  color: #111827;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mss-file-btn input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mss-file-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* ---------- Sections (accordion-style) ---------- */
+
+.mss-section {
+  border-radius: 14px;
+  border: 1px solid var(--mss-border-subtle);
+  margin-bottom: 10px;
+  background: #f9fafb;
+  overflow: hidden;
+}
+
+.mss-section[open] {
+  background: #ffffff;
+}
+
+.mss-section-header {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--mss-heading);
+}
+
+.mss-section-header::-webkit-details-marker {
+  display: none;
+}
+
+.mss-section-body {
+  padding: 10px 11px 12px;
+  border-top: 1px solid var(--mss-border-subtle);
+  background: #ffffff;
+}
+
+.mss-chevron {
+  display: inline-block;
+  font-size: 0.7rem;
+  transform-origin: center;
+  transition: transform 0.15s ease;
+}
+
+.mss-section[open] > .mss-section-header .mss-chevron {
+  transform: rotate(90deg);
+}
+
+.mss-pill {
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid #e5e7eb;
+  color: #4b5563;
+  background: #f3f4f6;
+}
+
+.mss-pill-soft {
+  background: #ecfdf3;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+/* ---------- Logo well ---------- */
+
+.mss-logo-well {
+  width: 120px;
+  height: 120px;
+  border-radius: 20px;
+  border: 1px dashed var(--mss-border-strong);
+  background: repeating-linear-gradient(
+      45deg,
+      #f9fafb,
+      #f9fafb 6px,
+      #f3f4f6 6px,
+      #f3f4f6 12px
+    );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.mss-logo-well img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+
+/* ---------- Lists ---------- */
+
+.mss-list {
+  margin: 4px 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: var(--mss-text);
+}
+
+.mss-list li {
+  margin-bottom: 2px;
+}
+
+/* ---------- Actions bottom ---------- */
+
+.mss-actions-bottom {
+  margin-top: 12px;
+}
+
+/* ---------- Editable flag "pill" checkboxes (ConfigAdmin) ---------- */
+
+.mss-pill-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.mss-pill-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 4px 10px;
+  border-radius: var(--mss-radius-pill);
+  border: 1px solid var(--mss-border-strong);
+  background: var(--mss-surface-soft);
+  color: var(--mss-text);
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mss-pill-checkbox input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--mss-border-strong);
+  background: #fff;
+  display: inline-block;
+  position: relative;
+  margin: 0;
+}
+
+.mss-pill-checkbox input[type="checkbox"]:checked {
+  background: var(--mss-primary);
+  border-color: var(--mss-primary);
+}
+
+.mss-pill-checkbox input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 2px 3px 3px 2px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(35deg);
+}
+
+.mss-pill-checkbox span {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ========== Preview panel (WidgetAdmin) ========== */
+
+.mss-preview-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mss-preview-card {
+  border-radius: 18px;
+  border: 1px solid rgba(209, 213, 219, 0.9);
+  background: radial-gradient(circle at top left, #eff6ff 0, #ffffff 42%);
+  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.18);
+  padding: 16px 16px 18px;
+}
+
+.mss-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.mss-preview-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: #e5e7eb;
+  object-fit: contain;
+}
+
+.mss-preview-brand {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--mss-heading);
+}
+
+.mss-preview-counter {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mss-muted);
+  margin-top: 3px;
+}
+
+/* Used by both WidgetAdmin preview and live Widget runtime */
+.mss-preview-question,
+.mss-widget-question {
+  margin-top: 8px;
+  margin-bottom: 10px;
+  font-size: 0.94rem;
+  line-height: 1.4;
+  color: var(--mss-text);
+}
+
+.mss-preview-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mss-preview-pill {
+  border-radius: 999px;
+  border-color: var(--mss-border);
+  background: #ffffff;
+}
+
+.mss-preview-pill:hover {
+  background: #f3f4f6;
+}
+
+.mss-preview-actions {
+  border-radius: 14px;
+  border: 1px solid var(--mss-border-subtle);
+  background: var(--mss-surface-soft);
+  padding: 10px;
+}
+
+.mss-preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: center;
+}
+
+.mss-preview-recbar {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.mss-preview-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #d1d5db;
+}
+
+.mss-preview-footer {
+  margin-top: 8px;
+  border-top: 1px dashed var(--mss-border-subtle);
+  padding-top: 6px;
+  font-size: 0.78rem;
+  color: var(--mss-muted);
+}
+
+/* ========== Widget-specific styles (Widget.html) ========== */
+
+/* Header row in the widget */
+.mss-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.mss-logo {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  background: #e5e7eb;
+  border-radius: 14px;
+}
+
+/* Question text area */
+.mss-widget-question {
+  font-size: 1.05rem;
+  line-height: 1.45;
+  margin: 6px 0 12px;
+}
+
+/* Progress / logging UI */
+.mss-resultswrap {
+  margin-top: 10px;
+}
+
+.mss-line {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1d4ed8, #e5e7eb);
+  width: 0%;
+  transition: width 0.2s ease;
+  margin-top: 4px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.mss-logstatus {
+  font-size: 12px;
+  text-align: center;
+  margin-top: 6px;
+  color: #6b7280;
+}
+
+.mss-logstatus.ok {
+  color: #16a34a;
+}
+
+.mss-logstatus.err {
+  color: #dc2626;
+}
+
+.mss-status {
+  margin-top: 14px;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.mss-status.ok {
+  color: #15803d;
+}
+
+.mss-status.warn {
+  color: #b91c1c;
+}
+
+/* Debug panel */
+.mss-debug {
+  display: none;
+  margin-top: 10px;
+}
+
+.mss-debug pre.mss-results {
+  max-height: 260px;
+  overflow: auto;
+  font-size: 0.75rem;
+  background: #0b1120;
+  color: #e5e7eb;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+/* Wrapper for widget page */
+.mss-widget-shell {
+  width: 100%;
+  max-width: 720px;
+}
+
+/* ========== Dialog / toast (shared) ========== */
+
+.mss-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.mss-dialog-backdrop[hidden] {
+  display: none;
+}
+
+.mss-dialog {
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.32);
+  padding: 20px 24px 18px;
+  max-width: 420px;
+  width: min(420px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mss-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.mss-dialog-body {
+  font-size: 14px;
+  color: #374151;
+}
+
+.mss-dialog-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* toast */
+
+.mss-toast {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 16px;
+  margin-inline: auto;
+  width: fit-content;
+  max-width: 90vw;
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.2s ease;
+  z-index: 80;
+}
+
+.mss-toast[data-kind="err"] {
+  background: #991b1b;
+}
+
+.mss-toast[data-kind="warn"] {
+  background: #92400e;
+}
+
+.mss-toast-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- Small responsive tweaks ---------- */
+
+@media (max-width: 640px) {
+  .mss-top-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mss-admin-nav {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .mss-layout {
+    margin-top: 10px;
+  }
+}
+
+/* Live Widget runtime layout refinements */
+
+.mss-widget-shell {
+  max-width: 860px;
+}
+
+.mss-widget-shell .mss-card {
+  padding: 24px 28px 26px;
+}
+
+.mss-widget-shell .mss-preview-toolbar {
+  margin-top: 12px;
+}
+
+.mss-widget-shell .mss-preview-recbar {
+  margin-top: 12px;
+}
+
+/* Centered navigation row */
+.mss-nav-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin: 10px 0 14px;
+}
+
+/* Buttons have consistent width for balance */
+.mss-nav-row .mss-btn {
+  min-width: 110px;
+  padding: 8px 22px;
+  font-size: 14px;
+}
+
+/* Hide Previous cleanly without breaking centering */
+.mss-nav-row #prevBtn[disabled],
+.mss-nav-row #prevBtn[style*="display:none"] {
+  visibility: hidden;        /* keeps space but hides button */
+  pointer-events: none;
+}
+
+/* Ensure all nav buttons have perfectly centered text */
+.mss-nav-row .mss-btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 110px;
+  padding: 8px 22px;
+  font-size: 14px;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+
+/* Tighten up primary button appearance so text centers visually */
+.mss-nav-row .mss-btn-primary {
+  font-weight: 500;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
