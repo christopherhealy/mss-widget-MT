@@ -401,38 +401,58 @@ if (fileInputEl) {
   fileInputEl.addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+
     uploadedFile = f;
-    $("fileBadge").textContent = `Selected: ${f.name} (${(
-      f.size /
-      1024 /
-      1024
-    ).toFixed(2)} MB)`;
-    $("clearFileBtn").style.display = "inline-block";
-    $("recBtn").disabled = true;
-    $("stopBtn").disabled = true;
+
+    const badge = $("fileBadge");
+    const clearBtn = $("clearFileBtn");
+    const recBtn = $("recBtn");
+    const stopBtn = $("stopBtn");
+    const submitBtn = $("submitBtn");
+
+    if (badge) {
+      badge.textContent = `Selected: ${f.name} (${(
+        f.size / 1024 / 1024
+      ).toFixed(2)} MB)`;
+    }
+    if (clearBtn) clearBtn.style.display = "inline-block";
+    if (recBtn) recBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = true;
 
     releaseBlobUrl();
     url = URL.createObjectURL(f);
-    const p = $("player");
-    p.src = url;
-    $("playerWrap").style.display = "block";
-    $("submitBtn").disabled = false;
 
-    hideDebug();
-    p.onloadedmetadata = () => {
-      const d = p.duration || 0;
-      const { minS, maxS } = getDurationBounds();
-      const mins = String(Math.floor(minS / 60)).padStart(2, "0");
-      const secs = String(minS % 60).padStart(2, "0");
-      const maxm = String(Math.floor(maxS / 60)).padStart(2, "0");
-      const maxs = String(maxS % 60).padStart(2, "0");
-      $("lengthHint").textContent = `Length: ${mmss(
-        d * 1000
-      )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
-    };
+    const p = $("player");
+    const wrap = $("playerWrap");
+    if (p) {
+      p.src = url;
+      if (wrap) wrap.style.display = "block";
+      if (submitBtn) submitBtn.disabled = false;
+
+      hideDebug();
+
+      const lengthHint = $("lengthHint");
+      p.onloadedmetadata = () => {
+        const d = p.duration || 0;
+        const { minS, maxS } = getDurationBounds();
+        const mins = String(Math.floor(minS / 60)).padStart(2, "0");
+        const secs = String(minS % 60).padStart(2, "0");
+        const maxm = String(Math.floor(maxS / 60)).padStart(2, "0");
+        const maxs = String(maxS % 60).padStart(2, "0");
+        if (lengthHint) {
+          lengthHint.textContent = `Length: ${mmss(
+            d * 1000
+          )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
+        }
+      };
+    } else {
+      console.warn(
+        "widget-core: #player not found; skipping inline audio preview."
+      );
+      if (submitBtn) submitBtn.disabled = false;
+    }
   });
 }
-
 const clearFileBtnEl = $("clearFileBtn");
 if (clearFileBtnEl) {
   clearFileBtnEl.addEventListener("click", () => {

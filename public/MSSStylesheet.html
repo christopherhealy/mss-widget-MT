@@ -2,454 +2,702 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MSS UI Style Guide</title>
+  <title>MSS UI Stylesheet & Style Guide</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Later: this should come from a shared CSS file like themes/mss-core.css -->
-  <style>
-    :root {
-      --bg: #f3f4f6;
-      --card: #ffffff;
-      --edge: #e5e7eb;
-      --muted: #6b7280;
-      --ink: #0f172a;
-      --accent: #2563eb;
-      --radius-lg: 18px;
-      --radius-pill: 999px;
-      --shadow-soft: 0 20px 40px rgba(15,23,42,.08);
-      --font-base: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
+  <!-- Base / theme CSS (can be swapped by the Theme CSS selector) -->
+  <link id="themeLink" rel="stylesheet" href="themes/MSSStylesheet.css" />
 
+  <!-- Style-guide specific layout only (no component tokens here) -->
+  <style>
     * {
       box-sizing: border-box;
     }
 
     body {
       margin: 0;
-      padding: 32px 20px 40px;
-      font-family: var(--font-base);
-      background: radial-gradient(circle at top, #e5edff, #f3f4f6 36%);
-      color: var(--ink);
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      background: radial-gradient(circle at top, #e5edff 0, #f3f4f6 48%, #e5e7eb 100%);
     }
 
-    .shell {
-      max-width: 980px;
-      margin: 0 auto;
-      background: var(--card);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-soft);
-      padding: 24px 26px 30px;
-      border: 1px solid var(--edge);
+    .mss-page {
+      max-width: 1080px;
+      margin: 32px auto 40px;
+      padding: 0 18px 24px;
     }
 
-    header {
+    header.mss-header {
       display: flex;
-      align-items: baseline;
       justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 20px;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 22px;
     }
 
-    header h1 {
-      margin: 0;
-      font-size: 1.3rem;
+    .mss-header-title {
+      font-size: 1.7rem;
       font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--mss-heading, #0f172a);
     }
 
-    header p {
-      margin: 4px 0 0;
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-
-    .badge {
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: .12em;
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid var(--edge);
-      background: #f9fafb;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    section {
-      margin-top: 22px;
-    }
-
-    section h2 {
-      font-size: 0.95rem;
-      text-transform: uppercase;
-      letter-spacing: .16em;
-      color: var(--muted);
-      margin: 0 0 10px;
-    }
-
-    .sg-table {
-      border-radius: 14px;
-      border: 1px solid var(--edge);
-      overflow: hidden;
-    }
-
-    .sg-row {
-      display: grid;
-      grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 2.4fr);
-      gap: 0;
-      padding: 10px 14px;
-      border-top: 1px solid var(--edge);
-      align-items: center;
-      background: #fff;
-    }
-
-    .sg-row:first-child {
-      border-top: 0;
-    }
-
-    .sg-row:nth-child(odd) {
-      background: #f9fafb;
-    }
-
-    .sg-label {
+    .mss-header-subtitle {
       font-size: 0.9rem;
-      font-weight: 600;
-      margin-bottom: 4px;
+      color: var(--mss-muted, #6b7280);
+      margin-top: 2px;
     }
 
-    .sg-meta {
-      font-size: 0.75rem;
-      color: var(--muted);
-      line-height: 1.4;
+    main.mss-main {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
     }
 
-    .sg-meta code {
-      font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      background: #e5e7eb;
-      padding: 1px 4px;
+    .mss-section {
+      background: var(--mss-surface, #ffffff);
+      border-radius: var(--mss-radius-lg, 18px);
+      box-shadow: var(--mss-shadow-soft, 0 18px 38px rgba(15,23,42,0.08));
+      padding: 18px 18px 20px;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+    }
+
+    .mss-section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--mss-muted, #6b7280);
+      margin: 0 0 6px;
+    }
+
+    .mss-section-description {
+      margin: 0 0 14px;
+      font-size: 0.86rem;
+      color: var(--mss-muted, #6b7280);
+    }
+
+    /* grid: left = meta, right = live demo */
+    .mss-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 18px;
+      padding: 10px 0;
+      border-top: 1px solid var(--mss-border, #e5e7eb);
+      margin-top: 6px;
+    }
+
+    .mss-grid:first-of-type {
+      border-top: none;
+      margin-top: 0;
+      padding-top: 0;
+    }
+
+    .mss-meta {
+      font-size: 0.86rem;
+      color: var(--mss-muted, #6b7280);
+    }
+
+    .mss-meta code {
+      background: #f3f4f6;
       border-radius: 4px;
-      font-size: 0.73rem;
+      padding: 1px 5px;
+      font-size: 0.8rem;
     }
 
-    .sg-live {
-      text-align: center;
+    .mss-used-in {
+      margin: 6px 0 0;
+      padding-left: 16px;
+      font-size: 0.82rem;
+      color: var(--mss-muted, #6b7280);
     }
 
-    .sg-code {
-      font-size: 0.75rem;
-      font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      background: #0b1120;
-      color: #e5e7eb;
-      padding: 6px 8px;
-      border-radius: 8px;
-      overflow-x: auto;
-      white-space: pre;
-    }
-
-    /* --- Shared MSS button + pill styles (Widget & Report) --- */
-
-    .mss-btn,
-    .btn {
-      background: #e5e7eb;
-      border: 0;
-      border-radius: var(--radius-pill);
-      padding: 7px 13px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      white-space: nowrap;
-      line-height: 1.2;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      color: var(--ink);
-      transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.08s ease;
-    }
-
-    .mss-btn.primary,
-    .btn.primary {
-      background: var(--accent);
-      color: #ffffff;
-      box-shadow: 0 10px 20px rgba(37,99,235,.25);
-    }
-
-    .mss-btn.primary:hover,
-    .btn.primary:hover {
-      background: #1d4ed8;
-      transform: translateY(-0.5px);
-      box-shadow: 0 14px 28px rgba(37,99,235,.3);
-    }
-
-    .mss-btn:hover,
-    .btn:hover {
-      background: #d4d4d8;
-    }
-
-    .btn.outline {
-      background: #ffffff;
-      border: 1px solid var(--edge);
-      box-shadow: none;
-    }
-
-    .btn.outline:hover {
-      background: #f3f4f6;
-    }
-
-    .mss-pill {
-      border: 1px solid var(--edge);
-      background: #ffffff;
-      border-radius: var(--radius-pill);
-      padding: 6px 14px;
-      cursor: pointer;
-      font-size: 0.85rem;
-    }
-
-    .mss-pill:hover {
-      background: #f3f4f6;
-    }
-
-    /* Inputs / selects used in Report + Admin */
-
-    .mss-input,
-    .sg-demo input[type="text"],
-    .sg-demo select {
-      border-radius: 999px;
-      border: 1px solid var(--edge);
-      padding: 7px 12px;
-      font-size: 0.85rem;
-      font-family: inherit;
-      outline: none;
-      min-width: 0;
-    }
-
-    .mss-input:focus,
-    .sg-demo input[type="text"]:focus,
-    .sg-demo select:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px rgba(37,99,235,.2);
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      border: 1px solid var(--edge);
-      padding: 2px 8px;
-      font-size: 0.75rem;
-      color: var(--muted);
-      background: #f9fafb;
-      gap: 6px;
-    }
-
-    .chip-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--accent);
-      opacity: .7;
-    }
-
-    .sg-demo {
-      display: inline-flex;
-      gap: 8px;
-      align-items: center;
+    .mss-demo {
+      background: var(--mss-surface-soft, #f9fafb);
+      border-radius: var(--mss-radius-md, 12px);
+      border: 1px dashed var(--mss-border, #e5e7eb);
+      padding: 12px 14px;
+      display: flex;
       flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
     }
 
-    @media (max-width: 800px) {
-      .sg-row {
-        grid-template-columns: minmax(0, 1.8fr);
-        row-gap: 8px;
+    .mss-demo-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sg-theme-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .sg-theme-help {
+      font-size: 0.8rem;
+      color: var(--mss-muted, #6b7280);
+      margin-top: 6px;
+    }
+
+    .sg-edit-row {
+      margin-top: 8px;
+    }
+
+    .sg-edit-label {
+      font-size: 0.78rem;
+      color: var(--mss-muted, #6b7280);
+      margin-right: 8px;
+    }
+
+    @media (max-width: 720px) {
+      .mss-grid {
+        grid-template-columns: minmax(0, 1fr);
       }
-      .sg-live {
-        justify-self: flex-start;
+      header.mss-header {
+        flex-direction: column;
+        align-items: flex-start;
       }
     }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header>
+  <div class="mss-page">
+    <header class="mss-header">
       <div>
-        <h1>MSS UI Style Guide</h1>
-        <p>Buttons & controls currently used in Widget, Report, and Admin tools.</p>
+        <div class="mss-header-title">MSS UI Stylesheet</div>
+        <div class="mss-header-subtitle">
+          Canonical components shared by Widget, ConfigAdmin, Dashboard, Report, and
+          WidgetSurvey. Use this page to preview and tweak the shared CSS.
+        </div>
       </div>
-      <span class="badge">v0.1 · audit only</span>
+      <div>
+        <button class="mss-btn mss-btn-ghost mss-btn-small" onclick="location.reload()">
+          ⟳ Refresh
+        </button>
+      </div>
     </header>
 
-    <!-- Buttons -->
-    <section>
-      <h2>Buttons</h2>
-      <div class="sg-table">
+    <main class="mss-main">
 
-        <!-- Primary action -->
-        <div class="sg-row">
-          <div>
-            <div class="sg-label">Primary action button</div>
-            <div class="sg-meta">
-              Class: <code>.mss-btn.primary</code> / <code>.btn.primary</code><br />
-              Used in: <code>Widget.html</code> (“Record your response”, “Submit for scoring”),
-              <code>report.html</code> (“Refresh”)
-              <br />
-              Props: filled, accent background, soft shadow, pill radius.
-            </div>
-          </div>
-          <div class="sg-live">
-            <button class="mss-btn primary">Primary action</button>
-          </div>
-          <div class="sg-code">
-&lt;button class="mss-btn primary"&gt;
-  Primary action
-&lt;/button&gt;
-          </div>
-        </div>
+      <!-- THEME LOADER CARD -->
+      <section class="mss-section" id="theme">
+        <h2 class="mss-section-title">Theme file</h2>
+        <p class="mss-section-description">
+          This only swaps the <code>&lt;link&gt;</code> href to the selected theme CSS.
+          The base <code>MSSStylesheet.css</code> should never be removed.
+        </p>
 
-        <!-- Secondary / default -->
-        <div class="sg-row">
-          <div>
-            <div class="sg-label">Secondary / default button</div>
-            <div class="sg-meta">
-              Class: <code>.mss-btn</code> / <code>.btn</code><br />
-              Used in: Widget “Stop”, “Clear file”, “Close”, Admin and Report secondary actions.<br />
-              Props: neutral gray background, pill radius, hover darkens.
-            </div>
-          </div>
-          <div class="sg-live">
-            <button class="mss-btn">Secondary button</button>
-          </div>
-          <div class="sg-code">
-&lt;button class="mss-btn"&gt;
-  Secondary button
-&lt;/button&gt;
-          </div>
-        </div>
-
-        <!-- Outline -->
-        <div class="sg-row">
-          <div>
-            <div class="sg-label">Outline button</div>
-            <div class="sg-meta">
-              Class: <code>.btn.outline</code><br />
-              Used in: <code>report.html</code> (“Download CSV”).<br />
-              Props: white background, 1px border, subtle hover.
-            </div>
-          </div>
-          <div class="sg-live">
-            <button class="btn outline">Outline button</button>
-          </div>
-          <div class="sg-code">
-&lt;button class="btn outline"&gt;
-  Outline button
-&lt;/button&gt;
-          </div>
-        </div>
-
-        <!-- Nav pill -->
-        <div class="sg-row">
-          <div>
-            <div class="sg-label">Navigation pill</div>
-            <div class="sg-meta">
-              Class: <code>.mss-pill</code><br />
-              Used in: <code>Widget.html</code> (“Previous”, “Next” question).<br />
-              Props: bordered pill, white background, hover gray.
-            </div>
-          </div>
-          <div class="sg-live sg-demo">
-            <button class="mss-pill">Previous</button>
-            <button class="mss-pill">Next</button>
-          </div>
-          <div class="sg-code">
-&lt;button class="mss-pill"&gt;Previous&lt;/button&gt;
-&lt;button class="mss-pill"&gt;Next&lt;/button&gt;
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- Inputs / selects -->
-    <section>
-      <h2>Inputs & Filters</h2>
-      <div class="sg-table">
-
-        <div class="sg-row">
-          <div>
-            <div class="sg-label">Search / filter input</div>
-            <div class="sg-meta">
-              Classes: <code>.mss-input</code> (proposed shared), or plain
-              <code>&lt;input type="text"&gt;</code> styled in Report/Admin.<br />
-              Used in: <code>report.html</code> filter box (“student, question, CEFR…”).
-            </div>
-          </div>
-          <div class="sg-live sg-demo">
-            <input type="text" class="mss-input" placeholder="Filter by student, question, CEFR…" />
-          </div>
-          <div class="sg-code">
-&lt;input type="text" class="mss-input"
-  placeholder="Filter by student, question, CEFR…" /&gt;
-          </div>
-        </div>
-
-        <div class="sg-row">
-          <div>
-            <div class="sg-label">Limit select</div>
-            <div class="sg-meta">
-              Control: <code>&lt;select&gt;</code><br />
-              Used in: <code>report.html</code> (“Last 100 / 50 / 25…”).<br />
-              Styled with the same pill geometry as inputs.
-            </div>
-          </div>
-          <div class="sg-live sg-demo">
-            <select>
-              <option>Last 25</option>
-              <option>Last 50</option>
-              <option>Last 100</option>
+        <div class="mss-demo mss-demo-col">
+          <div class="sg-theme-controls">
+            <label class="mss-label" for="themeSelect">Theme CSS</label>
+            <select id="themeSelect" class="mss-select">
+              <option value="MSSStylesheet.css">MSSStylesheet.css (base)</option>
+              <!-- future: add Apple.css, Google.css, Midnight.css etc -->
             </select>
+            <button id="loadThemeBtn" class="mss-btn mss-btn-primary mss-btn-small">
+              Load theme
+            </button>
           </div>
-          <div class="sg-code">
-&lt;select&gt;
-  &lt;option&gt;Last 25&lt;/option&gt;
-  &lt;option&gt;Last 50&lt;/option&gt;
-  &lt;option&gt;Last 100&lt;/option&gt;
-&lt;/select&gt;
+          <div class="sg-theme-help">
+            This only changes which CSS file is loaded into the preview. It does not edit
+            any files.
           </div>
         </div>
+      </section>
 
-      </div>
-    </section>
+      <!-- LAYOUT PRIMITIVES -->
+      <section class="mss-section" id="layout">
+        <h2 class="mss-section-title">Layout primitives</h2>
+        <p class="mss-section-description">
+          Containers and shell structure used across all public HTML files.
+        </p>
 
-    <!-- Chips / tags -->
-    <section>
-      <h2>Chips & Tags</h2>
-      <div class="sg-table">
-        <div class="sg-row">
+        <div class="mss-grid">
           <div>
-            <div class="sg-label">Score / CEFR chip</div>
-            <div class="sg-meta">
-              Class: <code>.chip</code><br />
-              Used in: <code>report.html</code> for CEFR / score badges and filters.<br />
-              Props: small pill, subtle border, accent dot.
+            <div class="mss-meta">
+              <strong>Page shell</strong> —
+              <code>.mss-page</code>, <code>header.mss-header</code>,
+              <code>main.mss-main</code>, <code>.mss-section</code>
+            </div>
+            <ul class="mss-used-in">
+              <li>ConfigAdmin.html</li>
+              <li>Dashboard.html</li>
+              <li>WidgetSurvey.html</li>
+              <li>Report.html</li>
+            </ul>
+
+            <div class="sg-edit-row">
+              <span class="sg-edit-label">Edit layout styles:</span>
+              <button class="mss-btn mss-btn-ghost mss-btn-small"
+                onclick="editStyle('.mss-page, .mss-section')">
+                Edit style
+              </button>
             </div>
           </div>
-          <div class="sg-live sg-demo">
-            <span class="chip">
-              <span class="chip-dot"></span>
-              CEFR C2
-            </span>
-            <span class="chip">
-              <span class="chip-dot"></span>
-              TOEFL 29
-            </span>
-          </div>
-          <div class="sg-code">
-&lt;span class="chip"&gt;
-  &lt;span class="chip-dot"&gt;&lt;/span&gt;
-  CEFR C2
-&lt;/span&gt;
+          <div>
+            <div class="mss-demo">
+              <div style="flex:1;">
+                <header class="mss-header" style="background:transparent; box-shadow:none; padding:0;">
+                  <div>
+                    <div class="mss-header-title" style="font-size:1.1rem;">
+                      Example header
+                    </div>
+                    <div class="mss-header-subtitle">
+                      Subheading text for this page.
+                    </div>
+                  </div>
+                </header>
+                <section class="mss-section"
+                  style="margin-top:10px; box-shadow:0 6px 18px rgba(15,23,42,0.06);">
+                  <h3 style="margin:0 0 4px;font-size:0.95rem;">Section heading</h3>
+                  <p style="margin:0;font-size:0.82rem;color:var(--mss-muted);">
+                    Content goes here inside a rounded card panel.
+                  </p>
+                </section>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
+      <!-- BUTTONS -->
+      <section class="mss-section" id="buttons">
+        <h2 class="mss-section-title">Buttons</h2>
+        <p class="mss-section-description">
+          Actions used in Widget (Record / Submit), ConfigAdmin, Dashboard, and Report.
+        </p>
+
+        <!-- Primary -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Primary button</strong> —
+              <code>.mss-btn.mss-btn-primary</code><br/>
+              Recommended for main actions like “Record your response”,
+              “Submit for scoring”, or “Save config”.
+            </div>
+            <ul class="mss-used-in">
+              <li>Widget.html — primary actions</li>
+              <li>ConfigAdmin.html — Save / Load</li>
+              <li>WidgetAdmin.html — Save All Changes</li>
+            </ul>
+
+            <div class="sg-edit-row">
+              <span class="sg-edit-label">Edit primary button:</span>
+              <button class="mss-btn mss-btn-ghost mss-btn-small"
+                onclick="editStyle('.mss-btn.mss-btn-primary')">
+                Edit style
+              </button>
+            </div>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <button class="mss-btn mss-btn-primary">Primary action</button>
+              <button class="mss-btn mss-btn-primary mss-btn-small">Small primary</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ghost -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Ghost / secondary</strong> —
+              <code>.mss-btn.mss-btn-ghost</code><br/>
+              For navigation or light actions (e.g. “Previous”, “Next”).
+            </div>
+            <ul class="mss-used-in">
+              <li>Widget.html — Previous / Next</li>
+              <li>Dashboard.html — filters, “Reset”</li>
+              <li>WidgetAdmin.html — “Open Widget”, “Open Survey Admin”</li>
+            </ul>
+
+            <div class="sg-edit-row">
+              <span class="sg-edit-label">Edit ghost button:</span>
+              <button class="mss-btn mss-btn-ghost mss-btn-small"
+                onclick="editStyle('.mss-btn.mss-btn-ghost')">
+                Edit style
+              </button>
+            </div>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <button class="mss-btn mss-btn-ghost">Secondary</button>
+              <button class="mss-btn mss-btn-ghost mss-btn-small">Tiny ghost</button>
+              <button class="mss-btn mss-btn-ghost mss-btn-icon">⋮</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Destructive (placeholder for future) -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Destructive button</strong> —
+              <code>.mss-btn.mss-btn-destructive</code><br/>
+              For irreversible actions (deleting schools, wiping logs, etc.). Style in
+              CSS even if not fully wired yet.
+            </div>
+            <ul class="mss-used-in">
+              <li>Future admin screens</li>
+            </ul>
+
+            <div class="sg-edit-row">
+              <span class="sg-edit-label">Edit destructive button:</span>
+              <button class="mss-btn mss-btn-ghost mss-btn-small"
+                onclick="editStyle('.mss-btn.mss-btn-destructive')">
+                Edit style
+              </button>
+            </div>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <button class="mss-btn mss-btn-destructive">Delete / Dangerous</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- INPUTS & FIELDS -->
+      <section class="mss-section" id="inputs">
+        <h2 class="mss-section-title">Inputs & fields</h2>
+        <p class="mss-section-description">
+          Form primitives for API keys, base URLs, and survey configuration.
+        </p>
+
+        <!-- Labeled input -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Labeled input</strong> —
+              <code>.mss-field</code>, <code>.mss-label</code>, <code>.mss-input</code><br/>
+              Used for <code>API baseUrl</code>, <code>API-KEY</code>,
+              <code>X-API-SECRET</code>, etc.
+            </div>
+            <ul class="mss-used-in">
+              <li>ConfigAdmin.html — API configuration</li>
+              <li>WidgetSurvey.html — titles / prompts</li>
+            </ul>
+
+            <div class="sg-edit-row">
+              <span class="sg-edit-label">Edit input:</span>
+              <button class="mss-btn mss-btn-ghost mss-btn-small"
+                onclick="editStyle('.mss-input')">
+                Edit style
+              </button>
+            </div>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <div class="mss-field">
+                <label class="mss-label">API baseUrl</label>
+                <input class="mss-input" type="text"
+                  value="https://app.myspeakingscore.com" />
+                <span class="mss-help">
+                  Root URL for MSS Vox API requests from the widget.
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Secret / password -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Password / secret input</strong> — same classes as text
+              input. Masked display for secrets, but visually identical.
+            </div>
+            <ul class="mss-used-in">
+              <li>ConfigAdmin.html — X-API-SECRET, API keys</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <div class="mss-field">
+                <label class="mss-label">X-API-SECRET</label>
+                <input class="mss-input" type="password"
+                  value="••••••••••••••••••••••••" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Textarea -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Textarea</strong> —
+              <code>.mss-textarea</code><br/>
+              For editing longer prompts or instructions.
+            </div>
+            <ul class="mss-used-in">
+              <li>WidgetSurvey.html — question text</li>
+              <li>Dashboard.html — teacher notes (future)</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <div class="mss-field">
+                <label class="mss-label">Question</label>
+                <textarea class="mss-textarea" rows="3">
+Do you agree or disagree with this statement?</textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CHECKBOXES & TOGGLES -->
+      <section class="mss-section" id="checkboxes">
+        <h2 class="mss-section-title">Checkboxes & toggles</h2>
+        <p class="mss-section-description">
+          Config toggles used for editable labels and upload permissions.
+        </p>
+
+        <!-- Checkbox row -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Checkbox row</strong> —
+              <code>.mss-checkbox-row</code><br/>
+              Inline label next to checkbox, used for enabling
+              “Choose an audio file”.
+            </div>
+            <ul class="mss-used-in">
+              <li>ConfigAdmin.html — Permitupload / allow file uploads</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mss-demo mss-demo-col">
+              <label class="mss-checkbox-row">
+                <input type="checkbox" checked />
+                <span>Allow “Choose an audio file” (Permitupload)</span>
+              </label>
+              <span class="mss-footnote">
+                Widget hides the upload button when this is unchecked.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pill checkboxes -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Pill checkbox</strong> —
+              <code>.mss-pill-checkbox</code><br/>
+              For editable text flags like <code>headline</code>,
+              <code>previousButton</code>, etc.
+            </div>
+            <ul class="mss-used-in">
+              <li>ConfigAdmin.html — Editable fields list</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <label class="mss-pill-checkbox">
+                <input type="checkbox" checked />
+                <span>headline</span>
+              </label>
+              <label class="mss-pill-checkbox">
+                <input type="checkbox" checked />
+                <span>recordButton</span>
+              </label>
+              <label class="mss-pill-checkbox">
+                <input type="checkbox" />
+                <span>footerLabel</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footnote helper -->
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Inline footnote</strong> —
+              <code>.mss-footnote</code><br/>
+              Example text: “Widget enforces this on submit (e.g. 20).”
+            </div>
+            <ul class="mss-used-in">
+              <li>
+                ConfigAdmin.html — audioMinSeconds / audioMaxSeconds help text
+              </li>
+            </ul>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <div class="mss-field" style="max-width:180px;">
+                <label class="mss-label">Minimum seconds</label>
+                <input class="mss-input" type="number" value="20" />
+                <span class="mss-footnote">
+                  Widget enforces this on submit (e.g. 20).
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STATUS TAGS -->
+      <section class="mss-section" id="status">
+        <h2 class="mss-section-title">Status tags</h2>
+        <p class="mss-section-description">
+          Short inline indicators like “Loaded” or “Error” used near config
+          actions.
+        </p>
+
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Status badges</strong> — <code>.mss-status-*</code><br/>
+              Green for success, red for error, grey for neutral.
+            </div>
+            <ul class="mss-used-in">
+              <li>ConfigAdmin.html — Loaded / Saved indicators</li>
+              <li>Widget.html — Log / API status (future)</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <span class="mss-status mss-status-ok">Loaded</span>
+              <span class="mss-status mss-status-neutral">Idle</span>
+              <span class="mss-status mss-status-err">Error</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ALERTS & DIALOGS -->
+      <section class="mss-section" id="alerts">
+        <h2 class="mss-section-title">Alerts & dialogs</h2>
+        <p class="mss-section-description">
+          Simple dialog-style shells with an “OK” button; replaces plain
+          <code>alert()</code> over time.
+        </p>
+
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Info alert</strong> —
+              <code>.mss-alert.mss-alert-info</code><br/>
+              For friendly confirmations and tips.
+            </div>
+            <ul class="mss-used-in">
+              <li>ConfigAdmin.html — save / load confirmations (planned)</li>
+              <li>Report.html — note save confirmation (planned)</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mss-demo mss-demo-col">
+              <div class="mss-alert mss-alert-info">
+                <div class="mss-alert-icon">ℹ️</div>
+                <div>
+                  <div class="mss-alert-title">Config loaded</div>
+                  <div class="mss-alert-body">
+                    Your widget settings were loaded successfully. Click OK to
+                    continue.
+                  </div>
+                </div>
+              </div>
+              <button class="mss-btn mss-btn-primary mss-btn-small">OK</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mss-grid">
+          <div>
+            <div class="mss-meta">
+              <strong>Danger alert</strong> —
+              <code>.mss-alert.mss-alert-danger</code><br/>
+              For serious issues like API key problems or log failures.
+            </div>
+          </div>
+          <div>
+            <div class="mss-demo">
+              <div class="mss-alert mss-alert-danger">
+                <div class="mss-alert-icon">⚠️</div>
+                <div>
+                  <div class="mss-alert-title">API request failed</div>
+                  <div class="mss-alert-body">
+                    We couldn’t reach the MSS Vox service. Please verify your base
+                    URL and API key.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
+
+  <!-- Style-editor dialog (shared MSS dialog shell) -->
+  <div id="styleDlgBack" class="mss-dialog-backdrop" hidden>
+    <div class="mss-dialog">
+      <div id="styleDlgTitle" class="mss-dialog-title">Style editor</div>
+      <div id="styleDlgBody" class="mss-dialog-body">
+        <!-- Filled by JS -->
+      </div>
+      <div class="mss-dialog-actions">
+        <button id="styleDlgCancel" class="mss-btn mss-btn-ghost">Cancel</button>
+        <button id="styleDlgOk" class="mss-btn mss-btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+    <script>
+    // Swap which theme CSS file is loaded.
+    const themeLink = document.getElementById("themeLink");
+    const themeSelect = document.getElementById("themeSelect");
+    const loadThemeBtn = document.getElementById("loadThemeBtn");
+
+    if (loadThemeBtn && themeLink && themeSelect) {
+      loadThemeBtn.addEventListener("click", () => {
+        const file = themeSelect.value || "MSSStylesheet.css";
+        themeLink.href = "themes/" + file;
+      });
+    }
+
+    // --- Shared MSS dialog for "Edit style" ---
+
+    function openStyleDialog(selector) {
+      const back = document.getElementById("styleDlgBack");
+      const title = document.getElementById("styleDlgTitle");
+      const body = document.getElementById("styleDlgBody");
+      const ok = document.getElementById("styleDlgOk");
+      const cancel = document.getElementById("styleDlgCancel");
+
+      if (!back || !title || !body || !ok || !cancel) return;
+
+      title.textContent = "Style editor (coming soon)";
+      body.innerHTML =
+        `This would open a richer editor for:<br><code>${selector}</code>` +
+        `<br><br>For now, tweak it directly in <code>MSSStylesheet.css</code>` +
+        ` or in a theme CSS file.`;
+
+      back.hidden = false;
+
+      function close() {
+        back.hidden = true;
+        ok.removeEventListener("click", close);
+        cancel.removeEventListener("click", close);
+      }
+
+      ok.addEventListener("click", close);
+      cancel.addEventListener("click", close);
+    }
+
+    // Called by all "Edit style" buttons in the page
+    function editStyle(selector) {
+      openStyleDialog(selector);
+    }
+  </script>
 </body>
 </html>
