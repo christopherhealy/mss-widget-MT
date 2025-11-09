@@ -574,6 +574,125 @@ async function submitRecording() {
     return;
   }
 
+// ---- DB-backed widget bootstrap ----
+
+window.mssWidgetConfig = window.mssWidgetConfig || {};
+window.mssWidgetForm = window.mssWidgetForm || {};
+window.mssWidgetQuestions = window.mssWidgetQuestions || [];
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const root = document.getElementById("mss-widget-root");
+  if (!root) {
+    console.warn("No #mss-widget-root found.");
+    return;
+  }
+
+  const slug = root.dataset.schoolSlug || "mss-demo";
+
+  // SERVICE_BASE is defined in Widget.html
+  const base = (window.SERVICE_BASE || "").replace(/\/+$/, "");
+  const url = `${base}/api/widget/${encodeURIComponent(slug)}/bootstrap`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Bootstrap failed: ${res.status}`);
+    const data = await res.json();
+
+    const { config, form, imageUrl } = data || {};
+
+    // Save globally in case other code wants them
+    window.mssWidgetConfig = config || {};
+    window.mssWidgetForm = form || {};
+    window.mssWidgetQuestions = (form && Array.isArray(form.survey))
+      ? form.survey
+      : [];
+
+    // --- Populate UI from form/config ---
+
+    // Header
+    const brandEl = document.getElementById("brand");
+    const poweredEl = document.getElementById("powered");
+
+    if (brandEl) {
+      // Use form.headline first, fallback to config.theme label
+      brandEl.textContent =
+        (form && form.headline) ||
+        "CEFR Assessment";
+    }
+
+    if (poweredEl) {
+      poweredEl.textContent =
+        (form && form.poweredByLabel) || "Powered by MSS Vox";
+    }
+
+    // Logo image (once you seed logo.png into DB)
+    if (imageUrl) {
+      const logoEl = document.getElementById("logo");
+      if (logoEl) {
+        logoEl.src = imageUrl;
+      }
+    }
+
+    // Buttons / labels from form
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const recBtn = document.getElementById("recBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const uploadLabelSpan = document.querySelector(
+      "#uploadBtn span"
+    );
+    const recState = document.getElementById("recState");
+    const submitBtn = document.getElementById("submitBtn");
+
+    if (prevBtn && form?.previousButton) prevBtn.textContent = form.previousButton;
+    if (nextBtn && form?.nextButton) nextBtn.textContent = form.nextButton;
+    if (recBtn && form?.recordButton) recBtn.textContent = form.recordButton;
+    if (stopBtn && form?.stopButton) stopBtn.textContent = form.stopButton;
+    if (uploadLabelSpan && form?.uploadButton) {
+      uploadLabelSpan.textContent = form.uploadButton;
+    }
+    if (recState && form?.NotRecordingLabel) {
+      recState.textContent = form.NotRecordingLabel;
+    }
+    if (submitBtn && form?.SubmitForScoringButton) {
+      submitBtn.textContent = form.SubmitForScoringButton;
+    }
+
+    // Upload visibility: your JSON key is "Permitupload"
+    const uploadRow = document.querySelector(".mss-file-row");
+    const permit =
+      config && typeof config.Permitupload === "boolean"
+        ? config.Permitupload
+        : true;
+
+    if (uploadRow) {
+      uploadRow.style.display = permit ? "inline-flex" : "none";
+    }
+
+    // First question + counter
+    const questionEl = document.getElementById("question");
+    const counterEl = document.getElementById("counter");
+
+    if (window.mssWidgetQuestions.length > 0) {
+      if (questionEl) {
+        questionEl.textContent = window.mssWidgetQuestions[0];
+      }
+      if (counterEl) {
+        counterEl.textContent = `Question 1 of ${window.mssWidgetQuestions.length}`;
+      }
+    } else {
+      if (questionEl) questionEl.textContent = "";
+      if (counterEl) counterEl.textContent = "";
+    }
+
+    console.log("Widget bootstrapped from Postgres for school:", slug);
+  } catch (err) {
+    console.error("Widget bootstrap error:", err);
+  }
+});
+
+// ---- end DB-backed widget bootstrap ----
+
   // Prepare audio
   setStatus("Preparing audio…");
   startProgress("Submitting");

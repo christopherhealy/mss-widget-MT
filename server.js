@@ -1,11 +1,21 @@
 // server.js (ESM, works with "type": "module")
 import express from "express";
+import pkg from "pg";
 import { insertSubmission } from "./db.js";
 import cors from "cors";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
+const { Pool } = pkg;
+
+// Postgres pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
+// Basic path setup
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = __dirname;
@@ -53,11 +63,13 @@ app.use(express.static(PUBLIC_DIR));
 app.use("/themes", express.static(path.join(PUBLIC_DIR, "themes")));
 app.use("/themes", express.static(THEMES_DIR));
 
-/* ---------- helpers ---------- */
+/* ---------- helpers (legacy JSON config helpers) ---------- */
 async function ensureSrcDir() {
   try {
     await fs.mkdir(SRC_DIR, { recursive: true });
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 async function readJson(rel, fallback = {}) {
@@ -78,7 +90,7 @@ async function writeJson(rel, obj) {
   await fs.writeFile(full, JSON.stringify(obj ?? {}, null, 2), "utf8");
 }
 
-/* ---------- defaults ---------- */
+/* ---------- defaults (legacy) ---------- */
 const defaultForm = {
   headline: "Practice TOEFL Speaking Test",
   recordButton: "Record your response",
@@ -123,7 +135,7 @@ function checkAdminKey(req, res) {
   return false;
 }
 
-/* ---------- CONFIG ROUTES ---------- */
+/* ---------- LEGACY FILE-BASED CONFIG ROUTES (still usable by ConfigAdmin) ---------- */
 app.get("/config/forms", async (req, res) => {
   try {
     const data = await readJson("form.json", defaultForm);
@@ -187,6 +199,83 @@ app.put("/config/images", async (req, res) => {
   }
 });
 
+/* ---------- NEW: DB-BACKED WIDGET BOOTSTRAP ROUTES ---------- */
+
+// Returns widgetConfig + widgetForm + logo URL for a school slug
+app.get("/api/widget/:slug/bootstrap", async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        s.id,
+        s.slug,
+        s.settings,
+        EXISTS (
+          SELECT 1
+          FROM school_assets a
+          WHERE a.school_id = s.id
+            AND a.kind = 'widget-logo'
+        ) AS has_logo
+      FROM schools s
+      WHERE s.slug = $1
+      `,
+      [slug]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const row = result.rows[0];
+    const settings = row.settings || {};
+
+    res.json({
+      schoolId: row.slug,
+      config: settings.widgetConfig || {},
+      form: settings.widgetForm || {},
+      imageUrl: row.has_logo
+        ? `/api/widget/${encodeURIComponent(row.slug)}/image/widget-logo`
+        : null,
+    });
+  } catch (err) {
+    console.error("Error in /api/widget/:slug/bootstrap", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Serves logo (and later other assets) from school_assets
+app.get("/api/widget/:slug/image/:kind", async (req, res) => {
+  const { slug, kind } = req.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT a.mime_type, a.data
+      FROM schools s
+      JOIN school_assets a ON a.school_id = s.id
+      WHERE s.slug = $1
+        AND a.kind = $2
+      `,
+      [slug, kind]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).send("Image not found");
+    }
+
+    const row = result.rows[0];
+    res.setHeader(
+      "Content-Type",
+      row.mime_type || "application/octet-stream"
+    );
+    res.send(row.data);
+  } catch (err) {
+    console.error("Error in /api/widget/:slug/image/:kind", err);
+    res.status(500).send("Server error");
+  }
+});
 
 /* ---------- LOGGING ENDPOINT MT---------- */
 
@@ -369,6 +458,7 @@ app.put("/log/submission", async (req, res) => {
     res.status(500).json({ ok: false, error: "failed to update log" });
   }
 });
+
 /* ---------- health ---------- */
 app.get("/health", (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
