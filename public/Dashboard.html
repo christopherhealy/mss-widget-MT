@@ -189,34 +189,44 @@
         setText("dashQuestion", question);
       }
 
-      // Transcript
-      const transcriptEl = document.getElementById("dashTranscript");
-      if (transcriptEl) {
-        transcriptEl.textContent = transcript || "(No transcript returned)";
-      }
+    
+      // --- Transcript sanitization helper ---
+function sanitizeTranscript(raw) {
+  if (!raw) return '';
 
-      // Meta display
-      setText("dashFile", "File: " + fileName);
-      setText("dashTimestamp", ts ? ("Time: " + ts) : "Time: —");
+  // Decode HTML entities + strip all tags
+  const tmp = document.createElement('div');
+  tmp.innerHTML = raw;
+  const text = tmp.textContent || tmp.innerText || '';
 
-      // Bars (simple normalisation)
-      if (toefl != null) setBar("barToefl", "barToeflScore", toefl, 30);
-      else               setBar("barToefl", "barToeflScore", null, 30);
+  // Collapse super-long whitespace runs
+  return text.replace(/\s+/g, ' ').trim();
+}
 
-      if (ielts != null) setBar("barIelts", "barIeltsScore", ielts, 9);
-      else               setBar("barIelts", "barIeltsScore", null, 9);
+// Transcript
+// Transcript
+const txBody = document.getElementById('txBody');
+const txText = document.getElementById('txText');
+const txTgl  = document.getElementById('txToggle');
 
-      if (pte != null) setBar("barPte", "barPteScore", pte, 90);
-      else             setBar("barPte", "barPteScore", null, 90);
+if (txBody && txText && txTgl) {
+  const rawTx = m.transcript || '';
+  let plain = '';
 
-      if (wpm != null) {
-        const maxWpm = 220; // soft cap
-        setBar("barWpm", "barWpmScore", wpm, maxWpm);
-      } else {
-        setBar("barWpm", "barWpmScore", null, 220);
-      }
-    }
+  if (rawTx) {
+    // Turn any HTML transcript into plain text (no spans, no inline styles)
+    const tmp = document.createElement('div');
+    tmp.innerHTML = rawTx;
+    plain = (tmp.textContent || tmp.innerText || '').trim();
+  }
 
+  const hasTx = plain.length > 0;
+
+  txBody.hidden = !hasTx;
+  txText.textContent = hasTx ? plain : '';
+  txTgl.dataset.state = hasTx ? 'shown' : 'hidden';
+  txTgl.textContent = hasTx ? 'Hide transcript' : 'Show transcript';
+}
     // Prefer live postMessage from widget; fall back to sessionStorage
     function loadInitialData() {
       try {

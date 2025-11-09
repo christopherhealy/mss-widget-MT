@@ -1161,3 +1161,60 @@ body.mssMorningSky {
     align-self: flex-end;
   }
 }
+/* Score dialog layout */
+.mss-score-dialog {
+  max-width: 720px;
+  width: min(720px, 100vw - 24px);  /* keep a little margin on mobile */
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Inner scroll for long content (transcript etc.) */
+.mss-score-dialog-inner {
+  max-height: calc(90vh - 40px);
+  overflow-y: auto;
+}
+
+/* Mobile tweak: hug the edges a bit tighter */
+@media (max-width: 640px) {
+  .mss-score-dialog {
+    width: calc(100vw - 16px);
+  }
+}
+
+/* Transcript box */
+.tx-card {
+  border-radius: 14px;
+  border: 1px solid var(--mss-border-subtle);
+  background: var(--mss-surface-soft);
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+
+.tx-body {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* Actual transcript text */
+.tx-body p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: normal;          /* allow wrapping */
+  word-break: break-word;       /* break long "words" (e.g. rgba(...) strings) */
+  overflow-wrap: anywhere;      /* extra safety for long tokens */
+}
+
+/* Score dashboard dialog – keep it mobile friendly */
+.mss-score-dialog {
+  max-width: min(720px, 100%);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mss-score-dialog-inner {
+  max-height: min(80vh, 580px);
+  overflow-y: auto;
+}

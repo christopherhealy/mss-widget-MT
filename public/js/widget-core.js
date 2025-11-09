@@ -729,7 +729,7 @@ async function logResultToCsv(mssBody, meta) {
   } catch {}
 
   const payload = {
-    timestamp: ts,
+    timestamp: new Date().toISOString(),   // ✅ Add UTC ISO timestamp
     ip: ipPlaceholder,
     userId: "",
     fileName: meta.fileName || "",
