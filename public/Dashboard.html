@@ -119,7 +119,7 @@
   </div>
 
   <script>
-    // Helper: safe access for scores (matches widget-core’s logic)
+    // Pull scores safely from either root or elsa_results
     function extractScores(raw) {
       if (!raw || typeof raw !== "object") return {};
 
@@ -128,14 +128,16 @@
       const toefl = elsa.toefl_score ?? raw.toefl_score ?? null;
       const ielts = elsa.ielts_score ?? raw.ielts_score ?? null;
       const pte   = elsa.pte_score   ?? raw.pte_score   ?? null;
-      const cefr  = (elsa.cefr_level || raw.cefr_level || "").toString().toUpperCase();
+      const cefr  = (elsa.cefr_level || raw.cefr_level || "")
+        .toString()
+        .toUpperCase();
 
       const transcript = (raw.transcript || "").toString().trim();
 
       return { toefl, ielts, pte, cefr, transcript };
     }
 
-    // Helper: basic WPM estimate (same spirit as logger)
+    // Basic WPM estimate
     function estimateWpm(transcript, lengthSec) {
       if (!transcript) return null;
       const words = transcript.split(/\s+/).filter(Boolean).length;
@@ -150,16 +152,27 @@
     }
 
     function setBar(idFill, idScore, value, max) {
-      const fill = document.getElementById(idFill);
+      const fill  = document.getElementById(idFill);
       const score = document.getElementById(idScore);
+
       if (!fill || !score || value == null || isNaN(value)) {
-        if (fill) fill.style.width = "0%";
+        if (fill)  fill.style.width = "0%";
         if (score) score.textContent = "—";
         return;
       }
+
       const pct = Math.max(0, Math.min(100, (value / max) * 100));
       fill.style.width = pct.toFixed(1) + "%";
       score.textContent = String(value);
+    }
+
+    // Strip any HTML from transcript & collapse whitespace
+    function sanitizeTranscript(raw) {
+      if (!raw) return "";
+      const tmp = document.createElement("div");
+      tmp.innerHTML = raw;
+      const text = tmp.textContent || tmp.innerText || "";
+      return text.replace(/\s+/g, " ").trim();
     }
 
     function renderDashboard(payload) {
@@ -167,67 +180,46 @@
 
       const { toefl, ielts, pte, cefr, transcript } = extractScores(payload);
 
-      // Meta: lengthSec, fileName, question, timestamp (if present in logger payload)
-      const meta = payload._logMeta || {}; // optional, if you ever pass it along
+      // Meta fields (if you ever pass them through)
+      const meta      = payload._logMeta || {};
       const lengthSec = meta.lengthSec ?? payload.lengthSec ?? 0;
-      const fileName = meta.fileName || payload.fileName || "(recording)";
-      const ts = meta.timestamp || payload.timestamp;
+      const fileName  = meta.fileName  || payload.fileName  || "(recording)";
+      const ts        = meta.timestamp || payload.timestamp;
+      const question  = payload.question || meta.question || "";
 
-      // Scores text
-      setText("scoreToefl",  toefl != null ? toefl : "—");
-      setText("scoreIelts",  ielts != null ? ielts : "—");
-      setText("scorePte",    pte   != null ? pte   : "—");
+      // Headline + CEFR
+      if (question) setText("dashQuestion", question);
+      setText("dashCefr", cefr ? "CEFR " + cefr : "CEFR —");
+
+      // Main scores
+      setText("scoreToefl", toefl != null ? toefl : "—");
+      setText("scoreIelts", ielts != null ? ielts : "—");
+      setText("scorePte",   pte   != null ? pte   : "—");
 
       const wpm = estimateWpm(transcript, lengthSec);
       setText("scoreWpm", wpm != null ? wpm : "—");
 
-      setText("dashCefr", cefr ? ("CEFR " + cefr) : "CEFR —");
+      // Bars
+      setBar("barToefl", "barToeflScore", toefl, 30);
+      setBar("barIelts", "barIeltsScore", ielts, 9);
+      setBar("barPte",   "barPteScore",   pte,   90);
+      setBar("barWpm",   "barWpmScore",   wpm,   180); // adjust max as needed
 
-      // Question (if present)
-      const question = payload.question || meta.question || "";
-      if (question) {
-        setText("dashQuestion", question);
+      // Transcript -> plain text, wrapped
+      const txEl = document.getElementById("dashTranscript");
+      if (txEl) {
+        const safeTx = sanitizeTranscript(transcript);
+        txEl.textContent = safeTx;
       }
 
-    
-      // --- Transcript sanitization helper ---
-function sanitizeTranscript(raw) {
-  if (!raw) return '';
+      // Meta line
+      const tsEl   = document.getElementById("dashTimestamp");
+      const fileEl = document.getElementById("dashFile");
+      if (tsEl)   tsEl.textContent   = ts ? "Time: " + ts : "Time: —";
+      if (fileEl) fileEl.textContent = "File: " + fileName;
+    }
 
-  // Decode HTML entities + strip all tags
-  const tmp = document.createElement('div');
-  tmp.innerHTML = raw;
-  const text = tmp.textContent || tmp.innerText || '';
-
-  // Collapse super-long whitespace runs
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-// Transcript
-// Transcript
-const txBody = document.getElementById('txBody');
-const txText = document.getElementById('txText');
-const txTgl  = document.getElementById('txToggle');
-
-if (txBody && txText && txTgl) {
-  const rawTx = m.transcript || '';
-  let plain = '';
-
-  if (rawTx) {
-    // Turn any HTML transcript into plain text (no spans, no inline styles)
-    const tmp = document.createElement('div');
-    tmp.innerHTML = rawTx;
-    plain = (tmp.textContent || tmp.innerText || '').trim();
-  }
-
-  const hasTx = plain.length > 0;
-
-  txBody.hidden = !hasTx;
-  txText.textContent = hasTx ? plain : '';
-  txTgl.dataset.state = hasTx ? 'shown' : 'hidden';
-  txTgl.textContent = hasTx ? 'Hide transcript' : 'Show transcript';
-}
-    // Prefer live postMessage from widget; fall back to sessionStorage
+    // Load from sessionStorage on first open (fallback)
     function loadInitialData() {
       try {
         const raw = sessionStorage.getItem("mss-last-results");
@@ -239,16 +231,20 @@ if (txBody && txText && txTgl) {
       }
     }
 
+    // Live updates from widget via postMessage
     window.addEventListener("message", (event) => {
       const msg = event.data;
       if (!msg || typeof msg !== "object") return;
       if (msg.type !== "mss-results") return;
+
       const payload = msg.payload || msg.body || msg.results || msg;
+
       try {
         sessionStorage.setItem("mss-last-results", JSON.stringify(payload));
       } catch (e) {
         console.warn("Unable to cache results in sessionStorage", e);
       }
+
       renderDashboard(payload);
     });
 
