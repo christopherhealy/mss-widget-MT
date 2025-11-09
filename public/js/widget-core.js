@@ -302,6 +302,51 @@ async function loadAll() {
   renderQ();
   resetRecordingUI();
 }
+function resetRecordingUI(msg = "Not recording") {
+  recording = false;
+  chunks = [];
+  blob = null;
+  clearTimer();
+  stopTracks();
+  releaseBlobUrl();
+
+  const recBtn = $("recBtn");
+  const stopBtn = $("stopBtn");
+  const submitBtn = $("submitBtn");
+  const recDot = $("recDot");
+  const recState = $("recState");
+  const playerWrap = $("playerWrap");
+  const p = $("player");
+  const lengthHint = $("lengthHint");
+
+  if (recBtn) recBtn.disabled = !!uploadedFile;
+  if (stopBtn) stopBtn.disabled = true;
+
+  // 🔧 always show the submit button, just disable it when empty
+ if (submitBtn) {
+  submitBtn.style.display = "inline-block";
+  submitBtn.disabled = !(uploadedFile || blob);
+}
+
+  if (recDot) recDot.classList.remove("on");
+  if (recState) recState.textContent = msg;
+
+  if (playerWrap)
+    playerWrap.style.display = uploadedFile || url ? "block" : "none";
+
+  if (!uploadedFile && p) {
+    try {
+      p.pause();
+      p.removeAttribute("src");
+      p.load();
+    } catch {}
+  }
+
+  if (lengthHint) lengthHint.textContent = "";
+  hideDebug();
+}
+
+
 
 /* Render question */
 function renderQ() {
@@ -371,50 +416,23 @@ function finalizeRecording() {
   url = URL.createObjectURL(blob);
 
   const p = $("player");
-  p.src = url;
-  $("playerWrap").style.display = "block";
-  $("recState").textContent = "Ready to review or submit";
-  $("recBtn").disabled = false;
-  $("submitBtn").disabled = false;
+  const wrap = $("playerWrap");
+
+  if (p && wrap) {
+    p.src = url;
+    wrap.style.display = "block";
+  }
+
+  const recState = $("recState");
+  const recBtn = $("recBtn");
+  const submitBtn = $("submitBtn");
+
+  if (recState) recState.textContent = "Ready to review or submit";
+  if (recBtn) recBtn.disabled = false;
+  if (submitBtn) submitBtn.disabled = false;
   setStatus("Recording ready");
 
-  p.onloadedmetadata = () => {
-    const d = p.duration || 0;
-    const { minS, maxS } = getDurationBounds();
-    const mins = String(Math.floor(minS / 60)).padStart(2, "0");
-    const secs = String(minS % 60).padStart(2, "0");
-    const maxm = String(Math.floor(maxS / 60)).padStart(2, "0");
-    const maxs = String(maxS % 60).padStart(2, "0");
-    $("lengthHint").textContent = `Length: ${mmss(
-      d * 1000
-    )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
-  };
-}
-
-/* Upload (mutually exclusive) */
-const fileInputEl = $("fileInput");
-if (fileInputEl) {
-  fileInputEl.addEventListener("change", (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    uploadedFile = f;
-    $("fileBadge").textContent = `Selected: ${f.name} (${(
-      f.size /
-      1024 /
-      1024
-    ).toFixed(2)} MB)`;
-    $("clearFileBtn").style.display = "inline-block";
-    $("recBtn").disabled = true;
-    $("stopBtn").disabled = true;
-
-    releaseBlobUrl();
-    url = URL.createObjectURL(f);
-    const p = $("player");
-    p.src = url;
-    $("playerWrap").style.display = "block";
-    $("submitBtn").disabled = false;
-
-    hideDebug();
+  if (p) {
     p.onloadedmetadata = () => {
       const d = p.duration || 0;
       const { minS, maxS } = getDurationBounds();
@@ -422,10 +440,72 @@ if (fileInputEl) {
       const secs = String(minS % 60).padStart(2, "0");
       const maxm = String(Math.floor(maxS / 60)).padStart(2, "0");
       const maxs = String(maxS % 60).padStart(2, "0");
-      $("lengthHint").textContent = `Length: ${mmss(
-        d * 1000
-      )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
+      const lh = $("lengthHint");
+      if (lh) {
+        lh.textContent = `Length: ${mmss(
+          d * 1000
+        )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
+      }
     };
+  }
+}
+/* Upload (mutually exclusive) */
+const fileInputEl = $("fileInput");
+if (fileInputEl) {
+  fileInputEl.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+
+    uploadedFile = f;
+
+    const badge = $("fileBadge");
+    if (badge) {
+      badge.textContent = `Selected: ${f.name} (${(
+        f.size /
+        1024 /
+        1024
+      ).toFixed(2)} MB)`;
+    }
+
+    const clearBtn = $("clearFileBtn");
+    if (clearBtn) clearBtn.style.display = "inline-block";
+
+    const recBtn = $("recBtn");
+    const stopBtn = $("stopBtn");
+    const submitBtn = $("submitBtn");
+    if (recBtn) recBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = true;
+
+    releaseBlobUrl();
+    url = URL.createObjectURL(f);
+
+    const p = $("player");
+    const wrap = $("playerWrap");
+    if (p && wrap) {
+      p.src = url;
+      wrap.style.display = "block";
+    }
+
+    if (submitBtn) submitBtn.disabled = false;
+
+    hideDebug();
+
+    if (p) {
+      p.onloadedmetadata = () => {
+        const d = p.duration || 0;
+        const { minS, maxS } = getDurationBounds();
+        const mins = String(Math.floor(minS / 60)).padStart(2, "0");
+        const secs = String(minS % 60).padStart(2, "0");
+        const maxm = String(Math.floor(maxS / 60)).padStart(2, "0");
+        const maxs = String(maxS % 60).padStart(2, "0");
+        const lh = $("lengthHint");
+        if (lh) {
+          lh.textContent = `Length: ${mmss(
+            d * 1000
+          )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
+        }
+      };
+    }
   });
 }
 
@@ -696,16 +776,21 @@ function openDashboard() {
   const m = $("dashModal");
   const f = $("dashFrame");
   if (!m || !f) return;
+
   dashboardWindow = f.contentWindow;
+
+  // Show modal – no aria-hidden changes
+  m.hidden = false;
   m.style.display = "flex";
-  m.setAttribute("aria-hidden", "false");
 }
 
 function closeDashboard() {
   const m = $("dashModal");
   if (!m) return;
+
+  // Hide modal – no aria-hidden changes
   m.style.display = "none";
-  m.setAttribute("aria-hidden", "true");
+  m.hidden = true;
 }
 
 const closeDashBtn = $("closeDash");
@@ -726,6 +811,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("recBtn")?.addEventListener("click", startRecording);
   $("stopBtn")?.addEventListener("click", stopRecording);
   $("submitBtn")?.addEventListener("click", submitRecording);
+
 
   $("prevBtn")?.addEventListener("click", () => {
     idx--;

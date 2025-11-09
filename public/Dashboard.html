@@ -557,6 +557,7 @@
   }
 
   const $ = (id) => document.getElementById(id);
+  let lastRawMessage = null;
   const setText = (id, value) => {
     const el = $(id);
     if (!el) return;
@@ -564,80 +565,82 @@
   };
 
   // Render normalized MSSCore payload into the UI
-  function renderDashboard(m){
-    const cefr  = m.cefr || '–';
-    const score = m.score;
+  // Render normalized MSSCore payload into the UI
+function renderDashboard(m){
+  const cefr  = m.cefr || '–';
+  const score = m.score;
 
-    const headLevel = document.querySelector('#cefrHeadline .level');
-    if (headLevel) headLevel.textContent = cefr;
+  const headLevel = document.querySelector('#cefrHeadline .level');
+  if (headLevel) headLevel.textContent = cefr;
 
-    setText('overallScore', score != null ? score.toFixed(2) : '–');
+  setText('overallScore', score != null ? score.toFixed(2) : '–');
 
-    setText('badgeCefr',  `CEFR ${cefr}`);
-    setText('badgeToefl', `TOEFL ${m.toefl ?? '–'}`);
-    setText('badgeIelts', `IELTS ${m.ielts ?? '–'}`);
-    setText('badgePte',   `PTE ${m.pte   ?? '–'}`);
+  setText('badgeCefr',  `CEFR ${cefr}`);
+  setText('badgeToefl', `TOEFL ${m.toefl ?? '–'}`);
+  setText('badgeIelts', `IELTS ${m.ielts ?? '–'}`);
+  setText('badgePte',   `PTE ${m.pte   ?? '–'}`);
 
-    // Test equivalencies
-    setText('pillToefl', m.toefl);
-    setText('pillIelts', m.ielts);
-    setText('pillPte',   m.pte);
+  // Test equivalencies
+  setText('pillToefl', m.toefl);
+  setText('pillIelts', m.ielts);
+  setText('pillPte',   m.pte);
 
-    // Snapshot tiles
-    setText('snapCefr',  cefr);
-    setText('snapScore', score != null ? score.toFixed(2) : '–');
-    setText('snapToefl', m.toefl);
-    setText('snapIelts', m.ielts);
+  // Snapshot tiles
+  setText('snapCefr',  cefr);
+  setText('snapScore', score != null ? score.toFixed(2) : '–');
+  setText('snapToefl', m.toefl);
+  setText('snapIelts', m.ielts);
 
-    // Subscores
-    setText('skillFluencyScore', m.fluency);
-    setText('skillGrammarScore', m.grammar);
-    setText('skillPronScore',    m.pronunciation);
-    setText('skillVocabScore',   m.vocabulary);
+  // Subscores
+  setText('skillFluencyScore', m.fluency);
+  setText('skillGrammarScore', m.grammar);
+  setText('skillPronScore',    m.pronunciation);
+  setText('skillVocabScore',   m.vocabulary);
 
-    setText('skillFluencyLabel', MSSCore.ratingLabel(m.fluency));
-    setText('skillGrammarLabel', MSSCore.ratingLabel(m.grammar));
-    setText('skillPronLabel',    MSSCore.ratingLabel(m.pronunciation));
-    setText('skillVocabLabel',   MSSCore.ratingLabel(m.vocabulary));
+  setText('skillFluencyLabel', MSSCore.ratingLabel(m.fluency));
+  setText('skillGrammarLabel', MSSCore.ratingLabel(m.grammar));
+  setText('skillPronLabel',    MSSCore.ratingLabel(m.pronunciation));
+  setText('skillVocabLabel',   MSSCore.ratingLabel(m.vocabulary));
 
-    // Transcript
-    const rawTx  = m.transcript || '';
-    const plain  = MSSCore.stripTranscript(rawTx);
-    const txBody   = $('txBody');
-    const txText   = $('txText');
-    const txToggle = $('txToggle');
-    const txLabel  = $('txToggleLabel');
+  // Transcript
+  const rawTx  = m.transcript || '';
+  const plain  = MSSCore.stripTranscript(rawTx);
+  const txBody   = $('txBody');
+  const txText   = $('txText');
+  const txToggle = $('txToggle');
+  const txLabel  = $('txToggleLabel');
 
-    if (!txBody || !txText || !txToggle || !txLabel) return;
-
+  if (txBody && txText && txToggle && txLabel) {
     if (!plain){
       txText.textContent = '(Transcript not available for this submission.)';
       txToggle.disabled = true;
       txBody.classList.remove('open');
       txLabel.textContent = 'Show transcript';
-    }else{
+    } else {
       txText.textContent = plain;
       txToggle.disabled = false;
     }
   }
 
-    // --- Update CEFR gauge iframe ---
-    try {
-      const gaugeFrame = document.getElementById('cefrGauge');
-      if (gaugeFrame && gaugeFrame.contentWindow) {
-        gaugeFrame.contentWindow.postMessage(
-          {
-            type: 'mss:gauge:update',
-            cefr: m.cefr,         // e.g. "C2"
-            score: m.score        // e.g. 3.18
-          },
-          '*'
-        );
-      }
-    } catch (e) {
-      console.warn('Gauge postMessage failed', e);
+  // --- Update CEFR gauge iframe (m is in scope here) ---
+  try {
+    const gaugeFrame = document.getElementById('cefrGauge');
+    if (gaugeFrame && gaugeFrame.contentWindow) {
+      gaugeFrame.contentWindow.postMessage(
+        {
+          type: 'mss:gauge:update',
+          cefr: m.cefr,
+          score: m.score
+        },
+        '*'
+      );
     }
+  } catch (e) {
+    console.warn('Gauge postMessage failed', e);
+  }
+}
 
+   
   // Transcript toggle
   function setupTranscriptToggle(){
     const toggle = $('txToggle');
@@ -654,7 +657,7 @@
   }
 
   // --- Debug JSON panel ---
-  let lastRawMessage = null;
+ 
 
   function renderDebugJson(){
     const pre = $('debugPre');
@@ -684,6 +687,7 @@
 
   // Real data from Widget
   // Real data from Widget – generic postMessage listener
+
 function handleMssMessage(ev) {
   const d = ev.data;
   if (!d) return;
@@ -695,27 +699,49 @@ function handleMssMessage(ev) {
     d.type === 'mssScore'   ||
     d.type === 'mss-results';
 
-  let raw = null;
-
-  if (isTyped) {
-    raw = d.payload || d.result || d;
-  } else if (d.received || d.elsa_results || d.score) {
-    // fall-back: looks like an MSS payload even without a type
-    raw = d;
-  }
-
   if (!raw) return;
 
-  const normalized = (window.MSSCore && MSSCore.normalizeMssPayload)
-    ? MSSCore.normalizeMssPayload(raw)
-    : raw;
+// Normalize and render
+const normalized = (window.MSSCore && MSSCore.normalizeMssPayload)
+  ? MSSCore.normalizeMssPayload(raw)
+  : raw;
 
-  console.log('📦 Dashboard received MSS result:', normalized, raw);
+// Keep last result for debug panel
+lastRawMessage = raw;
+renderDebugJson();
+
+console.log("📦 Dashboard received MSS result:", normalized, raw);
+renderDashboard(normalized);
+}
+function renderDebugJson() {
+  const dbg = $("debugJson");
+  if (!dbg) return;
+  dbg.textContent = lastRawMessage
+    ? JSON.stringify(lastRawMessage, null, 2)
+    : "(No MSS result yet)";
+}
+
+function handleMssMessage(ev) {
+  const data = ev.data || {};
+  if (data.type !== "mss-results") return;
+
+  const raw = data.payload;
+  if (!raw) return;
+
+  // store the last raw payload for debug
+  lastRawMessage = raw;
+  renderDebugJson();
+
+  const normalized =
+    window.MSSCore && MSSCore.normalizeMssPayload
+      ? MSSCore.normalizeMssPayload(raw)
+      : raw;
+
+  console.log("📦 Dashboard received MSS result:", normalized, raw);
   renderDashboard(normalized);
 }
 
-window.addEventListener('message', handleMssMessage);
-
+window.addEventListener("message", handleMssMessage);
   // Mock when opened directly (no parent)
   function maybeRenderMock(){
     const isEmbedded = window.opener || window !== window.parent;

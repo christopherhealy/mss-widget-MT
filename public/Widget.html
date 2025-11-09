@@ -5,37 +5,363 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MSS Widget</title>
 
-  <!-- Shared MSS design system -->
-  <link rel="stylesheet" href="themes/MSSStylesheet.css?v=4" />
+  <!-- Fixed MSS theme -->
+  <link id="themeCss" rel="stylesheet" href="themes/MSSStylesheet.css?v=1" />
 
   <style>
-    /* Slight wrapper padding to match admin screens */
-    body.mss-root {
-      background: var(--mss-bg);
+    /* Basic page background / centering */
+    body.mssVoxAurora {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #e5edff 0, #f3f4f6 40%, #e5e7eb 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      color: #111827;
+    }
+
+    .shell {
+      width: 100%;
+      max-width: 900px;
+    }
+
+    .mss-card {
+      max-width: 720px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+      padding: 20px 22px 26px;
+    }
+
+    .mss-head {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .mss-logo {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: #e5e7eb;
+      object-fit: contain;
+    }
+
+    .mss-card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .mss-muted {
+      font-size: 0.82rem;
+      color: #6b7280;
+    }
+
+    #counter.mss-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      margin-bottom: 10px;
+    }
+
+    #question {
+      margin: 4px 0 16px;
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+
+    /* Prev / Next row */
+    .mss-nav-row {
       display: flex;
       justify-content: center;
-      align-items: flex-start;
-      padding: 32px 20px;
-      min-height: 100vh;
+      gap: 12px;
+      margin-bottom: 18px;
     }
-    .mss-widget-shell {
-      width: 100%;
-      max-width: 720px;
+
+    .mss-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 8px 18px;
+      font-size: 0.86rem;
+      font-weight: 500;
+      background: #e5e7eb;
+      color: #111827;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.12s ease,
+        transform 0.08s ease;
+    }
+
+    .mss-btn:hover {
+      background: #d1d5db;
+    }
+
+    .mss-btn:disabled {
+      opacity: 0.7;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .mss-btn-primary {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #fff;
+      box-shadow: 0 14px 30px rgba(37, 99, 235, 0.3);
+    }
+
+    .mss-btn-primary:hover {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+    }
+
+    .mss-btn-outline {
+      background: #fff;
+      border-color: #d1d5db;
+    }
+
+    .mss-btn-outline:hover {
+      background: #f9fafb;
+      border-color: #9ca3af;
+    }
+
+    .mss-btn-small {
+      padding: 4px 10px;
+      font-size: 0.8rem;
+    }
+
+    /* Recording toolbar */
+    .mss-toolbar-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    /* Styled upload */
+    .mss-file-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mss-file-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      background: #f3f4f6;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #111827;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .mss-file-btn input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .mss-file-label {
+      font-size: 0.8rem;
+      color: #6b7280;
+    }
+
+    /* Rec bar */
+    .mss-preview-recbar {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .mss-preview-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #d1d5db;
+    }
+
+    .mss-preview-dot.on {
+      background: #f97316;
+      box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.25);
+    }
+
+    /* Submit row */
+    .mss-submit-row {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* Progress + logging */
+    .mss-resultswrap {
+      margin-top: 10px;
+      font-size: 0.8rem;
+    }
+
+    .mss-line {
+      height: 3px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      overflow: hidden;
+      margin-top: 4px;
+      position: relative;
+    }
+
+    .mss-line::after {
+      content: "";
+      display: block;
+      height: 100%;
+      width: var(--line-progress, 0%);
+      background: #2563eb;
+      transition: width 0.2s ease;
+    }
+
+    .mss-logstatus {
+      margin-top: 4px;
+      font-size: 0.78rem;
+      color: #6b7280;
+    }
+
+    .mss-logstatus.ok {
+      color: #15803d;
+    }
+
+    .mss-logstatus.err {
+      color: #b91c1c;
+    }
+
+    /* Debug section */
+    #debugWrap {
+      margin-top: 10px;
+      background: #0f172a;
+      color: #e5e7eb;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 0.78rem;
+      max-height: 260px;
+      overflow: auto;
+      display: none;
+    }
+
+    #results {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .mss-status {
+      margin-top: 8px;
+      font-size: 0.82rem;
+    }
+
+    .mss-status.ok {
+      color: #15803d;
+    }
+
+    .mss-status.warn {
+      color: #b91c1c;
+    }
+
+    /* Modal for dashboard */
+    .mss-dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 40;
+    }
+
+    .mss-dialog-backdrop[hidden] {
+      display: none;
+    }
+
+    .mss-dialog {
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.32);
+      padding: 20px 24px 18px;
+      max-width: 760px;
+      width: min(760px, 95vw);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .mss-dialog-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .mss-dialog-actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    @media (max-width: 640px) {
+      .mss-card {
+        padding-inline: 16px;
+      }
+
+      .mss-head {
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .mss-toolbar-row {
+        flex-direction: column;
+      }
     }
   </style>
 
-  <!-- 🔑 Tell widget-core.js where the service lives -->
   <script>
-    window.SERVICE_BASE = window.location.hostname.includes('localhost')
-      ? 'http://localhost:3000'
-      : 'https://mss-widget-mt.onrender.com';
+    // Where the Render/Express widget service lives
+    window.SERVICE_BASE = (window.location.hostname.includes("localhost")
+      ? "http://localhost:3000"
+      : "https://mss-widget-mt.onrender.com"
+    ).replace(/\/+$/, "");
   </script>
 </head>
-<body class="mss-root">
-  <div class="mss-shell mss-widget-shell">
+
+<body class="mssVoxAurora">
+  <div class="shell">
     <section class="mss-card">
-      <!-- Header: logo + brand + powered-by -->
-      <div class="mss-head mss-row">
+      <!-- Header -->
+      <div class="mss-head">
         <img id="logo" class="mss-logo" alt="Brand logo" />
         <div>
           <div id="brand" class="mss-card-title"></div>
@@ -45,50 +371,86 @@
 
       <!-- Counter + question -->
       <div id="counter" class="mss-chip"></div>
-      <div id="question" class="mss-widget-question"></div>
+      <div id="question"></div>
 
-      <!-- Question navigation -->
+      <!-- Prev / Next -->
       <div class="mss-nav-row">
-  	<button id="prevBtn" class="mss-btn">Previous</button>
-  	<button id="nextBtn" class="mss-btn mss-btn-outline">Next</button>
+        <button id="prevBtn" class="mss-btn">Previous</button>
+        <button id="nextBtn" class="mss-btn mss-btn-outline">Next</button>
       </div>
 
-      <!-- Recording / upload / submit area -->
-      <div class="mss-preview-toolbar">
-  <button id="recBtn" class="mss-btn mss-btn-primary">Record your response</button>
-  <button id="stopBtn" class="mss-btn" disabled>Stop</button>
+      <!-- Recording / upload controls -->
+      <div class="mss-toolbar-row">
+        <button id="recBtn" class="mss-btn mss-btn-primary">
+          Record your response
+        </button>
+        <button id="stopBtn" class="mss-btn" disabled>Stop</button>
 
-  <!-- Styled upload button + hidden native input -->
-  <div class="mss-file-row">
-    <label class="mss-file-btn" id="uploadBtn">
-      <span>Choose an audio file</span>
-      <input
-        id="fileInput"
-        type="file"
-        accept="audio/*"
-      />
-    </label>
+        <div class="mss-file-row">
+          <label id="uploadBtn" class="mss-file-btn" for="fileInput">
+            <span>Choose an audio file</span>
+            <input id="fileInput" type="file" accept="audio/*" />
+          </label>
 
-    <button
-      id="clearFileBtn"
-      class="mss-btn mss-btn-ghost mss-btn-small"
-      style="display:none;"
-      type="button"
-    >
-      Clear file
-    </button>
+          <button
+            id="clearFileBtn"
+            class="mss-btn mss-btn-outline mss-btn-small"
+            style="display:none;"
+            type="button"
+          >
+            Clear file
+          </button>
 
-    <span id="fileBadge" class="mss-file-label"></span>
+          <span id="fileBadge" class="mss-file-label"></span>
+        </div>
+      </div>
+
+      <!-- Recording status -->
+      <div class="mss-preview-recbar">
+        <span id="recDot" class="mss-preview-dot"></span>
+        <span id="recState" class="mss-muted">Not recording</span>
+        <span id="timer" class="mss-muted"></span>
+      </div>
+
+      <!-- Audio preview + length hint -->
+      <div id="playerWrap" style="display:none; margin-top:8px; text-align:center;">
+        <audio id="player" controls preload="metadata" style="width:100%;"></audio>
+        <div id="lengthHint" class="mss-muted" style="margin-top:4px;"></div>
+      </div>
+
+      <!-- Submit -->
+      <div class="mss-submit-row">
+        <button id="submitBtn" class="mss-btn mss-btn-primary" disabled>
+          Submit for scoring
+        </button>
+      </div>
+
+      <!-- Progress + logging -->
+      <div class="mss-resultswrap">
+        <div id="progressText" class="mss-muted"></div>
+        <div id="progressLine" class="mss-line"></div>
+        <div id="logStatus" class="mss-logstatus"></div>
+      </div>
+
+      <!-- Debug controls -->
+      <div
+        id="debugBtnRow"
+        style="display:none; gap:8px; justify-content:center; margin-top:6px;"
+      >
+        <button id="toggleDebug" class="mss-btn mss-btn-outline">
+          View Debug Log
+        </button>
+      </div>
+
+      <div id="debugWrap">
+        <pre id="results"></pre>
+      </div>
+
+      <div id="status" class="mss-status"></div>
+    </section>
   </div>
-</div>
 
-<div class="mss-preview-recbar">
-  <span id="recDot" class="mss-preview-dot"></span>
-  <span id="recState" class="mss-muted">Not recording</span>
-  <span id="timer" class="mss-muted"></span>
-</div>
-
-  <!-- Score dashboard dialog -->
+  <!-- Dashboard modal -->
   <div id="dashModal" class="mss-dialog-backdrop" hidden>
     <div class="mss-dialog">
       <div class="mss-dialog-title">MSS Score Results</div>
@@ -98,12 +460,12 @@
         style="border:0;width:100%;height:400px;"
       ></iframe>
       <div class="mss-dialog-actions">
-        <button id="closeDash" class="mss-btn mss-btn-ghost">Close</button>
+        <button id="closeDash" class="mss-btn mss-btn-outline">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- Existing widget logic: loads form/config/images & respects Permitupload, etc. -->
+  <!-- New external widget logic (all the audio/API work) -->
   <script src="js/widget-core.js?v=2"></script>
 </body>
 </html>
