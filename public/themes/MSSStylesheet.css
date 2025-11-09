@@ -939,3 +939,225 @@ body.mssMorningSky {
 .mss-card {
   box-shadow: 0 30px 50px rgba(37, 99, 235, 0.08);
 }
+
+/* ========== Dashboard (Score report) ========== */
+
+.mss-dashboard-shell {
+  max-width: 900px;
+  margin: 18px auto 24px;
+  padding: 0 18px 24px;
+}
+
+/* Header row: title + CEFR pill */
+.mss-dashboard-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mss-dashboard-score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  background: var(--mss-primary-soft);
+  color: var(--mss-primary);
+  border: 1px solid rgba(191, 219, 254, 0.9);
+}
+
+/* Main grid: left summary, right chart */
+.mss-dashboard-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.mss-dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mss-dashboard-metric-card {
+  border-radius: 12px;
+  border: 1px solid var(--mss-border-subtle);
+  background: var(--mss-surface-soft);
+  padding: 10px 12px;
+}
+
+.mss-dashboard-metric-label {
+  font-size: 0.8rem;
+  color: var(--mss-muted);
+  margin-bottom: 4px;
+}
+
+.mss-dashboard-metric-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--mss-heading);
+}
+
+.mss-dashboard-metric-sub {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--mss-muted);
+}
+
+/* Chart card (CSS-only bar chart) */
+.mss-dashboard-chart-card {
+  border-radius: 12px;
+  border: 1px solid var(--mss-border-subtle);
+  background: #ffffff;
+  padding: 10px 12px 12px;
+}
+
+.mss-dashboard-chart-bars {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mss-dashboard-chart-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--mss-muted);
+}
+
+.mss-dashboard-chart-label {
+  width: 52px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.mss-dashboard-chart-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--mss-surface-soft);
+  overflow: hidden;
+}
+
+.mss-dashboard-chart-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--mss-primary);
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.mss-dashboard-chart-score {
+  width: 32px;
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--mss-heading);
+}
+
+/* Transcript / WPM block */
+.mss-dashboard-transcript {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mss-border-subtle);
+  font-size: 0.8rem;
+}
+
+.mss-dashboard-transcript pre {
+  margin: 6px 0 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  background: #0b1120;
+  color: #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* Tiny meta row under transcript */
+.mss-dashboard-meta {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--mss-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+/* Responsive tweaks for dashboard */
+@media (max-width: 800px) {
+  .mss-dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .mss-dashboard-shell {
+    padding-inline: 12px;
+  }
+}
+/* ========== Responsive tuning for Dashboard (mobile-first) ========== */
+
+/* Collapse grid to single column on smaller devices */
+@media (max-width: 800px) {
+  .mss-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mss-dashboard-chart-card {
+    order: -1; /* move chart above metrics */
+  }
+
+  .mss-dashboard-metrics {
+    grid-template-columns: 1fr; /* stack the metric cards */
+  }
+}
+
+/* Slightly larger text on mobile for readability */
+@media (max-width: 640px) {
+  .mss-dashboard-metric-value {
+    font-size: 1rem;
+  }
+
+  .mss-dashboard-metric-label {
+    font-size: 0.85rem;
+  }
+
+  .mss-dashboard-chart-label {
+    width: 48px;
+    font-size: 0.75rem;
+  }
+
+  .mss-dashboard-chart-track {
+    height: 8px; /* make bars a little easier to tap/see */
+  }
+
+  .mss-dashboard-shell {
+    padding-inline: 10px;
+  }
+}
+
+/* Handle very narrow screens (e.g., iPhone SE) */
+@media (max-width: 400px) {
+  .mss-dashboard-chart-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .mss-dashboard-chart-label {
+    width: auto;
+    text-align: left;
+  }
+
+  .mss-dashboard-chart-score {
+    align-self: flex-end;
+  }
+}
