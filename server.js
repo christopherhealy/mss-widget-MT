@@ -243,6 +243,7 @@ app.put("/config/images", async (req, res) => {
   }
 });
 
+
 /* ---------- NEW: DB-BACKED WIDGET BOOTSTRAP ROUTES ---------- */
 
 // Returns widgetConfig + widgetForm + logo URL for a school slug
@@ -276,7 +277,7 @@ app.get("/api/widget/:slug/bootstrap", async (req, res) => {
     const settings = row.settings || {};
 
     res.json({
-      schoolId: row.slug,
+      schoolId: row.slug, // NOTE: slug used by widget
       config: settings.widgetConfig || {},
       form: settings.widgetForm || {},
       imageUrl: row.has_logo
@@ -318,6 +319,96 @@ app.get("/api/widget/:slug/image/:kind", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/widget/:slug/image/:kind", err);
     res.status(500).send("Server error");
+  }
+});
+
+/* ---------- CONFIG ADMIN: PER-SCHOOL WIDGET SETTINGS ---------- */
+
+// GET current widget config/form/billing for a school (by slug)
+app.get("/api/admin/widget/:slug", async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const { rows, rowCount } = await pool.query(
+      `SELECT id, settings FROM schools WHERE slug = $1`,
+      [slug]
+    );
+
+    if (!rowCount) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+
+    const school = rows[0];
+    const settings = school.settings || {};
+
+    // fall back to JSON defaults for brand new schools
+    const { config: defaultCfg, form: defaultFrm } =
+      await loadDefaultWidgetConfigAndForm();
+
+    const config = settings.widgetConfig || defaultCfg;
+    const form = settings.widgetForm || defaultFrm;
+    const billing =
+      settings.billing || {
+        dailyLimit: 50,
+        notifyOnLimit: true,
+        emailOnLimit: "",
+        autoBlockOnLimit: true,
+      };
+
+    res.json({
+      ok: true,
+      schoolId: school.id,
+      slug,
+      config,
+      form,
+      billing,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/widget/:slug error:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// UPDATE widget config/form/billing for a school (by slug)
+app.put("/api/admin/widget/:slug", async (req, res) => {
+  const { slug } = req.params;
+  const body = req.body || {};
+  const config = body.config || {};
+  const form = body.form || {};
+  const billing = body.billing || {};
+
+  try {
+    const { rowCount } = await pool.query(
+      `
+      UPDATE schools
+      SET settings =
+        jsonb_set(
+          jsonb_set(
+            jsonb_set(
+              COALESCE(settings, '{}'::jsonb),
+              '{widgetConfig}', $2::jsonb, true
+            ),
+            '{widgetForm}', $3::jsonb, true
+          ),
+          '{billing}', $4::jsonb, true
+        )
+      WHERE slug = $1
+      `,
+      [slug, config, form, billing]
+    );
+
+    if (!rowCount) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("PUT /api/admin/widget/:slug error:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 

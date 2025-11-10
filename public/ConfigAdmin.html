@@ -1,432 +1,400 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>MSS Widget Config</title>
+  <meta charset="UTF-8" />
+  <title>MSS Widget – Config Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Global MSS UI styles -->
-  <link rel="stylesheet" href="themes/MSSStylesheet.css" />
+  <!-- Main MSS theme -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <!-- Config-admin-specific tweaks -->
+  <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
 </head>
-<body class="mss-root">
-  <!-- Top bar -->
-  <header class="mss-top">
-    <div class="mss-top-inner mss-row">
-      <div class="mss-stack-tight">
-        <div class="mss-title">MSS Configuration Setup</div>
-        <div class="mss-subtext">
-          Edit <code>config.json</code> values in real time.
-        </div>
-      </div>
-      <div class="mss-subtext">
-        <span id="envTag" class="mss-pill-soft">–</span>
-      </div>
-    </div>
-  </header>
-
-  <main class="mss-shell">
-    <div class="mss-layout">
-      <!-- LEFT: MAIN CONFIG FORM -->
-      <section class="mss-card">
-        <header class="mss-card-header">
-          <h2 class="mss-card-title">Core settings</h2>
-          <p class="mss-card-subtitle">
-            Theme, behaviour, API &amp; logging.
-          </p>
-        </header>
-
-        <!-- Admin key (optional) -->
-        <div class="mss-field">
-          <label class="mss-label" for="adminKey">Admin write key (optional)</label>
-          <input
-            id="adminKey"
-            type="password"
-            class="mss-input"
-            placeholder="Only if ADMIN_WRITE_KEY is set on Render"
-          />
-          <div class="mss-muted">
-            If left blank, writes are allowed when no ADMIN_WRITE_KEY is configured on the server.
+<body class="mss-config-body">
+  <div class="mss-config-shell">
+    <header class="mss-config-header">
+      <div class="mss-config-brand">
+        <div class="mss-config-mark">MSS</div>
+        <div>
+          <div class="mss-config-brand-main">MSS Widget Admin</div>
+          <div class="mss-config-brand-sub">
+            Configure questions and limits for your school’s widget
           </div>
         </div>
+      </div>
+    </header>
 
-        <!-- Theme + upload / audio bounds -->
-        <div class="mss-field-row">
-          <div class="mss-field mss-field-half">
-            <label class="mss-label" for="theme">Theme</label>
-            <select id="theme" class="mss-input">
-              <option value="apple">Apple</option>
-              <option value="pink">Pink</option>
-              <option value="default">Default</option>
-            </select>
-            <div class="mss-muted">
-              Controls which CSS theme the widget loads.
+    <main class="mss-config-main">
+      <!-- Left: school selector + widget settings -->
+      <section class="mss-config-card">
+        <h1 class="mss-config-title">Widget settings</h1>
+
+        <!-- School selector -->
+        <form id="schoolForm" class="mss-config-school-form">
+          <label class="mss-config-field mss-config-field-inline">
+            <span>School slug</span>
+            <div class="mss-config-inline-input">
+              <input
+                type="text"
+                id="schoolSlugInput"
+                name="slug"
+                placeholder="widget-academy"
+                required
+              />
+              <button type="submit" class="mss-config-btn-secondary">
+                Load
+              </button>
             </div>
-          </div>
+            <small class="mss-config-help">
+              Use the slug from signup (e.g. <code>widget-academy</code> or
+              <code>mss-demo</code>). You can also pass <code>?slug=…</code> in the URL.
+            </small>
+          </label>
+        </form>
 
-          <div class="mss-field mss-field-half">
-            <label class="mss-label">Upload behaviour</label>
-            <label class="mss-pill-checkbox">
-              <input id="permitUpload" type="checkbox" />
-              <span>Allow “Choose an audio file” (Permitupload)</span>
+        <p id="configStatus" class="mss-config-status"></p>
+
+        <form id="configForm" class="mss-config-form mss-config-form-hidden">
+          <!-- Widget text & questions -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-head">Widget text & questions</h2>
+
+            <label class="mss-config-field">
+              <span>Headline</span>
+              <input
+                type="text"
+                id="headlineInput"
+                placeholder="CEFR Assessment"
+              />
             </label>
-            <div class="mss-muted">
-              When off, widget runs in record-only mode (no upload / clear file controls).
+
+            <label class="mss-config-field">
+              <span>Questions (one per line)</span>
+              <textarea
+                id="questionsInput"
+                rows="8"
+                placeholder="Question 1&#10;Question 2&#10;Question 3"
+              ></textarea>
+              <small class="mss-config-help">
+                Each line will be treated as a separate question.
+              </small>
+            </label>
+
+            <div class="mss-config-field mss-config-field-inline">
+              <span>Recording limits (seconds)</span>
+              <div class="mss-config-inline-group">
+                <label>
+                  <span class="mss-config-inline-label">Min</span>
+                  <input
+                    type="number"
+                    id="minSecondsInput"
+                    min="5"
+                    step="1"
+                    placeholder="20"
+                  />
+                </label>
+                <label>
+                  <span class="mss-config-inline-label">Max</span>
+                  <input
+                    type="number"
+                    id="maxSecondsInput"
+                    min="10"
+                    step="1"
+                    placeholder="100"
+                  />
+                </label>
+              </div>
             </div>
+
+            <label class="mss-config-toggle">
+              <input type="checkbox" id="uploadAllowedInput" />
+              <span>
+                Allow students to upload audio files (instead of recording)
+              </span>
+            </label>
+          </section>
+
+          <!-- Billing / safety -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-head">Usage & safety limits</h2>
+
+            <label class="mss-config-field">
+              <span>Daily limit</span>
+              <input
+                type="number"
+                id="dailyLimitInput"
+                min="0"
+                step="1"
+                placeholder="50"
+              />
+              <small class="mss-config-help">
+                Maximum submissions per day for this school.
+                Use <code>0</code> for “no limit” (not recommended for production).
+              </small>
+            </label>
+
+            <label class="mss-config-toggle">
+              <input type="checkbox" id="notifyOnLimitInput" />
+              <span>Email the admin when the daily limit is reached</span>
+            </label>
+
+            <label class="mss-config-field">
+              <span>Notification email</span>
+              <input
+                type="email"
+                id="emailOnLimitInput"
+                placeholder="admin@example.com"
+              />
+            </label>
+
+            <label class="mss-config-toggle">
+              <input type="checkbox" id="autoBlockOnLimitInput" />
+              <span>
+                Automatically block the widget when the daily limit is reached
+              </span>
+            </label>
+          </section>
+
+          <div class="mss-config-actions">
+            <button type="submit" class="mss-config-btn-primary">
+              Save changes
+            </button>
+            <button type="button" id="resetBtn" class="mss-config-btn-ghost">
+              Reload from server
+            </button>
           </div>
-        </div>
-
-        <div class="mss-field-row">
-          <div class="mss-field mss-field-half">
-            <label class="mss-label" for="audioMin">Minimum audio seconds</label>
-            <input id="audioMin" type="number" min="0" class="mss-input" />
-            <div class="mss-muted">
-              Widget enforces this on submit (e.g. 20).
-            </div>
-          </div>
-          <div class="mss-field mss-field-half">
-            <label class="mss-label" for="audioMax">Maximum audio seconds</label>
-            <input id="audioMax" type="number" min="0" class="mss-input" />
-            <div class="mss-muted">
-              Upper bound for answer length (e.g. 100).
-            </div>
-          </div>
-        </div>
-
-        <hr class="mss-divider" />
-
-        <!-- API block -->
-        <header class="mss-card-header mss-card-header-tight">
-          <h2 class="mss-card-title">VoX API</h2>
-          <p class="mss-card-subtitle">
-            Direct VoX endpoint on
-            <code>https://app.myspeakingscore.com/api/vox</code>.
-          </p>
-        </header>
-
-        <div class="mss-field">
-          <label class="mss-pill-checkbox">
-            <input id="apiEnabled" type="checkbox" />
-            <span>Enable API calls</span>
-          </label>
-          <div class="mss-muted">
-            If disabled, widget will not submit recordings to MSS.
-          </div>
-        </div>
-
-        <div class="mss-field">
-          <label class="mss-label" for="apiBase">API baseUrl</label>
-          <input
-            id="apiBase"
-            type="text"
-            class="mss-input"
-            placeholder="https://app.myspeakingscore.com"
-          />
-          <div class="mss-muted">
-            Should normally be
-            <code>https://app.myspeakingscore.com</code>.
-          </div>
-        </div>
-
-        <div class="mss-field">
-          <label class="mss-label" for="apiKey">API-KEY</label>
-          <input id="apiKey" type="text" autocomplete="off" class="mss-input" />
-        </div>
-
-        <div class="mss-field">
-          <label class="mss-label" for="apiSecret">X-API-SECRET</label>
-          <input
-            id="apiSecret"
-            type="password"
-            autocomplete="off"
-            class="mss-input"
-          />
-        </div>
-
-        <hr class="mss-divider" />
-
-        <!-- Logger block -->
-        <header class="mss-card-header mss-card-header-tight">
-          <h2 class="mss-card-title">Logging</h2>
-          <p class="mss-card-subtitle">
-            Optional CSV logging endpoint hosted on Render.
-          </p>
-        </header>
-
-        <div class="mss-field">
-          <label class="mss-pill-checkbox">
-            <input id="logEnabled" type="checkbox" />
-            <span>Enable logging</span>
-          </label>
-          <div class="mss-muted">
-            When enabled, widget POSTs summary data to the logger URL after a
-            successful submission.
-          </div>
-        </div>
-
-        <div class="mss-field">
-          <label class="mss-label" for="logUrl">Logger URL</label>
-          <input
-            id="logUrl"
-            type="text"
-            class="mss-input"
-            placeholder="https://msswidget-dev.onrender.com/log/submission"
-          />
-          <div class="mss-muted">
-            Default in dev:
-            <code>/log/submission</code> on your Render service.
-          </div>
-        </div>
-
-        <div class="mss-actions-bottom mss-row">
-          <button
-            id="reloadBtn"
-            type="button"
-            class="mss-btn mss-btn-ghost"
-          >
-            Reload from server
-          </button>
-          <button
-            id="saveBtn"
-            type="button"
-            class="mss-btn mss-btn-primary"
-          >
-            Save configuration
-          </button>
-          <span id="status" class="status neutral"></span>
-        </div>
-
-        <div class="mss-muted mss-footnote">
-          Changes are saved to <code>config.json</code> on the server. Test
-          widgets will pick up the new settings on page refresh.
-        </div>
+        </form>
       </section>
 
-      <!-- RIGHT: EDITABLE FLAGS + RAW JSON -->
-      <section class="mss-card">
-        <header class="mss-card-header">
-          <h2 class="mss-card-title">Editable fields</h2>
-          <p class="mss-card-subtitle">
-            Toggle which label fields are editable in widget/admin experiences
-            (the <code>editable</code> map in <code>config.json</code>).
-          </p>
-        </header>
+      <!-- Right: live embed hint -->
+      <section class="mss-config-card mss-config-card-side">
+        <h2 class="mss-config-section-head">How this affects your widget</h2>
+        <p class="mss-config-copy">
+          These settings are stored in the MSS database for this school.
+          When students visit your page and load the widget, we use:
+        </p>
+        <ul class="mss-config-list">
+          <li><strong>Questions</strong> → order and text from this admin page</li>
+          <li><strong>Recording limits</strong> → min/max seconds</li>
+          <li>
+            <strong>Upload setting</strong> → “Upload audio file” button shown
+            or hidden
+          </li>
+          <li>
+            <strong>Usage limits</strong> → iFrame can be blocked when the daily
+            limit is reached
+          </li>
+        </ul>
 
-        <div id="editableContainer" class="pill-checkboxes">
-  		<!-- dynamically filled with checkboxes from config.editable -->
-	</div>
-
-        <hr class="mss-divider" />
-
-        <header class="mss-card-header mss-card-header-tight">
-          <h2 class="mss-card-title">Raw config</h2>
-          <p class="mss-card-subtitle">
-            Read-only view of the current config as JSON (for sanity checks /
-            support).
-          </p>
-        </header>
-
-        <pre id="rawJson" class="mss-json-box">{}</pre>
+        <p class="mss-config-copy">
+          To test, open your Widget Academy page with the iFrame and try a
+          submission after saving changes here.
+        </p>
       </section>
-    </div>
-  </main>
+    </main>
+  </div>
 
   <script>
-    // --------- SERVICE_BASE detection (same pattern as Widget) ----------
-    const SERVICE_BASE = (window.location.hostname.includes('localhost')
-      ? 'http://localhost:3000'
-      : 'https://msswidget-dev.onrender.com'
-    ).replace(/\/+$/, '');
+    (function () {
+      const schoolForm = document.getElementById("schoolForm");
+      const slugInput = document.getElementById("schoolSlugInput");
+      const statusEl = document.getElementById("configStatus");
+      const configForm = document.getElementById("configForm");
 
-    const $ = (id) => document.getElementById(id);
+      const headlineInput = document.getElementById("headlineInput");
+      const questionsInput = document.getElementById("questionsInput");
+      const minSecondsInput = document.getElementById("minSecondsInput");
+      const maxSecondsInput = document.getElementById("maxSecondsInput");
+      const uploadAllowedInput = document.getElementById("uploadAllowedInput");
 
-    let CURRENT_CONFIG = null; // raw object as loaded
+      const dailyLimitInput = document.getElementById("dailyLimitInput");
+      const notifyOnLimitInput = document.getElementById("notifyOnLimitInput");
+      const emailOnLimitInput = document.getElementById("emailOnLimitInput");
+      const autoBlockOnLimitInput = document.getElementById("autoBlockOnLimitInput");
+      const resetBtn = document.getElementById("resetBtn");
 
-    function setStatus(msg, kind = 'neutral') {
-      const el = $('status');
-      if (!el) return;
-      el.textContent = msg || '';
-      el.className = 'status ' + kind;
-    }
+      let currentSlug = null;
+      let currentPayload = null; // { config, form, billing }
 
-    function updateEnvTag() {
-      const tag = $('envTag');
-      if (!tag) return;
-      const isLocal = window.location.hostname.includes('localhost');
-      tag.textContent = isLocal ? 'LOCAL DEV' : 'RENDER PROD';
-    }
-
-    // --------- Load config from server ----------
-    async function fetchConfig() {
-      setStatus('Loading…', 'neutral');
-      try {
-        const res = await fetch(SERVICE_BASE + '/config/widget?ts=' + Date.now(), {
-          cache: 'no-store',
-        });
-        if (!res.ok) {
-          setStatus('Failed to load config (' + res.status + ')', 'err');
-          return;
-        }
-        const cfg = await res.json();
-        CURRENT_CONFIG = cfg;
-        hydrateFormFromConfig(cfg);
-        setStatus('Loaded', 'ok');
-      } catch (e) {
-        console.warn('fetchConfig error', e);
-        setStatus('Network error while loading config', 'err');
-      }
-    }
-
-    // --------- Fill the UI from config.json ----------
-    function hydrateFormFromConfig(cfg) {
-      // Theme
-      $('theme').value = (cfg.theme || 'apple').toLowerCase();
-
-      // Upload behaviour
-      $('permitUpload').checked = cfg.Permitupload !== false; // default true
-
-      // Audio bounds
-      $('audioMin').value = Number(cfg.audioMinSeconds ?? 30);
-      $('audioMax').value = Number(cfg.audioMaxSeconds ?? 61);
-
-      // API
-      const api = cfg.api || {};
-      $('apiEnabled').checked = api.enabled !== false;
-      $('apiBase').value = api.baseUrl || '';
-      $('apiKey').value = api.key || '';
-      $('apiSecret').value = api.secret || '';
-
-      // Logger
-      const logger = cfg.logger || {};
-      $('logEnabled').checked = !!logger.enabled;
-      $('logUrl').value = logger.url || '';
-
-      // Editable map (generic)
-      const editable = cfg.editable || {};
-const container = $('editableContainer');
-container.innerHTML = '';
-
-Object.keys(editable).forEach((key) => {
-  const checked = !!editable[key];
-  const pill = document.createElement('label');
-
-  // NOTE: both classes
-  pill.className = 'pill-checkbox mss-chip';
-
-  pill.innerHTML = `
-    <input type="checkbox" data-editable-key="${key}" ${checked ? 'checked' : ''}/>
-    <span>${key}</span>
-  `;
-  container.appendChild(pill);
-});
-
-      // Raw JSON
-      $('rawJson').textContent = JSON.stringify(cfg, null, 2);
-    }
-
-    // --------- Build config object to send back ----------
-    function buildConfigFromForm() {
-      // Start from deep-ish copy of CURRENT_CONFIG so we preserve unknown keys
-      const base = JSON.parse(JSON.stringify(CURRENT_CONFIG || {}));
-
-      // Theme
-      base.theme = $('theme').value || 'apple';
-
-      // Upload behaviour
-      base.Permitupload = $('permitUpload').checked;
-
-      // Audio bounds
-      const minS = Number($('audioMin').value || 0);
-      const maxS = Number($('audioMax').value || 0);
-      base.audioMinSeconds = Number.isFinite(minS) && minS >= 0 ? minS : 30;
-      base.audioMaxSeconds = Number.isFinite(maxS) && maxS > 0 ? maxS : 61;
-
-      // API
-      base.api = base.api || {};
-      base.api.enabled = $('apiEnabled').checked;
-      base.api.baseUrl = $('apiBase').value.trim();
-      base.api.key = $('apiKey').value.trim();
-      base.api.secret = $('apiSecret').value.trim();
-
-      // Logger
-      base.logger = base.logger || {};
-      base.logger.enabled = $('logEnabled').checked;
-      base.logger.url = $('logUrl').value.trim();
-
-      // Editable map
-      base.editable = base.editable || {};
-      const editInputs = document.querySelectorAll('[data-editable-key]');
-      editInputs.forEach((input) => {
-        const k = input.getAttribute('data-editable-key');
-        base.editable[k] = input.checked;
-      });
-
-      return base;
-    }
-
-    // --------- Save config to server ----------
-    async function saveConfig() {
-      if (!CURRENT_CONFIG) {
-        setStatus('No config loaded yet', 'err');
-        return;
+      function setStatus(msg, kind) {
+        if (!statusEl) return;
+        statusEl.textContent = msg || "";
+        statusEl.className = "mss-config-status";
+        if (kind === "ok") statusEl.classList.add("mss-config-status-ok");
+        else if (kind === "err") statusEl.classList.add("mss-config-status-err");
+        else if (kind === "work") statusEl.classList.add("mss-config-status-work");
       }
 
-      const payload = buildConfigFromForm();
-      const adminKey = $('adminKey').value.trim();
+      function showForm(show) {
+        if (!configForm) return;
+        configForm.classList.toggle("mss-config-form-hidden", !show);
+      }
 
-      setStatus('Saving…', 'neutral');
-      $('saveBtn').disabled = true;
+      function fillFormFromPayload(data) {
+        const cfg = data.config || {};
+        const frm = data.form || {};
+        const billing = data.billing || {};
 
-      try {
-        const headers = {
-          'Content-Type': 'application/json',
-        };
-        if (adminKey) {
-          headers['X-ADMIN-KEY'] = adminKey;
-        }
+        // Text
+        headlineInput.value = frm.headline || "";
+        const survey = Array.isArray(frm.survey) ? frm.survey : [];
+        questionsInput.value = survey.join("\\n");
 
-        const res = await fetch(SERVICE_BASE + '/config/widget', {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify(payload),
-        });
+        // Recording limits
+        minSecondsInput.value =
+          cfg.audioMinSeconds != null ? cfg.audioMinSeconds : "";
+        maxSecondsInput.value =
+          cfg.audioMaxSeconds != null ? cfg.audioMaxSeconds : "";
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          console.warn('Save failed', res.status, body);
-          setStatus(
-            'Save failed (' + res.status + '): ' + (body.error || 'Unknown error'),
-            'err',
+        // Upload allowed
+        uploadAllowedInput.checked = cfg.Permitupload !== false;
+
+        // Billing
+        dailyLimitInput.value =
+          billing.dailyLimit != null ? billing.dailyLimit : "";
+        notifyOnLimitInput.checked = !!billing.notifyOnLimit;
+        emailOnLimitInput.value = billing.emailOnLimit || "";
+        autoBlockOnLimitInput.checked = billing.autoBlockOnLimit !== false;
+      }
+
+      function collectPayloadFromForm() {
+        const cfg = Object.assign({}, currentPayload?.config || {});
+        const frm = Object.assign({}, currentPayload?.form || {});
+        const billing = Object.assign({}, currentPayload?.billing || {});
+
+        // Form
+        frm.headline = headlineInput.value.trim();
+        const lines = questionsInput.value
+          .split("\\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        frm.survey = lines;
+
+        // Config
+        const minVal = parseInt(minSecondsInput.value, 10);
+        const maxVal = parseInt(maxSecondsInput.value, 10);
+        if (!Number.isNaN(minVal)) cfg.audioMinSeconds = minVal;
+        if (!Number.isNaN(maxVal)) cfg.audioMaxSeconds = maxVal;
+        cfg.Permitupload = !!uploadAllowedInput.checked;
+
+        // Billing
+        const dl = parseInt(dailyLimitInput.value, 10);
+        billing.dailyLimit = Number.isNaN(dl) ? 0 : dl;
+        billing.notifyOnLimit = !!notifyOnLimitInput.checked;
+        billing.emailOnLimit = emailOnLimitInput.value.trim();
+        billing.autoBlockOnLimit = !!autoBlockOnLimitInput.checked;
+
+        return { config: cfg, form: frm, billing };
+      }
+
+      async function loadSchool(slug) {
+        if (!slug) return;
+        currentSlug = slug;
+        setStatus("Loading settings…", "work");
+        showForm(false);
+
+        try {
+          const res = await fetch(
+            "/api/admin/widget/" + encodeURIComponent(slug)
           );
-          $('saveBtn').disabled = false;
-          return;
-        }
+          const body = await res.json().catch(() => ({}));
 
-        const body = await res.json().catch(() => ({}));
-        if (!body.ok) {
-          setStatus('Save error: ' + (body.error || 'Unknown error'), 'err');
-          $('saveBtn').disabled = false;
-          return;
-        }
+          if (!res.ok || !body.ok) {
+            const msg =
+              body.message || body.error || "Failed to load school settings.";
+            setStatus(msg, "err");
+            return;
+          }
 
-        // Update in-memory copy & raw JSON
-        CURRENT_CONFIG = payload;
-        $('rawJson').textContent = JSON.stringify(payload, null, 2);
-        setStatus('Saved', 'ok');
-        $('saveBtn').disabled = false;
-      } catch (e) {
-        console.warn('saveConfig error', e);
-        setStatus('Network error while saving config', 'err');
-        $('saveBtn').disabled = false;
+          currentPayload = {
+            config: body.config || {},
+            form: body.form || {},
+            billing: body.billing || {},
+          };
+
+          fillFormFromPayload(currentPayload);
+          showForm(true);
+          setStatus(
+            "Loaded settings for slug \"" + slug + "\" (school ID " + body.schoolId + ").",
+            "ok"
+          );
+        } catch (err) {
+          console.error("loadSchool error:", err);
+          setStatus(
+            "Network error while loading settings. Please try again.",
+            "err"
+          );
+        }
       }
-    }
 
-    // --------- Wire up events ----------
-    window.addEventListener('DOMContentLoaded', () => {
-      updateEnvTag();
-      fetchConfig();
+      // Handle school slug form
+      if (schoolForm) {
+        schoolForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const slug = (slugInput.value || "").trim();
+          if (!slug) return;
+          loadSchool(slug);
+        });
+      }
 
-      $('reloadBtn').addEventListener('click', fetchConfig);
-      $('saveBtn').addEventListener('click', saveConfig);
-    });
+      // Save config/form/billing
+      if (configForm) {
+        configForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (!currentSlug) return;
+          const payload = collectPayloadFromForm();
+
+          setStatus("Saving settings…", "work");
+
+          try {
+            const res = await fetch(
+              "/api/admin/widget/" + encodeURIComponent(currentSlug),
+              {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              }
+            );
+            const body = await res.json().catch(() => ({}));
+
+            if (!res.ok || !body.ok) {
+              const msg =
+                body.message ||
+                body.error ||
+                "Something went wrong while saving your settings.";
+              setStatus(msg, "err");
+              return;
+            }
+
+            setStatus("Settings saved successfully.", "ok");
+          } catch (err) {
+            console.error("save settings error:", err);
+            setStatus(
+              "Network error while saving settings. Please try again.",
+              "err"
+            );
+          }
+        });
+      }
+
+      // Reset button → re-load from server
+      if (resetBtn) {
+        resetBtn.addEventListener("click", () => {
+          if (!currentSlug) return;
+          loadSchool(currentSlug);
+        });
+      }
+
+      // Auto-load from ?slug=… if present
+      (function autoLoadFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const slug = params.get("slug");
+        if (slug) {
+          slugInput.value = slug;
+          loadSchool(slug);
+        }
+      })();
+    })();
   </script>
 </body>
-</html>
+</html>	
