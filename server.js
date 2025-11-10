@@ -770,6 +770,95 @@ app.post("/api/signup", async (req, res) => {
   }
 });
 
+// Serve signup page explicitly
+app.get("/signup", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "signup", "index.html"));
+});
+
+// Serve admin login page explicitly
+app.get("/admin-login", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "admin-login", "index.html"));
+});
+
+// ---------- ADMIN LOGIN API ----------
+app.post("/api/login", async (req, res) => {
+  const body = req.body || {};
+  const email = (body.email || "").trim();
+  const password = (body.password || "").trim();
+
+  if (!email || !password) {
+    return res.status(400).json({
+      ok: false,
+      error: "missing_credentials",
+      message: "Email and password are required."
+    });
+  }
+
+  try {
+    const { rows, rowCount } = await pool.query(
+      `
+      SELECT
+        a.id AS admin_id,
+        a.full_name,
+        a.email,
+        a.password_hash,
+        a.is_active,
+        s.id AS school_id,
+        s.slug
+      FROM admins a
+      JOIN schools s ON s.id = a.school_id
+      WHERE a.email = $1
+      LIMIT 1
+      `,
+      [email]
+    );
+
+    if (!rowCount) {
+      return res.status(401).json({
+        ok: false,
+        error: "invalid_login",
+        message: "Invalid email or password."
+      });
+    }
+
+    const admin = rows[0];
+
+    if (admin.is_active === false) {
+      return res.status(403).json({
+        ok: false,
+        error: "admin_inactive",
+        message: "This admin account is inactive."
+      });
+    }
+
+    // For now, simple plain-text comparison (since we store plain text)
+    if (admin.password_hash !== password) {
+      return res.status(401).json({
+        ok: false,
+        error: "invalid_login",
+        message: "Invalid email or password."
+      });
+    }
+
+    // 🚨 NOTE: for production you’d issue a session/JWT here.
+    // For now we just return the slug and let the frontend redirect.
+    return res.json({
+      ok: true,
+      adminId: admin.admin_id,
+      schoolId: admin.school_id,
+      slug: admin.slug,
+      name: admin.full_name
+    });
+  } catch (err) {
+    console.error("POST /api/login error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Could not log in. Please try again."
+    });
+  }
+});
+
 /* ---------- start ---------- */
 app.listen(PORT, () => {
   console.log(`✅ MSS Widget service listening on port ${PORT}`);
