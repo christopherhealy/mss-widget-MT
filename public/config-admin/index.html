@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MSS Config Admin</title>
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+  <link rel="stylesheet" href="/themes/mss-config-admin.css" />
+</head>
+<body>
+  <div class="mss-config-shell">
+    <header class="mss-config-header">
+      <h1>MSS Widget Admin</h1>
+      <p>Edit your school’s widget settings below</p>
+    </header>
+
+    <main class="mss-config-main">
+      <section>
+        <h2>Widget Configuration</h2>
+        <p>This area will let Widget Academy change its questions, theme, and settings.</p>
+        <pre id="configOutput">Loading...</pre>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const slug = urlParams.get("slug") || "widget-academy";
+    fetch(`/api/admin/widget/${slug}`)
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("configOutput").textContent = JSON.stringify(data, null, 2);
+      })
+      .catch(err => {
+        document.getElementById("configOutput").textContent = "Error: " + err;
+      });
+  </script>
+</body>
+</html>
