@@ -58,6 +58,11 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// Serve signup page explicitly (so /signup and /signup/ both work)
+app.get("/signup", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "signup", "index.html"));
+});
+
 // Static files
 app.use(express.static(PUBLIC_DIR));
 app.use("/themes", express.static(path.join(PUBLIC_DIR, "themes")));
