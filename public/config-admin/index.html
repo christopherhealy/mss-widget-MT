@@ -2,38 +2,399 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MSS Config Admin</title>
-  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
-  <link rel="stylesheet" href="/themes/mss-config-admin.css" />
+  <title>MSS Widget – Config Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Main MSS theme -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <!-- Config-admin-specific tweaks -->
+  <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
 </head>
-<body>
+<body class="mss-config-body">
   <div class="mss-config-shell">
     <header class="mss-config-header">
-      <h1>MSS Widget Admin</h1>
-      <p>Edit your school’s widget settings below</p>
+      <div class="mss-config-brand">
+        <div class="mss-config-mark">MSS</div>
+        <div>
+          <div class="mss-config-brand-main">MSS Widget Admin</div>
+          <div class="mss-config-brand-sub">
+            Configure questions and limits for your school’s widget
+          </div>
+        </div>
+      </div>
     </header>
 
     <main class="mss-config-main">
-      <section>
-        <h2>Widget Configuration</h2>
-        <p>This area will let Widget Academy change its questions, theme, and settings.</p>
-        <pre id="configOutput">Loading...</pre>
+      <!-- Left: school selector + widget settings -->
+      <section class="mss-config-card">
+        <h1 class="mss-config-title">Widget settings</h1>
+
+        <!-- School selector -->
+        <form id="schoolForm" class="mss-config-school-form">
+          <label class="mss-config-field mss-config-field-inline">
+            <span>School slug</span>
+            <div class="mss-config-inline-input">
+              <input
+                type="text"
+                id="schoolSlugInput"
+                name="slug"
+                placeholder="widget-academy"
+                required
+              />
+              <button type="submit" class="mss-config-btn-secondary">
+                Load
+              </button>
+            </div>
+            <small class="mss-config-help">
+              Use the slug from signup (e.g. <code>widget-academy</code> or
+              <code>mss-demo</code>). You can also pass <code>?slug=…</code> in the URL.
+            </small>
+          </label>
+        </form>
+
+        <p id="configStatus" class="mss-config-status"></p>
+
+        <form id="configForm" class="mss-config-form mss-config-form-hidden">
+          <!-- Widget text & questions -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-head">Widget text & questions</h2>
+
+            <label class="mss-config-field">
+              <span>Headline</span>
+              <input
+                type="text"
+                id="headlineInput"
+                placeholder="CEFR Assessment"
+              />
+            </label>
+
+            <label class="mss-config-field">
+              <span>Questions (one per line)</span>
+              <textarea
+                id="questionsInput"
+                rows="8"
+                placeholder="Question 1&#10;Question 2&#10;Question 3"
+              ></textarea>
+              <small class="mss-config-help">
+                Each line will be treated as a separate question.
+              </small>
+            </label>
+
+            <div class="mss-config-field mss-config-field-inline">
+              <span>Recording limits (seconds)</span>
+              <div class="mss-config-inline-group">
+                <label>
+                  <span class="mss-config-inline-label">Min</span>
+                  <input
+                    type="number"
+                    id="minSecondsInput"
+                    min="5"
+                    step="1"
+                    placeholder="20"
+                  />
+                </label>
+                <label>
+                  <span class="mss-config-inline-label">Max</span>
+                  <input
+                    type="number"
+                    id="maxSecondsInput"
+                    min="10"
+                    step="1"
+                    placeholder="100"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <label class="mss-config-toggle">
+              <input type="checkbox" id="uploadAllowedInput" />
+              <span>
+                Allow students to upload audio files (instead of recording)
+              </span>
+            </label>
+          </section>
+
+          <!-- Billing / safety -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-head">Usage & safety limits</h2>
+
+            <label class="mss-config-field">
+              <span>Daily limit</span>
+              <input
+                type="number"
+                id="dailyLimitInput"
+                min="0"
+                step="1"
+                placeholder="50"
+              />
+              <small class="mss-config-help">
+                Maximum submissions per day for this school.
+                Use <code>0</code> for “no limit” (not recommended for production).
+              </small>
+            </label>
+
+            <label class="mss-config-toggle">
+              <input type="checkbox" id="notifyOnLimitInput" />
+              <span>Email the admin when the daily limit is reached</span>
+            </label>
+
+            <label class="mss-config-field">
+              <span>Notification email</span>
+              <input
+                type="email"
+                id="emailOnLimitInput"
+                placeholder="admin@example.com"
+              />
+            </label>
+
+            <label class="mss-config-toggle">
+              <input type="checkbox" id="autoBlockOnLimitInput" />
+              <span>
+                Automatically block the widget when the daily limit is reached
+              </span>
+            </label>
+          </section>
+
+          <div class="mss-config-actions">
+            <button type="submit" class="mss-config-btn-primary">
+              Save changes
+            </button>
+            <button type="button" id="resetBtn" class="mss-config-btn-ghost">
+              Reload from server
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Right: live embed hint -->
+      <section class="mss-config-card mss-config-card-side">
+        <h2 class="mss-config-section-head">How this affects your widget</h2>
+        <p class="mss-config-copy">
+          These settings are stored in the MSS database for this school.
+          When students visit your page and load the widget, we use:
+        </p>
+        <ul class="mss-config-list">
+          <li><strong>Questions</strong> → order and text from this admin page</li>
+          <li><strong>Recording limits</strong> → min/max seconds</li>
+          <li>
+            <strong>Upload setting</strong> → “Upload audio file” button shown
+            or hidden
+          </li>
+          <li>
+            <strong>Usage limits</strong> → iFrame can be blocked when the daily
+            limit is reached
+          </li>
+        </ul>
+
+        <p class="mss-config-copy">
+          To test, open your Widget Academy page with the iFrame and try a
+          submission after saving changes here.
+        </p>
       </section>
     </main>
   </div>
 
   <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const slug = urlParams.get("slug") || "widget-academy";
-    fetch(`/api/admin/widget/${slug}`)
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById("configOutput").textContent = JSON.stringify(data, null, 2);
-      })
-      .catch(err => {
-        document.getElementById("configOutput").textContent = "Error: " + err;
-      });
+    (function () {
+      const schoolForm = document.getElementById("schoolForm");
+      const slugInput = document.getElementById("schoolSlugInput");
+      const statusEl = document.getElementById("configStatus");
+      const configForm = document.getElementById("configForm");
+
+      const headlineInput = document.getElementById("headlineInput");
+      const questionsInput = document.getElementById("questionsInput");
+      const minSecondsInput = document.getElementById("minSecondsInput");
+      const maxSecondsInput = document.getElementById("maxSecondsInput");
+      const uploadAllowedInput = document.getElementById("uploadAllowedInput");
+
+      const dailyLimitInput = document.getElementById("dailyLimitInput");
+      const notifyOnLimitInput = document.getElementById("notifyOnLimitInput");
+      const emailOnLimitInput = document.getElementById("emailOnLimitInput");
+      const autoBlockOnLimitInput = document.getElementById("autoBlockOnLimitInput");
+      const resetBtn = document.getElementById("resetBtn");
+
+      let currentSlug = null;
+      let currentPayload = null; // { config, form, billing }
+
+      function setStatus(msg, kind) {
+        if (!statusEl) return;
+        statusEl.textContent = msg || "";
+        statusEl.className = "mss-config-status";
+        if (kind === "ok") statusEl.classList.add("mss-config-status-ok");
+        else if (kind === "err") statusEl.classList.add("mss-config-status-err");
+        else if (kind === "work") statusEl.classList.add("mss-config-status-work");
+      }
+
+      function showForm(show) {
+        if (!configForm) return;
+        configForm.classList.toggle("mss-config-form-hidden", !show);
+      }
+
+      function fillFormFromPayload(data) {
+        const cfg = data.config || {};
+        const frm = data.form || {};
+        const billing = data.billing || {};
+
+        // Text
+        headlineInput.value = frm.headline || "";
+        const survey = Array.isArray(frm.survey) ? frm.survey : [];
+        questionsInput.value = survey.join("\\n");
+
+        // Recording limits
+        minSecondsInput.value =
+          cfg.audioMinSeconds != null ? cfg.audioMinSeconds : "";
+        maxSecondsInput.value =
+          cfg.audioMaxSeconds != null ? cfg.audioMaxSeconds : "";
+
+        // Upload allowed
+        uploadAllowedInput.checked = cfg.Permitupload !== false;
+
+        // Billing
+        dailyLimitInput.value =
+          billing.dailyLimit != null ? billing.dailyLimit : "";
+        notifyOnLimitInput.checked = !!billing.notifyOnLimit;
+        emailOnLimitInput.value = billing.emailOnLimit || "";
+        autoBlockOnLimitInput.checked = billing.autoBlockOnLimit !== false;
+      }
+
+      function collectPayloadFromForm() {
+        const cfg = Object.assign({}, currentPayload?.config || {});
+        const frm = Object.assign({}, currentPayload?.form || {});
+        const billing = Object.assign({}, currentPayload?.billing || {});
+
+        // Form
+        frm.headline = headlineInput.value.trim();
+        const lines = questionsInput.value
+          .split("\\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        frm.survey = lines;
+
+        // Config
+        const minVal = parseInt(minSecondsInput.value, 10);
+        const maxVal = parseInt(maxSecondsInput.value, 10);
+        if (!Number.isNaN(minVal)) cfg.audioMinSeconds = minVal;
+        if (!Number.isNaN(maxVal)) cfg.audioMaxSeconds = maxVal;
+        cfg.Permitupload = !!uploadAllowedInput.checked;
+
+        // Billing
+        const dl = parseInt(dailyLimitInput.value, 10);
+        billing.dailyLimit = Number.isNaN(dl) ? 0 : dl;
+        billing.notifyOnLimit = !!notifyOnLimitInput.checked;
+        billing.emailOnLimit = emailOnLimitInput.value.trim();
+        billing.autoBlockOnLimit = !!autoBlockOnLimitInput.checked;
+
+        return { config: cfg, form: frm, billing };
+      }
+
+      async function loadSchool(slug) {
+        if (!slug) return;
+        currentSlug = slug;
+        setStatus("Loading settings…", "work");
+        showForm(false);
+
+        try {
+          const res = await fetch(
+            "/api/admin/widget/" + encodeURIComponent(slug)
+          );
+          const body = await res.json().catch(() => ({}));
+
+          if (!res.ok || !body.ok) {
+            const msg =
+              body.message || body.error || "Failed to load school settings.";
+            setStatus(msg, "err");
+            return;
+          }
+
+          currentPayload = {
+            config: body.config || {},
+            form: body.form || {},
+            billing: body.billing || {},
+          };
+
+          fillFormFromPayload(currentPayload);
+          showForm(true);
+          setStatus(
+            "Loaded settings for slug \"" + slug + "\" (school ID " + body.schoolId + ").",
+            "ok"
+          );
+        } catch (err) {
+          console.error("loadSchool error:", err);
+          setStatus(
+            "Network error while loading settings. Please try again.",
+            "err"
+          );
+        }
+      }
+
+      // Handle school slug form
+      if (schoolForm) {
+        schoolForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const slug = (slugInput.value || "").trim();
+          if (!slug) return;
+          loadSchool(slug);
+        });
+      }
+
+      // Save config/form/billing
+      if (configForm) {
+        configForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (!currentSlug) return;
+          const payload = collectPayloadFromForm();
+
+          setStatus("Saving settings…", "work");
+
+          try {
+            const res = await fetch(
+              "/api/admin/widget/" + encodeURIComponent(currentSlug),
+              {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              }
+            );
+            const body = await res.json().catch(() => ({}));
+
+            if (!res.ok || !body.ok) {
+              const msg =
+                body.message ||
+                body.error ||
+                "Something went wrong while saving your settings.";
+              setStatus(msg, "err");
+              return;
+            }
+
+            setStatus("Settings saved successfully.", "ok");
+          } catch (err) {
+            console.error("save settings error:", err);
+            setStatus(
+              "Network error while saving settings. Please try again.",
+              "err"
+            );
+          }
+        });
+      }
+
+      // Reset button → re-load from server
+      if (resetBtn) {
+        resetBtn.addEventListener("click", () => {
+          if (!currentSlug) return;
+          loadSchool(currentSlug);
+        });
+      }
+
+      // Auto-load from ?slug=… if present
+      (function autoLoadFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const slug = params.get("slug");
+        if (slug) {
+          slugInput.value = slug;
+          loadSchool(slug);
+        }
+      })();
+    })();
   </script>
 </body>
-</html>
+</html>	
