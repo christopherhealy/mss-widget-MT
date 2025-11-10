@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Widget – School signup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Your main MSS theme -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <!-- Signup-specific tweaks -->
+  <link rel="stylesheet" href="/themes/mss-signup.css?v=1" />
+</head>
+<body class="mss-signup-body">
+  <div class="mss-signup-shell">
+    <header class="mss-signup-header">
+      <div class="mss-signup-brand">
+        <div class="mss-signup-mark">MSS</div>
+        <div>
+          <div class="mss-signup-brand-main">MSS Widget</div>
+          <div class="mss-signup-brand-sub">
+            Set up a practice widget for your school
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="mss-signup-main">
+      <!-- Left: form -->
+      <section class="mss-signup-card">
+        <h1 class="mss-signup-title">Create your school widget</h1>
+        <p class="mss-signup-tagline">
+          Tell us who you are and what your school is called. We’ll create a
+          unique ID and give you a snippet to embed on your website.
+        </p>
+
+        <form id="signupForm" class="mss-signup-form">
+          <h2 class="mss-signup-section-head">School details</h2>
+
+          <label class="mss-signup-field">
+            <span>School name</span>
+            <input
+              type="text"
+              name="schoolName"
+              required
+              placeholder="Widget Academy"
+            />
+          </label>
+
+          <label class="mss-signup-field">
+            <span>School website (optional)</span>
+            <input
+              type="url"
+              name="schoolWebsite"
+              placeholder="https://www.widgetacademy.edu"
+            />
+          </label>
+
+          <h2 class="mss-signup-section-head">Admin contact</h2>
+
+          <label class="mss-signup-field">
+            <span>Admin full name</span>
+            <input
+              type="text"
+              name="adminName"
+              required
+              placeholder="Alex Teacher"
+            />
+          </label>
+
+          <label class="mss-signup-field">
+            <span>Admin email</span>
+            <input
+              type="email"
+              name="adminEmail"
+              required
+              placeholder="alex.teacher@example.com"
+            />
+          </label>
+
+          <label class="mss-signup-field">
+            <span>Temporary password</span>
+            <input
+              type="password"
+              name="adminPassword"
+              required
+              placeholder="Set a temporary password"
+            />
+            <small>
+              You’ll be able to change this in the admin area. For
+              <code>widgetqa@mss.com</code> we can skip verification in QA.
+            </small>
+          </label>
+
+          <button type="submit" class="mss-signup-submit">
+            Create my school widget
+          </button>
+
+          <p id="signupStatus" class="mss-signup-status"></p>
+        </form>
+      </section>
+
+      <!-- Right: result card -->
+      <section class="mss-signup-result-card">
+        <h2 class="mss-signup-result-title">Your embed code</h2>
+        <p class="mss-signup-result-copy">
+          After you submit the form, we’ll show your school ID and the
+          JavaScript snippet you can paste into your site.
+        </p>
+
+        <div id="resultShell" class="mss-signup-result-shell mss-hidden">
+          <p class="mss-signup-result-meta">
+            School ID: <span id="resultSchoolId"></span><br />
+            Slug: <span id="resultSlug"></span>
+          </p>
+
+          <p class="mss-signup-result-copy">
+            Add this snippet to the page where you want the widget to appear:
+          </p>
+
+          <pre class="mss-signup-code"><code id="resultCode"></code></pre>
+
+          <p class="mss-signup-result-copy">
+            Once this is live, students will see the same experience as on
+            Widget Academy, but with your questions and branding.
+          </p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const form = document.getElementById("signupForm");
+      const statusEl = document.getElementById("signupStatus");
+      const resultShell = document.getElementById("resultShell");
+      const schoolIdEl = document.getElementById("resultSchoolId");
+      const slugEl = document.getElementById("resultSlug");
+      const codeEl = document.getElementById("resultCode");
+
+      if (!form) return;
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!statusEl) return;
+
+        statusEl.textContent = "Creating your school…";
+        statusEl.className = "mss-signup-status mss-signup-status-working";
+
+        const fd = new FormData(form);
+        const payload = {
+          schoolName: fd.get("schoolName")?.toString().trim(),
+          schoolWebsite: fd.get("schoolWebsite")?.toString().trim(),
+          adminName: fd.get("adminName")?.toString().trim(),
+          adminEmail: fd.get("adminEmail")?.toString().trim(),
+          adminPassword: fd.get("adminPassword")?.toString(),
+        };
+
+        try {
+          const res = await fetch("/api/signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const body = await res.json().catch(() => ({}));
+
+          if (!res.ok || !body.ok) {
+            const msg =
+              body.error ||
+              body.message ||
+              "Something went wrong while creating your school.";
+            statusEl.textContent = msg;
+            statusEl.className = "mss-signup-status mss-signup-status-error";
+            return;
+          }
+
+          const { schoolId, slug } = body;
+
+          statusEl.textContent = "School created successfully.";
+          statusEl.className = "mss-signup-status mss-signup-status-ok";
+
+          if (resultShell && schoolIdEl && slugEl && codeEl) {
+            resultShell.classList.remove("mss-hidden");
+            schoolIdEl.textContent = schoolId;
+            slugEl.textContent = slug;
+
+            const base = window.location.origin.replace(/\/+$/, "");
+            const snippet =
+`<div id="mss-widget-container"></div>
+<script
+  src="${base}/embed.js"
+  data-school-id="${schoolId}"
+></script>`;
+
+            codeEl.textContent = snippet;
+          }
+        } catch (err) {
+          statusEl.textContent =
+            "Network error while creating your school. Please try again.";
+          statusEl.className = "mss-signup-status mss-signup-status-error";
+          console.error("signup error:", err);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

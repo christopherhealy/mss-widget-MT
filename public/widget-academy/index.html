@@ -3,15 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <title>Widget Academy – English Speaking Practice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+ <link rel="stylesheet" href="/themes/mss-academy.css?v=1.0" />
+ <link rel="stylesheet"
+      href="/themes/mss-academy-dark.css?v=1.0"
+      media="(prefers-color-scheme: dark)" />
+
 </head>
 <body>
-  <h1>Widget Academy – English Speaking Practice</h1>
-  <p>Use the practice tool below to try a sample speaking task.</p>
+  <div class="page">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-mark">WA</div>
+        <div>
+          <div class="brand-text-main">Widget Academy</div>
+          <div class="brand-text-sub">English programs with real speaking practice</div>
+        </div>
+      </div>
 
-  <div id="mss-widget-container"></div>
+      <div class="header-links">
+        <span class="pill-link pill-link-mss">
+          Powered by MSS Vox
+        </span>
+        <a
+          class="pill-link pill-link-cta"
+          href="#practice"
+        >
+          Start your free practice
+        </a>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <main class="hero">
+      <!-- Left column: student-focused copy -->
+      <section class="hero-left">
+        <h1 class="hero-title">
+          CEFR speaking practice for Widget Academy students.
+        </h1>
+        <p class="hero-tagline">
+          Take a short speaking task, record your answer, and get feedback from
+          your teacher. It takes just a few minutes and helps you get ready for
+          real exams and interviews.
+        </p>
+
+        <div class="hero-highlights">
+          <div class="hero-bullet">
+            <div class="hero-dot"></div>
+            <div>Answer one question at a time and practise natural, connected speech.</div>
+          </div>
+          <div class="hero-bullet">
+            <div class="hero-dot"></div>
+            <div>Record directly in your browser or upload an audio file from your phone.</div>
+          </div>
+          <div class="hero-bullet">
+            <div class="hero-dot"></div>
+            <div>Your responses are stored securely so your teachers can review your progress.</div>
+          </div>
+        </div>
+
+        <p class="hero-footnote">
+          Tip: Find a quiet place, take a deep breath, and imagine you’re in a real exam.
+          Your first attempt doesn’t have to be perfect — this page is for practice.
+        </p>
+      </section>
+
+      <!-- Right column: widget card -->
+      <section class="hero-right" id="practice">
+        <div class="widget-shell">
+          <div class="widget-shell-header">
+            <div>
+              <div class="widget-shell-title">
+                Try today’s speaking practice
+              </div>
+              <div class="widget-shell-sub">
+                Answer the question below using your own words
+              </div>
+            </div>
+          </div>
+
+          <p class="widget-shell-note">
+            When you’re ready, press <strong>“Record your response”</strong> and speak
+            for the full time. You can listen back before you submit.
+          </p>
+
+          <div class="widget-shell-frame">
+            <!-- Live widget -->
+            <div id="mss-widget-container"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MSS embed script: adjust school-id as needed this one is existing-->
   <script
-    src="/embed.js"
-    data-school-id="1"  <!-- adjust to the real school_id for Widget Academy -->
-  ></script>
+  src="https://widget.myspeakingscore.com/embed.js"
+  data-school-id="4772"
+  >
+</script>
+
 </body>
 </html>

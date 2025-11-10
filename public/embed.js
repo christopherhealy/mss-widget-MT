@@ -1,4 +1,7 @@
 // public/embed.js
+
+<div id="mss-widget-container"></div>
+
 (function () {
   const script = document.currentScript;
   if (!script) return;
@@ -23,10 +26,28 @@
         body: JSON.stringify(payload),
       });
     } catch (e) {
-      // best effort only
       console.warn("embed-event log failed:", e);
     }
   }
+
+  let iframeRef = null;
+
+  // Listen for height messages from the widget iframe
+  window.addEventListener("message", (event) => {
+    try {
+      const data = event.data || {};
+      if (!data || data.type !== "mss-widget-height") return;
+      if (!iframeRef || event.source !== iframeRef.contentWindow) return;
+
+      const h = Number(data.height || 0);
+      if (!h || h < 0) return;
+
+      // add a little padding
+      iframeRef.style.height = h + 20 + "px";
+    } catch (e) {
+      console.warn("mss widget height message error:", e);
+    }
+  });
 
   async function init() {
     try {
@@ -41,7 +62,7 @@
           type: "embed_error",
           status: res.status,
         });
-        return; // do not render iframe
+        return;
       }
 
       const info = await res.json();
@@ -54,18 +75,20 @@
           dailyLimit: info.dailyLimit,
           usedToday: info.usedToday,
         });
-        return; // quietly do nothing
+        return;
       }
 
       // All good → inject iframe
       const iframe = document.createElement("iframe");
       iframe.src =
         base + "/Widget.html?ID=" + encodeURIComponent(schoolId);
-      iframe.width = script.dataset.width || "800";
-      iframe.height = script.dataset.height || "420";
+      iframe.width = "100%";
       iframe.style.border = "0";
+      iframe.style.display = "block";
+      iframe.style.height = "600px"; // fallback height, will be resized
       iframe.loading = "lazy";
 
+      iframeRef = iframe;
       container.appendChild(iframe);
     } catch (err) {
       await logEmbedEvent({

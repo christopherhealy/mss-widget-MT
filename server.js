@@ -72,6 +72,45 @@ async function ensureSrcDir() {
   }
 }
 
+function slugifySchoolName(name) {
+  const base =
+    (name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "school";
+  return base;
+}
+let defaultWidgetConfig = null;
+let defaultWidgetForm = null;
+
+async function loadDefaultWidgetConfigAndForm() {
+  if (defaultWidgetConfig && defaultWidgetForm) {
+    return { config: defaultWidgetConfig, form: defaultWidgetForm };
+  }
+  const cfg = await readJson("config.json", defaultConfig);
+  const frm = await readJson("form.json", defaultForm);
+  defaultWidgetConfig = cfg;
+  defaultWidgetForm = frm;
+  return { config: cfg, form: frm };
+}
+
+async function getUniqueSlug(client, baseSlug) {
+  let slug = baseSlug;
+  let counter = 1;
+  // loop until we find a free slug
+  // using the same client so it works inside a transaction
+  /* eslint-disable no-constant-condition */
+  while (true) {
+    const { rows } = await client.query(
+      "SELECT 1 FROM schools WHERE slug = $1",
+      [slug]
+    );
+    if (!rows.length) return slug;
+    counter += 1;
+    slug = `${baseSlug}-${counter}`;
+  }
+}
+
 async function readJson(rel, fallback = {}) {
   await ensureSrcDir();
   const full = path.join(SRC_DIR, rel);
@@ -541,6 +580,97 @@ app.post("/api/embed-event", async (req, res) => {
   } catch (err) {
     console.error("POST /api/embed-event error:", err);
     res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// ---------- SCHOOL SIGNUP API ----------
+
+app.post("/api/signup", async (req, res) => {
+  const body = req.body || {};
+  const schoolName = (body.schoolName || "").trim();
+  const schoolWebsite = (body.schoolWebsite || "").trim();
+  const adminName = (body.adminName || "").trim();
+  const adminEmail = (body.adminEmail || "").trim();
+  const adminPassword = (body.adminPassword || "").trim();
+
+  if (!schoolName || !adminName || !adminEmail || !adminPassword) {
+    return res.status(400).json({
+      ok: false,
+      error: "missing_required_fields",
+      message: "School name, admin name, email and password are required.",
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const baseSlug = slugifySchoolName(schoolName);
+    const slug = await getUniqueSlug(client, baseSlug);
+
+    // Load default widget config/form for new school
+    const { config, form } = await loadDefaultWidgetConfigAndForm();
+
+    const settings = {
+      widgetConfig: config,
+      widgetForm: form,
+      billing: {
+        dailyLimit: 50, // sensible default for demos; adjust later
+        notifyOnLimit: true,
+        emailOnLimit: adminEmail,
+        autoBlockOnLimit: true,
+      },
+    };
+
+    const schoolRes = await client.query(
+      `INSERT INTO schools (slug, name, branding, settings)
+       VALUES ($1, $2, '{}'::jsonb, $3::jsonb)
+       RETURNING id`,
+      [slug, schoolName, settings]
+    );
+    const schoolId = schoolRes.rows[0].id;
+
+    // For now, store password as clear text / simple hash.
+    // Later you can swap to bcrypt.
+    const passwordHash = adminPassword; // TODO: hash
+
+    await client.query(
+      `INSERT INTO admins
+         (school_id, email, full_name, password_hash, is_owner, is_active)
+       VALUES ($1, $2, $3, $4, true, true)`,
+      [schoolId, adminEmail, adminName, passwordHash]
+    );
+
+    // Optional: store website in branding/settings for later use
+    if (schoolWebsite) {
+      await client.query(
+        `UPDATE schools
+         SET branding = jsonb_set(
+               COALESCE(branding, '{}'::jsonb),
+               '{website}', to_jsonb($2::text), true
+             )
+         WHERE id = $1`,
+        [schoolId, schoolWebsite]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      schoolId,
+      slug,
+    });
+  } catch (err) {
+    console.error("POST /api/signup error:", err);
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    return res
+      .status(500)
+      .json({ ok: false, error: "signup_failed", message: "Server error." });
+  } finally {
+    client.release();
   }
 });
 
