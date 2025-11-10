@@ -464,6 +464,86 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
+// ---------- EMBED CHECK & EVENTS ----------
+
+// Simple helper to get billing + usage for a school
+async function getSchoolBillingStatus(schoolId) {
+  const id = Number(schoolId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: "invalid_school_id" };
+  }
+
+  const { rows } = await pool.query(
+    `SELECT id, settings FROM schools WHERE id = $1`,
+    [id]
+  );
+  if (!rows.length) {
+    return { ok: false, error: "school_not_found" };
+  }
+
+  const school = rows[0];
+  const settings = school.settings || {};
+  const billing = settings.billing || {};
+
+  const dailyLimit = Number(
+    billing.dailyLimit !== undefined ? billing.dailyLimit : 0
+  );
+  let usedToday = 0;
+  let blocked = false;
+  let reason = null;
+
+  if (dailyLimit > 0) {
+    const { rows: usageRows } = await pool.query(
+      `SELECT COUNT(*) AS cnt
+       FROM submissions
+       WHERE school_id = $1
+         AND created_at::date = CURRENT_DATE`,
+      [school.id]
+    );
+    usedToday = Number(usageRows[0].cnt || 0);
+    blocked = usedToday >= dailyLimit;
+    if (blocked) reason = "limit_exceeded";
+  }
+
+  return {
+    ok: !blocked,
+    blocked,
+    reason,
+    dailyLimit,
+    usedToday,
+    remainingToday:
+      dailyLimit > 0 ? Math.max(0, dailyLimit - usedToday) : null,
+  };
+}
+
+// GET /api/embed-check?schoolId=1
+app.get("/api/embed-check", async (req, res) => {
+  try {
+    const status = await getSchoolBillingStatus(req.query.schoolId);
+    if (status.ok === false && !("blocked" in status)) {
+      // invalid_school_id or school_not_found
+      return res.status(400).json(status);
+    }
+    res.json(status);
+  } catch (err) {
+    console.error("GET /api/embed-check error:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// POST /api/embed-event  (log embed blocked/errors, etc.)
+app.post("/api/embed-event", async (req, res) => {
+  try {
+    const body = req.body || {};
+    console.log("📘 embed-event:", body);
+    // Later: insert into a table embed_events(school_id, type, message, created_at)
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("POST /api/embed-event error:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
 /* ---------- start ---------- */
 app.listen(PORT, () => {
   console.log(`✅ MSS Widget service listening on port ${PORT}`);
