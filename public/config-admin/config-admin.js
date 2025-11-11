@@ -336,14 +336,20 @@ console.log("✅ config-admin.js loaded");
   }
 
   // ----- preview overlay handlers -----
+   // ----- preview overlay handlers -----
   function openPreview() {
     if (!previewOverlay || !previewFrame) return;
+
+    if (!currentSchoolId) {
+      alert("Cannot open preview yet: school ID has not loaded.");
+      return;
+    }
 
     const base = window.location.origin.replace(/\/+$/, "");
     const url =
       base +
-      "/config-admin/widget-preview.html?slug=" +
-      encodeURIComponent(slug);
+      "/config-admin/widget-preview.html?schoolId=" +
+      encodeURIComponent(currentSchoolId);
 
     previewFrame.src = url;
     previewOverlay.classList.remove("mss-hidden");

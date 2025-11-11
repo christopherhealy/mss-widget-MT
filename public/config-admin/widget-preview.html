@@ -2,44 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>MSS Widget – Preview</title>
+    <title>MSS Widget preview</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Main MSS look & feel so the widget looks “real” -->
+    <!-- Use the main MSS theme so preview looks correct -->
     <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
   </head>
-  <body
-    style="
-      margin: 0;
-      padding: 24px;
-      background: radial-gradient(circle at top, #f9fbff 0, #f1f5f9 45%, #e5e7eb 100%);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
-        'Helvetica Neue', Arial, sans-serif;
-    "
-  >
-    <div
-      style="
-        max-width: 760px;
-        margin: 0 auto;
-        background: #ffffff;
-        border-radius: 16px;
-        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
-        padding: 24px;
-      "
-    >
-      <div id="mss-widget-container"></div>
-    </div>
+  <body style="margin:0; padding:24px; background:#f5f7fb;">
+    <div id="mss-widget-container"></div>
 
     <script>
       (function () {
-        // Read slug from ?slug=widget-academy etc
-        var params = new URLSearchParams(window.location.search);
-        var slug = (params.get("slug") || "mss-demo").trim();
+        const params = new URLSearchParams(window.location.search);
+        const schoolId = (params.get("schoolId") || "").trim();
 
-        // Dynamically inject the same embed snippet you give to schools
-        var s = document.createElement("script");
+        const container = document.getElementById("mss-widget-container");
+        if (!schoolId) {
+          if (container) {
+            container.innerHTML =
+              "<p style='font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#b00;padding:16px;'>No school ID was provided for this preview.</p>";
+          }
+          return;
+        }
+
+        // Dynamically inject the same embed snippet schools will use
+        const s = document.createElement("script");
         s.src = "/embed.js";
-        s.dataset.schoolId = slug; // embed.js uses data-school-id
+        s.setAttribute("data-school-id", schoolId);
         document.body.appendChild(s);
       })();
     </script>
