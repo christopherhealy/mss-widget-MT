@@ -1,0 +1,69 @@
+# -------------------------------------------------
+#  MSS Widget MT Project – .gitignore
+# -------------------------------------------------
+
+# ─── Core Node / Render environment ──────────────
+node_modules/
+.env
+.env.local
+.env.production
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ─── System / Editor junk ────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+*.tmp
+*.bak
+*.old
+
+# ─── Build + cache folders ───────────────────────
+dist/
+build/
+.cache/
+.vercel/
+.render/
+coverage/
+__pycache__/
+*.py[cod]
+
+# ─── Temporary data & runtime logs ───────────────
+tmp/
+temp/
+logs/
+*.csv
+/msswidget-log.csv
+/logs/
+*.sqlite
+*.db
+
+# ─── Local config files ──────────────────────────
+.vscode/
+.idea/
+*.iml
+*.sublime-*
+*.code-workspace
+
+# ─── Public folders we manage manually ───────────
+# (keep the structure but don’t track temp test content)
+public/WidgetAcademy/test*
+public/QA/
+public/Security/
+public/Utility/
+
+# ─── Render and deployment artifacts ─────────────
+render.yaml
+render-build.sh
+mss-git.sh
+*.render-log
+*.deploy-log
+
+# ─── OS + Git meta ───────────────────────────────
+*.orig
+*.rej
+*.patch
+*.bak~
