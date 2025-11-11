@@ -371,6 +371,81 @@ app.get("/api/admin/widget/:slug", async (req, res) => {
   }
 });
 
+// UPDATE logo for a school (by slug) from a data:URL
+app.put("/api/admin/widget/:slug/logo", async (req, res) => {
+  const { slug } = req.params;
+  const body = req.body || {};
+  const dataUrl = (body.dataUrl || "").trim();
+
+  if (!dataUrl) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "missing_logo_data", message: "dataUrl is required" });
+  }
+
+  // Expect data: MIME;base64,ENCODED or just base64 string
+  let mimeType = "image/png";
+  let base64Part = dataUrl;
+  const match = dataUrl.match(/^data:(.+);base64,(.+)$/);
+  if (match) {
+    mimeType = match[1] || "image/png";
+    base64Part = match[2] || "";
+  }
+
+  let buf;
+  try {
+    buf = Buffer.from(base64Part, "base64");
+  } catch (e) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "invalid_base64", message: "Could not decode logo data" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const schoolRes = await client.query(
+      "SELECT id FROM schools WHERE slug = $1",
+      [slug]
+    );
+    if (!schoolRes.rowCount) {
+      await client.query("ROLLBACK");
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+
+    const schoolId = schoolRes.rows[0].id;
+
+    // Remove any existing logo
+    await client.query(
+      "DELETE FROM school_assets WHERE school_id = $1 AND kind = $2",
+      [schoolId, "widget-logo"]
+    );
+
+    // Insert new one
+    await client.query(
+      `
+        INSERT INTO school_assets (school_id, kind, mime_type, data)
+        VALUES ($1, $2, $3, $4)
+      `,
+      [schoolId, "widget-logo", mimeType, buf]
+    );
+
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("PUT /api/admin/widget/:slug/logo error:", err);
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    res.status(500).json({ ok: false, error: "server_error" });
+  } finally {
+    client.release();
+  }
+});
+
 // UPDATE widget config/form/billing for a school (by slug)
 app.put("/api/admin/widget/:slug", async (req, res) => {
   const { slug } = req.params;

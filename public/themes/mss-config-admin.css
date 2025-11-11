@@ -518,3 +518,72 @@
   border: none;
   background: #f8fafc;
 }
+.mss-admin-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.mss-admin-card-body {
+  margin-top: 4px;
+}
+
+.mss-admin-toggle {
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #4b5563;
+}
+
+.mss-admin-card.is-collapsed .mss-admin-card-body {
+  display: none;
+}
+
+.mss-admin-footer-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.mss-admin-secondary-btn {
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.mss-branding-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.mss-branding-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.mss-branding-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  object-fit: contain;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.mss-branding-controls {
+  flex: 1;
+  min-width: 220px;
+}

@@ -10,10 +10,9 @@
     <!-- Config-admin specific styles -->
     <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
   </head>
-
   <body class="mss-admin-body">
     <div class="mss-admin-shell">
-      <!-- Header -->
+      <!-- Header / chrome -->
       <header class="mss-admin-header">
         <div class="mss-admin-brand">
           <div class="mss-admin-mark">MSS</div>
@@ -33,283 +32,521 @@
         </div>
       </header>
 
-      <!-- Tabs -->
+      <!-- Top nav: static "Configuration" label + buttons -->
       <nav class="mss-admin-tabs">
-        <a id="mssAdminTabConfig" href="#" class="mss-admin-tab is-active">
+        <div class="mss-admin-tab mss-admin-tab--static is-active">
           Configuration
-        </a>
-        <a id="mssAdminTabQuestions" href="#" class="mss-admin-tab">
+        </div>
+        <button
+          id="mssAdminBtnQuestions"
+          type="button"
+          class="mss-admin-tab"
+        >
           Questions
-        </a>
-        <a
-          id="mssAdminTabReports"
-          href="#"
+        </button>
+        <button
+          id="mssAdminBtnReports"
+          type="button"
           class="mss-admin-tab mss-admin-tab--disabled"
         >
           Reports
-        </a>
+        </button>
       </nav>
 
       <main class="mss-admin-main">
+        <!-- Left: configuration form -->
         <section class="mss-admin-column mss-admin-column-left">
           <form id="mssConfigForm" class="mss-admin-form">
             <h1 class="mss-admin-page-title">Widget configuration</h1>
             <p class="mss-admin-intro">
               Control how your widget looks and behaves. Question text and
-              ordering can be edited on the <strong>Questions</strong> tab.
+              ordering can be edited on the
+              <strong>Questions</strong> view.
             </p>
 
-            <!-- Brand & Text -->
-            <section class="mss-admin-card">
-              <h2 class="mss-admin-section-title">Brand &amp; text</h2>
-
-              <label class="mss-admin-field">
-                <span class="mss-admin-label">Headline</span>
-                <input
-                  id="cfgHeadline"
-                  type="text"
-                  class="mss-admin-input"
-                  placeholder="CEFR Assessment"
-                />
-              </label>
-
-              <label class="mss-admin-field">
-                <span class="mss-admin-label">Powered by label</span>
-                <input
-                  id="cfgPoweredBy"
-                  type="text"
-                  class="mss-admin-input"
-                  placeholder="Powered by MSS Vox"
-                />
-              </label>
-
-              <label class="mss-admin-checkbox">
-                <input
-                  id="cfgEditableHeadline"
-                  type="checkbox"
-                  class="mss-admin-checkbox-input"
-                />
-                <span>Allow headline editing in future (keep flexible)</span>
-              </label>
-            </section>
-
-            <!-- Theme & Behaviour -->
-            <section class="mss-admin-card">
-              <h2 class="mss-admin-section-title">Theme &amp; behaviour</h2>
-
-              <label class="mss-admin-field">
-                <span class="mss-admin-label">Theme</span>
-                <select id="cfgTheme" class="mss-admin-select">
-                  <option value="default">MSS default</option>
-                  <option value="apple">Apple-style light</option>
-                  <option value="pink">Pink accent</option>
-                </select>
-              </label>
-
-              <label class="mss-admin-checkbox">
-                <input
-                  id="cfgAllowUpload"
-                  type="checkbox"
-                  class="mss-admin-checkbox-input"
-                />
-                <span>Allow students to upload audio files</span>
-              </label>
-
-              <div class="mss-admin-grid mss-admin-grid-2">
+            <!-- Brand & text -->
+            <section class="mss-admin-card" data-section="brand">
+              <div class="mss-admin-card-header">
+                <h2 class="mss-admin-section-title">Brand &amp; text</h2>
+                <button
+                  type="button"
+                  class="mss-admin-toggle"
+                  aria-expanded="true"
+                >
+                  Collapse
+                </button>
+              </div>
+              <div class="mss-admin-card-body">
                 <label class="mss-admin-field">
-                  <span class="mss-admin-label">Min recording length (sec)</span>
+                  <span class="mss-admin-label">Headline</span>
                   <input
-                    id="cfgMinSec"
-                    type="number"
+                    id="cfgHeadline"
+                    type="text"
                     class="mss-admin-input"
-                    placeholder="20"
+                    placeholder="CEFR Assessment"
                   />
                 </label>
 
                 <label class="mss-admin-field">
-                  <span class="mss-admin-label">Max recording length (sec)</span>
+                  <span class="mss-admin-label">Powered by label</span>
                   <input
-                    id="cfgMaxSec"
-                    type="number"
+                    id="cfgPoweredBy"
+                    type="text"
                     class="mss-admin-input"
-                    placeholder="100"
+                    placeholder="Powered by MSS Vox"
                   />
+                </label>
+
+                <label class="mss-admin-checkbox">
+                  <input
+                    id="cfgEditableHeadline"
+                    type="checkbox"
+                    class="mss-admin-checkbox-input"
+                  />
+                  <span>Allow headline editing in future (keep flexible)</span>
                 </label>
               </div>
             </section>
 
-            <!-- Buttons & Labels -->
-            <section class="mss-admin-card">
-              <h2 class="mss-admin-section-title">Buttons &amp; labels</h2>
-              <p class="mss-admin-help">
-                Choose which elements are visible and how each button is
-                labelled in the widget.
-              </p>
-
-              <div class="mss-admin-subsection">
-                <h3 class="mss-admin-subtitle">Visibility</h3>
-                <div class="mss-admin-checkbox-grid">
-                  <label class="mss-admin-checkbox">
-                    <input id="showHeadline" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show headline</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showRecordButton" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show “Record” button</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showPrevButton" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show “Previous” button</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showNextButton" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show “Next” button</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showStopButton" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show “Stop” button</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showUploadButton" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show upload button</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showPoweredByLabel" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show “Powered by” label</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showNotRecordingLabel" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show “Not recording” label</span>
-                  </label>
-                  <label class="mss-admin-checkbox">
-                    <input id="showSubmitButton" type="checkbox" class="mss-admin-checkbox-input" />
-                    <span>Show “Submit for scoring” button</span>
-                  </label>
-                </div>
+            <!-- Theme & timing / upload -->
+            <section class="mss-admin-card" data-section="theme">
+              <div class="mss-admin-card-header">
+                <h2 class="mss-admin-section-title">
+                  Theme, timing &amp; upload
+                </h2>
+                <button
+                  type="button"
+                  class="mss-admin-toggle"
+                  aria-expanded="true"
+                >
+                  Collapse
+                </button>
               </div>
-
-              <div class="mss-admin-subsection">
-                <h3 class="mss-admin-subtitle">Text labels</h3>
+              <div class="mss-admin-card-body">
                 <div class="mss-admin-grid mss-admin-grid-2">
                   <label class="mss-admin-field">
-                    <span class="mss-admin-label">Record button</span>
-                    <input id="labelRecord" type="text" class="mss-admin-input" placeholder="Record your response" />
+                    <span class="mss-admin-label">Theme</span>
+                    <select id="cfgTheme" class="mss-admin-input">
+                      <option value="default">Default</option>
+                      <option value="apple">Apple</option>
+                      <option value="pink">Pink</option>
+                      <option value="master">Master</option>
+                    </select>
                   </label>
-                  <label class="mss-admin-field">
-                    <span class="mss-admin-label">Previous button</span>
-                    <input id="labelPrev" type="text" class="mss-admin-input" placeholder="Previous" />
+
+                  <label class="mss-admin-checkbox mss-admin-field">
+                    <input
+                      id="cfgAllowUpload"
+                      type="checkbox"
+                      class="mss-admin-checkbox-input"
+                    />
+                    <span>Allow students to upload audio files</span>
                   </label>
+                </div>
+
+                <div class="mss-admin-grid mss-admin-grid-2">
                   <label class="mss-admin-field">
-                    <span class="mss-admin-label">Next button</span>
-                    <input id="labelNext" type="text" class="mss-admin-input" placeholder="Next" />
+                    <span class="mss-admin-label">Minimum length (seconds)</span>
+                    <input
+                      id="cfgMinSec"
+                      type="number"
+                      min="0"
+                      class="mss-admin-input"
+                      placeholder="30"
+                    />
                   </label>
+
                   <label class="mss-admin-field">
-                    <span class="mss-admin-label">Stop button</span>
-                    <input id="labelStop" type="text" class="mss-admin-input" placeholder="Stop" />
+                    <span class="mss-admin-label">Maximum length (seconds)</span>
+                    <input
+                      id="cfgMaxSec"
+                      type="number"
+                      min="0"
+                      class="mss-admin-input"
+                      placeholder="61"
+                    />
                   </label>
-                  <label class="mss-admin-field">
-                    <span class="mss-admin-label">Upload button</span>
-                    <input id="labelUpload" type="text" class="mss-admin-input" placeholder="Choose an audio file" />
+                </div>
+
+                <p class="mss-admin-help">
+                  These limits are enforced when students submit audio for
+                  scoring.
+                </p>
+              </div>
+            </section>
+
+            <!-- Buttons visibility & labels -->
+            <section class="mss-admin-card" data-section="buttons">
+              <div class="mss-admin-card-header">
+                <h2 class="mss-admin-section-title">Buttons &amp; labels</h2>
+                <button
+                  type="button"
+                  class="mss-admin-toggle"
+                  aria-expanded="true"
+                >
+                  Collapse
+                </button>
+              </div>
+              <div class="mss-admin-card-body">
+                <p class="mss-admin-help">
+                  Choose which elements are visible and how each button is
+                  labelled in the widget.
+                </p>
+
+                <div class="mss-admin-subsection">
+                  <h3 class="mss-admin-subtitle">Visibility</h3>
+
+                  <div class="mss-admin-checkbox-grid">
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showHeadline"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show headline</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showRecordButton"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show “Record” button</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showPrevButton"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show “Previous” button</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showNextButton"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show “Next” button</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showStopButton"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show “Stop” button</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showUploadButton"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show upload button</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showPoweredByLabel"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show “Powered by” label</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showNotRecordingLabel"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show “Not recording” label</span>
+                    </label>
+
+                    <label class="mss-admin-checkbox">
+                      <input
+                        id="showSubmitButton"
+                        type="checkbox"
+                        class="mss-admin-checkbox-input"
+                      />
+                      <span>Show “Submit for scoring” button</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="mss-admin-subsection">
+                  <h3 class="mss-admin-subtitle">Text labels</h3>
+
+                  <div class="mss-admin-grid mss-admin-grid-2">
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label">Record button label</span>
+                      <input
+                        id="labelRecord"
+                        type="text"
+                        class="mss-admin-input"
+                        placeholder="Record your response"
+                      />
+                    </label>
+
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label">Previous button label</span>
+                      <input
+                        id="labelPrev"
+                        type="text"
+                        class="mss-admin-input"
+                        placeholder="Previous"
+                      />
+                    </label>
+
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label">Next button label</span>
+                      <input
+                        id="labelNext"
+                        type="text"
+                        class="mss-admin-input"
+                        placeholder="Next"
+                      />
+                    </label>
+
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label">Stop button label</span>
+                      <input
+                        id="labelStop"
+                        type="text"
+                        class="mss-admin-input"
+                        placeholder="Stop"
+                      />
+                    </label>
+
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label">Upload button label</span>
+                      <input
+                        id="labelUpload"
+                        type="text"
+                        class="mss-admin-input"
+                        placeholder="Choose an audio file"
+                      />
+                    </label>
+
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label">Submit button label</span>
+                      <input
+                        id="labelSubmit"
+                        type="text"
+                        class="mss-admin-input"
+                        placeholder="Submit for scoring"
+                      />
+                    </label>
+
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label">“Not recording” label</span>
+                      <input
+                        id="labelNotRecording"
+                        type="text"
+                        class="mss-admin-input"
+                        placeholder="Not recording"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- API & logging -->
+            <section class="mss-admin-card" data-section="api">
+              <div class="mss-admin-card-header">
+                <h2 class="mss-admin-section-title">MSS API &amp; logging</h2>
+                <button
+                  type="button"
+                  class="mss-admin-toggle"
+                  aria-expanded="true"
+                >
+                  Collapse
+                </button>
+              </div>
+              <div class="mss-admin-card-body">
+                <label class="mss-admin-field">
+                  <span class="mss-admin-label">MSS API base URL</span>
+                  <input
+                    id="cfgApiBaseUrl"
+                    type="text"
+                    class="mss-admin-input"
+                    placeholder="https://app.myspeakingscore.com"
+                  />
+                </label>
+
+                <label class="mss-admin-field">
+                  <span class="mss-admin-label">API key</span>
+                  <input
+                    id="cfgApiKey"
+                    type="text"
+                    class="mss-admin-input"
+                    autocomplete="off"
+                  />
+                </label>
+
+                <label class="mss-admin-field">
+                  <span class="mss-admin-label">API secret</span>
+                  <input
+                    id="cfgApiSecret"
+                    type="password"
+                    class="mss-admin-input"
+                    autocomplete="off"
+                  />
+                </label>
+
+                <div class="mss-admin-subsection">
+                  <h3 class="mss-admin-subtitle">Submission logging</h3>
+
+                  <label class="mss-admin-checkbox">
+                    <input
+                      id="cfgLoggerEnabled"
+                      type="checkbox"
+                      class="mss-admin-checkbox-input"
+                    />
+                    <span>Log submissions to an external endpoint</span>
                   </label>
+
                   <label class="mss-admin-field">
-                    <span class="mss-admin-label">Submit button</span>
-                    <input id="labelSubmit" type="text" class="mss-admin-input" placeholder="Submit for scoring" />
-                  </label>
-                  <label class="mss-admin-field">
-                    <span class="mss-admin-label">“Not recording” label</span>
-                    <input id="labelNotRecording" type="text" class="mss-admin-input" placeholder="Not recording" />
+                    <span class="mss-admin-label">Logger URL</span>
+                    <input
+                      id="cfgLoggerUrl"
+                      type="text"
+                      class="mss-admin-input"
+                      placeholder="https://example.com/log-endpoint"
+                    />
                   </label>
                 </div>
               </div>
             </section>
 
-            <!-- API & Logging -->
-            <section class="mss-admin-card">
-              <h2 class="mss-admin-section-title">MSS API &amp; logging</h2>
-
-              <label class="mss-admin-field">
-                <span class="mss-admin-label">API base URL</span>
-                <input id="cfgApiBaseUrl" type="text" class="mss-admin-input" placeholder="https://app.myspeakingscore.com" />
-              </label>
-              <label class="mss-admin-field">
-                <span class="mss-admin-label">API key</span>
-                <input id="cfgApiKey" type="text" class="mss-admin-input" autocomplete="off" />
-              </label>
-              <label class="mss-admin-field">
-                <span class="mss-admin-label">API secret</span>
-                <input id="cfgApiSecret" type="password" class="mss-admin-input" autocomplete="off" />
-              </label>
-
-              <div class="mss-admin-subsection">
-                <h3 class="mss-admin-subtitle">Submission logging</h3>
-                <label class="mss-admin-checkbox">
-                  <input id="cfgLoggerEnabled" type="checkbox" class="mss-admin-checkbox-input" />
-                  <span>Enable submission logging</span>
-                </label>
+            <!-- Usage & safety limits -->
+            <section class="mss-admin-card" data-section="usage">
+              <div class="mss-admin-card-header">
+                <h2 class="mss-admin-section-title">
+                  Usage &amp; safety limits
+                </h2>
+                <button
+                  type="button"
+                  class="mss-admin-toggle"
+                  aria-expanded="true"
+                >
+                  Collapse
+                </button>
+              </div>
+              <div class="mss-admin-card-body">
                 <label class="mss-admin-field">
-                  <span class="mss-admin-label">Logger URL</span>
-                  <input id="cfgLoggerUrl" type="text" class="mss-admin-input" placeholder="https://example.com/log-endpoint" />
+                  <span class="mss-admin-label">Daily limit</span>
+                  <input
+                    id="cfgDailyLimit"
+                    type="number"
+                    min="0"
+                    class="mss-admin-input"
+                    placeholder="50"
+                  />
+                  <span class="mss-admin-help">
+                    Maximum submissions per day for this school. Use 0 for “no
+                    limit” (not recommended in production).
+                  </span>
+                </label>
+
+                <label class="mss-admin-checkbox">
+                  <input
+                    id="cfgNotifyOnLimit"
+                    type="checkbox"
+                    class="mss-admin-checkbox-input"
+                  />
+                  <span>Email the admin when the daily limit is reached</span>
+                </label>
+
+                <label class="mss-admin-checkbox">
+                  <input
+                    id="cfgAutoBlockOnLimit"
+                    type="checkbox"
+                    class="mss-admin-checkbox-input"
+                  />
+                  <span
+                    >Hide the widget automatically when the limit is
+                    reached</span
+                  >
                 </label>
               </div>
             </section>
 
-            <!-- Usage & Limits -->
-            <section class="mss-admin-card">
-              <h2 class="mss-admin-section-title">Usage &amp; safety limits</h2>
-
-              <label class="mss-admin-field">
-                <span class="mss-admin-label">Daily limit</span>
-                <input id="cfgDailyLimit" type="number" min="0" class="mss-admin-input" placeholder="50" />
-                <span class="mss-admin-help">Use 0 for “no limit” (not recommended).</span>
-              </label>
-              <label class="mss-admin-checkbox">
-                <input id="cfgNotifyOnLimit" type="checkbox" class="mss-admin-checkbox-input" />
-                <span>Email admin when limit is reached</span>
-              </label>
-              <label class="mss-admin-checkbox">
-                <input id="cfgAutoBlockOnLimit" type="checkbox" class="mss-admin-checkbox-input" />
-                <span>Hide widget automatically when limit reached</span>
-              </label>
+            <!-- Branding (logo) -->
+            <section class="mss-admin-card" data-section="branding">
+              <div class="mss-admin-card-header">
+                <h2 class="mss-admin-section-title">Branding</h2>
+                <button
+                  type="button"
+                  class="mss-admin-toggle"
+                  aria-expanded="true"
+                >
+                  Collapse
+                </button>
+              </div>
+              <div class="mss-admin-card-body">
+                <div class="mss-branding-row">
+                  <div class="mss-branding-preview">
+                    <img
+                      id="mssBrandLogoImg"
+                      alt="Current logo preview"
+                      class="mss-branding-logo"
+                      style="display:none;"
+                    />
+                    <div
+                      id="mssBrandLogoStatus"
+                      class="mss-admin-help"
+                    >
+                      No logo uploaded yet.
+                    </div>
+                  </div>
+                  <div class="mss-branding-controls">
+                    <label class="mss-admin-field">
+                      <span class="mss-admin-label"
+                        >Upload logo (PNG or JPG)</span
+                      >
+                      <input
+                        id="mssBrandLogoFile"
+                        type="file"
+                        accept="image/*"
+                        class="mss-admin-input"
+                      />
+                    </label>
+                    <p class="mss-admin-help">
+                      Recommended: square image, at least 200×200 px. This logo
+                      is used in the widget header for this school.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </section>
 
-            <!-- Footer -->
+            <!-- Footer: status + Save / Open widget -->
             <div class="mss-admin-footer">
               <p id="mssAdminStatus" class="mss-admin-status"></p>
               <div class="mss-admin-footer-actions">
+                <button
+                  type="button"
+                  id="mssOpenWidget"
+                  class="mss-admin-secondary-btn"
+                >
+                  Open widget
+                </button>
                 <button type="submit" class="mss-admin-primary-btn">
                   Save changes
-                </button>
-                <button type="button" id="mssOpenPreview" class="mss-admin-secondary-btn">
-                  Preview widget
                 </button>
               </div>
             </div>
           </form>
         </section>
       </main>
-    </div>
-
-    <!-- Modal -->
-    <div id="mssPreviewOverlay" class="mss-admin-overlay mss-hidden">
-      <div class="mss-admin-overlay-backdrop"></div>
-      <div class="mss-admin-overlay-inner">
-        <div class="mss-admin-overlay-header">
-          <div class="mss-admin-overlay-title">Widget preview</div>
-          <button
-            type="button"
-            id="mssPreviewClose"
-            class="mss-admin-overlay-close"
-            aria-label="Close preview"
-          >
-            ×
-          </button>
-        </div>
-        <iframe
-          id="mssPreviewFrame"
-          class="mss-admin-overlay-frame"
-          title="Widget preview"
-        ></iframe>
-      </div>
     </div>
 
     <script src="/config-admin/config-admin.js?v=1"></script>

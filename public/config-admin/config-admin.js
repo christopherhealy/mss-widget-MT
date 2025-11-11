@@ -13,41 +13,38 @@ console.log("✅ config-admin.js loaded");
     schoolSlugEl.textContent = slug;
   }
 
-  // ----- top nav links -----
-  const makeUrl = (path) => `${path}?slug=${encodeURIComponent(slug)}`;
+  // ----- top nav buttons -----
+  const btnQuestions = qs("#mssAdminBtnQuestions");
+  const btnReports = qs("#mssAdminBtnReports");
 
-  const tabConfig = qs("#mssAdminTabConfig");
-  const tabQuestions = qs("#mssAdminTabQuestions");
-  const tabReports = qs("#mssAdminTabReports");
+  if (btnQuestions) {
+    btnQuestions.addEventListener("click", () => {
+      window.location.href =
+        "/questions-admin/?slug=" + encodeURIComponent(slug);
+    });
+  }
 
-  if (tabConfig) {
-    tabConfig.href = makeUrl("/config-admin/");
-    tabConfig.classList.add("is-active");
-  }
-  if (tabQuestions) {
-    tabQuestions.href = makeUrl("/questions-admin/");
-  }
-  if (tabReports) {
-    tabReports.href = makeUrl("/reports/");
-    tabReports.classList.add("mss-admin-tab--disabled");
+  if (btnReports) {
+    // For now, just keep it disabled / no-op
+    btnReports.disabled = true;
   }
 
   const formEl = qs("#mssConfigForm");
   const statusEl = qs("#mssAdminStatus");
 
-  // preview modal elements
-  const previewBtn = qs("#mssOpenPreview");
-  const previewOverlay = qs("#mssPreviewOverlay");
-  const previewFrame = qs("#mssPreviewFrame");
-  const previewClose = qs("#mssPreviewClose");
-  const previewBackdrop = previewOverlay
-    ? previewOverlay.querySelector(".mss-admin-overlay-backdrop")
-    : null;
+  // Branding elements
+  const logoImgEl = qs("#mssBrandLogoImg");
+  const logoStatusEl = qs("#mssBrandLogoStatus");
+  const logoFileEl = qs("#mssBrandLogoFile");
+
+  // "Open widget" button
+  const openWidgetBtn = qs("#mssOpenWidget");
 
   let currentSchoolId = null;
   let currentConfig = {};
   let currentForm = {};
   let currentBilling = {};
+  let pendingLogoDataUrl = null; // data: URL for logo upload
 
   function setStatus(msg, cls) {
     if (!statusEl) return;
@@ -55,11 +52,53 @@ console.log("✅ config-admin.js loaded");
     statusEl.className = "mss-admin-status" + (cls ? " " + cls : "");
   }
 
-  // ----- load config from server and populate form -----
+  // ----- Collapsible sections -----
+  function initCollapsibles() {
+    const toggles = document.querySelectorAll(".mss-admin-toggle");
+    toggles.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const card = btn.closest(".mss-admin-card");
+        if (!card) return;
+        const collapsed = card.classList.toggle("is-collapsed");
+        btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        btn.textContent = collapsed ? "Expand" : "Collapse";
+      });
+    });
+  }
+
+  // ----- Load logo from server -----
+  async function loadLogo() {
+    if (!logoImgEl || !logoStatusEl) return;
+    logoStatusEl.textContent = "Checking for logo…";
+    logoImgEl.style.display = "none";
+
+    try {
+      const url =
+        "/api/widget/" +
+        encodeURIComponent(slug) +
+        "/image/widget-logo";
+      const res = await fetch(url);
+      if (!res.ok) {
+        logoStatusEl.textContent = "No logo uploaded yet.";
+        return;
+      }
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      logoImgEl.src = objUrl;
+      logoImgEl.style.display = "block";
+      logoStatusEl.textContent = "Current logo";
+    } catch (err) {
+      console.error("loadLogo error:", err);
+      logoStatusEl.textContent = "Could not load logo.";
+      logoImgEl.style.display = "none";
+    }
+  }
+
+  // ----- read config from server and populate form -----
   async function loadConfig() {
     try {
       setStatus("Loading configuration…", "is-working");
-      const url = `/api/admin/widget/${encodeURIComponent(slug)}`;
+      const url = "/api/admin/widget/" + encodeURIComponent(slug);
       const res = await fetch(url, { headers: { Accept: "application/json" } });
       const body = await res.json().catch(() => ({}));
 
@@ -95,33 +134,29 @@ console.log("✅ config-admin.js loaded");
         );
       }
 
-      // --- Theme & behaviour ---
+      // --- Theme & timing / upload ---
       const cfgTheme = qs("#cfgTheme");
       const cfgAllowUpload = qs("#cfgAllowUpload");
       const cfgMinSec = qs("#cfgMinSec");
       const cfgMaxSec = qs("#cfgMaxSec");
 
-      if (cfgTheme) {
-        cfgTheme.value = currentConfig.theme || "default";
-      }
+      if (cfgTheme) cfgTheme.value = currentConfig.theme || "default";
 
       if (cfgAllowUpload) {
-        cfgAllowUpload.checked = !!(
-          currentConfig.Permitupload ?? true
-        );
+        cfgAllowUpload.checked = !!(currentConfig.Permitupload ?? true);
       }
 
       if (cfgMinSec) {
         cfgMinSec.value =
           currentConfig.audioMinSeconds != null
             ? currentConfig.audioMinSeconds
-            : 20;
+            : 30;
       }
       if (cfgMaxSec) {
         cfgMaxSec.value =
           currentConfig.audioMaxSeconds != null
             ? currentConfig.audioMaxSeconds
-            : 100;
+            : 61;
       }
 
       // --- Buttons visibility ---
@@ -141,7 +176,6 @@ console.log("✅ config-admin.js loaded");
       Object.entries(visMap).forEach(([id, key]) => {
         const el = qs("#" + id);
         if (!el) return;
-        // default true if not set
         el.checked = show[key] ?? true;
       });
 
@@ -195,6 +229,9 @@ console.log("✅ config-admin.js loaded");
       }
 
       setStatus("Configuration loaded.", "is-ok");
+
+      // Load logo once config is known
+      loadLogo();
     } catch (err) {
       console.error("loadConfig exception:", err);
       setStatus("Network error while loading configuration.", "is-error");
@@ -308,7 +345,7 @@ console.log("✅ config-admin.js loaded");
 
     try {
       setStatus("Saving…", "is-working");
-      const url = `/api/admin/widget/${encodeURIComponent(slug)}`;
+      const url = "/api/admin/widget/" + encodeURIComponent(slug);
       const res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -325,7 +362,42 @@ console.log("✅ config-admin.js loaded");
         return;
       }
 
-      setStatus("Saved. Re-open preview to see changes.", "is-ok");
+      // Config saved OK → now handle logo if needed
+      if (pendingLogoDataUrl) {
+        try {
+          const logoRes = await fetch(
+            "/api/admin/widget/" + encodeURIComponent(slug) + "/logo",
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dataUrl: pendingLogoDataUrl }),
+            }
+          );
+          const logoBody = await logoRes.json().catch(() => ({}));
+          if (!logoRes.ok || !logoBody.ok) {
+            setStatus(
+              logoBody.message ||
+                logoBody.error ||
+                "Configuration saved, but logo upload failed.",
+              "is-error"
+            );
+            console.error("logo upload error:", logoBody);
+          } else {
+            pendingLogoDataUrl = null;
+            setStatus("Configuration and logo saved.", "is-ok");
+            loadLogo();
+          }
+        } catch (err) {
+          console.error("logo upload exception:", err);
+          setStatus(
+            "Configuration saved, but logo upload failed.",
+            "is-error"
+          );
+        }
+      } else {
+        setStatus("Configuration saved.", "is-ok");
+      }
+
       currentConfig = configOut;
       currentForm = formOut;
       currentBilling = billingOut;
@@ -335,48 +407,54 @@ console.log("✅ config-admin.js loaded");
     }
   }
 
-  // ----- preview overlay handlers -----
-   // ----- preview overlay handlers -----
-  function openPreview() {
-    if (!previewOverlay || !previewFrame) return;
+  // ----- logo file selection → preview & stage for upload -----
+  function initLogoUpload() {
+    if (!logoFileEl) return;
+    logoFileEl.addEventListener("change", () => {
+      const file = logoFileEl.files && logoFileEl.files[0];
+      if (!file) return;
 
-    if (!currentSchoolId) {
-      alert("Cannot open preview yet: school ID has not loaded.");
-      return;
-    }
+      if (!file.type.startsWith("image/")) {
+        if (logoStatusEl) {
+          logoStatusEl.textContent = "Please choose an image file.";
+        }
+        logoFileEl.value = "";
+        return;
+      }
 
-    const base = window.location.origin.replace(/\/+$/, "");
-    const url =
-      base +
-      "/config-admin/widget-preview.html?schoolId=" +
-      encodeURIComponent(currentSchoolId);
-
-    previewFrame.src = url;
-    previewOverlay.classList.remove("mss-hidden");
+      const reader = new FileReader();
+      reader.onload = () => {
+        pendingLogoDataUrl = reader.result;
+        if (logoImgEl && typeof reader.result === "string") {
+          logoImgEl.src = reader.result;
+          logoImgEl.style.display = "block";
+        }
+        if (logoStatusEl) {
+          logoStatusEl.textContent =
+            "Logo ready. It will be uploaded when you click Save.";
+        }
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
-  function closePreview() {
-    if (!previewOverlay) return;
-    previewOverlay.classList.add("mss-hidden");
+  // ----- Open widget in new tab -----
+  function initOpenWidget() {
+    if (!openWidgetBtn) return;
+    openWidgetBtn.addEventListener("click", () => {
+      const url =
+        "/Widget.html?slug=" + encodeURIComponent(slug) + "&from=admin";
+      window.open(url, "_blank", "noopener");
+    });
   }
-
-  if (previewBtn) {
-    previewBtn.addEventListener("click", openPreview);
-  }
-  if (previewClose) {
-    previewClose.addEventListener("click", closePreview);
-  }
-  if (previewBackdrop) {
-    previewBackdrop.addEventListener("click", closePreview);
-  }
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closePreview();
-  });
 
   // ----- wire form submit + initial load -----
   if (formEl) {
     formEl.addEventListener("submit", saveConfig);
   }
 
+  initCollapsibles();
+  initLogoUpload();
+  initOpenWidget();
   loadConfig();
 })();
