@@ -1,58 +1,33 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# === MSS Widget MT Git Workflow Script ===
-# Usage: ./mss-git.sh "Your commit message here"
-# If you don’t pass a message, it will prompt you.
+# Simple helper to show status, commit, and push to main.
 
-set -e  # exit on first error
-
-REPO="$HOME/Desktop/mss-widget-MT"
-
-echo "📁 Moving to repo: $REPO"
-cd "$REPO" || { echo "❌ Repo not found at $REPO"; exit 1; }
-
-echo
-echo "🔍 Current status:"
+echo "👉 Current Git status:"
 git status
 echo
 
-# Commit message: from argument or prompt
-if [ -n "$1" ]; then
-  COMMIT_MSG="$1"
+# If you pass a commit message as arguments, use that.
+# Otherwise, ask for one.
+if [ "$#" -gt 0 ]; then
+  msg="$*"
 else
-  read -rp "✏️  Commit message (leave empty to skip commit): " COMMIT_MSG
+  read -rp "Commit message: " msg
 fi
 
-# Commit (optional)
-if [ -n "$COMMIT_MSG" ]; then
-  echo
-  echo "➕ Staging all changes..."
-  git add .
-
-  if git diff --cached --quiet; then
-    echo "ℹ️  No changes staged; skipping commit."
-  else
-    echo "💾 Committing with message: \"$COMMIT_MSG\""
-    git commit -m "$COMMIT_MSG"
-  fi
-else
-  echo "⏭  Skipping commit step."
+if [ -z "$msg" ]; then
+  echo "❌ No commit message given, aborting."
+  exit 1
 fi
 
 echo
-echo "📥 Pulling latest from origin/main with rebase..."
-git pull --rebase origin main || {
-  echo "⚠️  Pull/rebase failed. You may need to resolve conflicts manually."
-  exit 1
-}
+echo "➕ Adding all changes…"
+git add .
 
-echo
-echo "📤 Pushing to origin/main..."
-git push origin main || {
-  echo "⚠️  Push failed. Try 'git push origin main --force' if you're sure."
-  exit 1
-}
+echo "💾 Committing with message: $msg"
+git commit -m "$msg"
 
-echo
-echo "✅ Done. Current status:"
-git status
+echo "🚀 Pushing to origin/main…"
+git push origin main
+
+echo "✅ Done. Render will auto-deploy on push."
