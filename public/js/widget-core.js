@@ -1,6 +1,7 @@
-
 console.log("✅ widget-core.js loaded");
-/* ===== Basic state ===== */
+
+/* ===== Utilities & shared state ===== */
+
 const $ = (id) => document.getElementById(id);
 
 let FORM = null;
@@ -20,7 +21,8 @@ let submitTimerId = null;
 let submitStart = 0;
 let dashboardWindow = null;
 
-/* ===== Helpers ===== */
+/* ---------- helpers ---------- */
+
 function mmss(ms) {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
@@ -48,6 +50,7 @@ function showDebug(obj) {
   if (!el) return;
   el.textContent = JSON.stringify(obj, null, 2);
 }
+
 function appendAttempt(at) {
   const el = $("results");
   if (!el) return;
@@ -200,6 +203,7 @@ function releaseBlobUrl() {
   }
 }
 
+/* Unified resetRecordingUI (single definition) */
 function resetRecordingUI(msg = "Not recording") {
   recording = false;
   chunks = [];
@@ -219,11 +223,19 @@ function resetRecordingUI(msg = "Not recording") {
 
   if (recBtn) recBtn.disabled = !!uploadedFile;
   if (stopBtn) stopBtn.disabled = true;
-  if (submitBtn) submitBtn.disabled = !(uploadedFile || blob);
+
+  // Always show submit button; just disable it when nothing to submit
+  if (submitBtn) {
+    submitBtn.style.display = "inline-block";
+    submitBtn.disabled = !(uploadedFile || blob);
+  }
+
   if (recDot) recDot.classList.remove("on");
   if (recState) recState.textContent = msg;
-  if (playerWrap)
+
+  if (playerWrap) {
     playerWrap.style.display = uploadedFile || url ? "block" : "none";
+  }
 
   if (!uploadedFile && p) {
     try {
@@ -232,29 +244,57 @@ function resetRecordingUI(msg = "Not recording") {
       p.load();
     } catch {}
   }
+
   if (lengthHint) lengthHint.textContent = "";
   hideDebug();
 }
 
-/* Load config/data from Render */
+/* ---------- Config loading (DB-backed first, legacy JSON fallback) ---------- */
+
 async function loadAll() {
   const base = (window.SERVICE_BASE || "").replace(/\/+$/, "");
+  const slug = (window.mssWidgetSlug || "").trim();
 
-  const [f, c, i] = await Promise.allSettled([
-    fetch(base + "/config/forms?ts=" + Date.now(), { cache: "no-store" }),
-    fetch(base + "/config/widget?ts=" + Date.now(), { cache: "no-store" }),
-    fetch(base + "/config/images?ts=" + Date.now(), { cache: "no-store" }),
-  ]);
+  async function loadFromLegacy() {
+    const [f, c, i] = await Promise.allSettled([
+      fetch(base + "/config/forms?ts=" + Date.now(), { cache: "no-store" }),
+      fetch(base + "/config/widget?ts=" + Date.now(), { cache: "no-store" }),
+      fetch(base + "/config/images?ts=" + Date.now(), { cache: "no-store" }),
+    ]);
 
-  FORM =
-    f.status === "fulfilled" && f.value.ok
-      ? await f.value.json()
-      : { survey: [] };
+    FORM =
+      f.status === "fulfilled" && f.value.ok
+        ? await f.value.json()
+        : { survey: [] };
 
-  CONFIG =
-    c.status === "fulfilled" && c.value.ok
-      ? await c.value.json()
-      : {
+    CONFIG =
+      c.status === "fulfilled" && c.value.ok
+        ? await c.value.json()
+        : {
+            editable: {},
+            api: {},
+            theme: "apple",
+            audioMinSeconds: 30,
+            audioMaxSeconds: 61,
+            logger: { enabled: false, url: "" },
+          };
+
+    IMAGE =
+      i.status === "fulfilled" && i.value.ok ? await i.value.json() : {};
+  }
+
+  if (slug) {
+    try {
+      const res = await fetch(
+        `${base}/api/widget/${encodeURIComponent(slug)}/bootstrap`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!res.ok) throw new Error("bootstrap " + res.status);
+      const data = await res.json();
+
+      FORM = data.form || { survey: [] };
+      CONFIG =
+        data.config || {
           editable: {},
           api: {},
           theme: "apple",
@@ -262,21 +302,32 @@ async function loadAll() {
           audioMaxSeconds: 61,
           logger: { enabled: false, url: "" },
         };
+      IMAGE = data.imageUrl ? { logoDataUrl: data.imageUrl } : {};
+    } catch (err) {
+      console.warn(
+        "[MSS widget] DB bootstrap failed, falling back to legacy JSON:",
+        err
+      );
+      await loadFromLegacy();
+    }
+  } else {
+    await loadFromLegacy();
+  }
 
-  IMAGE =
-    i.status === "fulfilled" && i.value.ok ? await i.value.json() : {};
+  // --- Apply text + branding ---
 
-  // Text + branding
   const brand = $("brand");
   const powered = $("powered");
   const logoEl = $("logo");
 
-  if (brand)
+  if (brand) {
     brand.textContent = FORM.headline || "Practice TOEFL Speaking Test";
+  }
 
   if (powered) {
+    const editablePowered = CONFIG.editable?.poweredByLabel;
     powered.textContent =
-      CONFIG.editable?.poweredByLabel === false
+      editablePowered === false
         ? ""
         : FORM.poweredByLabel || "Powered by MSS Vox";
   }
@@ -284,7 +335,7 @@ async function loadAll() {
   const logo = getLogoFrom(IMAGE);
   if (logo && logoEl) logoEl.src = logo;
 
-  // Respect Permitupload flag for upload controls
+  // --- Upload behaviour (Permitupload) ---
   const allowUpload = CONFIG.Permitupload !== false; // default true
   const uploadBtn = $("uploadBtn");
   const fileInput = $("fileInput");
@@ -299,56 +350,13 @@ async function loadAll() {
     if (fileInput) fileInput.style.display = "";
   }
 
+  // Render first question & reset UI
   renderQ();
   resetRecordingUI();
 }
-function resetRecordingUI(msg = "Not recording") {
-  recording = false;
-  chunks = [];
-  blob = null;
-  clearTimer();
-  stopTracks();
-  releaseBlobUrl();
 
-  const recBtn = $("recBtn");
-  const stopBtn = $("stopBtn");
-  const submitBtn = $("submitBtn");
-  const recDot = $("recDot");
-  const recState = $("recState");
-  const playerWrap = $("playerWrap");
-  const p = $("player");
-  const lengthHint = $("lengthHint");
+/* ---------- Question rendering ---------- */
 
-  if (recBtn) recBtn.disabled = !!uploadedFile;
-  if (stopBtn) stopBtn.disabled = true;
-
-  // 🔧 always show the submit button, just disable it when empty
- if (submitBtn) {
-  submitBtn.style.display = "inline-block";
-  submitBtn.disabled = !(uploadedFile || blob);
-}
-
-  if (recDot) recDot.classList.remove("on");
-  if (recState) recState.textContent = msg;
-
-  if (playerWrap)
-    playerWrap.style.display = uploadedFile || url ? "block" : "none";
-
-  if (!uploadedFile && p) {
-    try {
-      p.pause();
-      p.removeAttribute("src");
-      p.load();
-    } catch {}
-  }
-
-  if (lengthHint) lengthHint.textContent = "";
-  hideDebug();
-}
-
-
-
-/* Render question */
 function renderQ() {
   const s = Array.isArray(FORM?.survey) ? FORM.survey : [];
   const counter = $("counter");
@@ -359,12 +367,14 @@ function renderQ() {
     if (qEl) qEl.textContent = "(No questions found)";
     return;
   }
+
   idx = Math.max(0, Math.min(idx, s.length - 1));
   if (counter) counter.textContent = `Question ${idx + 1} of ${s.length}`;
   if (qEl) qEl.textContent = s[idx];
 }
 
-/* Recording */
+/* ---------- Recording ---------- */
+
 async function startRecording() {
   if (uploadedFile) return;
   hideDebug();
@@ -449,7 +459,9 @@ function finalizeRecording() {
     };
   }
 }
-/* Upload (mutually exclusive) */
+
+/* ---------- Upload (mutually exclusive) ---------- */
+
 const fileInputEl = $("fileInput");
 if (fileInputEl) {
   fileInputEl.addEventListener("change", (e) => {
@@ -520,7 +532,8 @@ if (clearFileBtnEl) {
   });
 }
 
-/* Submit helpers */
+/* ---------- Submit helpers ---------- */
+
 function getActiveAudioBlob() {
   if (uploadedFile) return uploadedFile;
   if (blob) return blob;
@@ -533,10 +546,7 @@ async function submitRecording() {
   const secret = (CONFIG?.api?.secret || "").trim();
 
   if (!key || !secret || !base) {
-    setStatus(
-      "Missing MSS API configuration (baseUrl / key / secret)",
-      false
-    );
+    setStatus("Missing MSS API configuration (baseUrl / key / secret)", false);
     appendAttempt({
       error: "missing_credentials",
       base: !!base,
@@ -556,11 +566,7 @@ async function submitRecording() {
   const p = $("player");
   const dur = p?.duration || 0;
   const { minS, maxS } = getDurationBounds();
-  if (
-    !Number.isNaN(dur) &&
-    dur > 0 &&
-    (dur < minS || dur > maxS)
-  ) {
+  if (!Number.isNaN(dur) && dur > 0 && (dur < minS || dur > maxS)) {
     setStatus(
       `Audio must be between ${minS} and ${maxS} seconds. Please try again.`,
       false
@@ -573,125 +579,6 @@ async function submitRecording() {
     });
     return;
   }
-
-// ---- DB-backed widget bootstrap ----
-
-window.mssWidgetConfig = window.mssWidgetConfig || {};
-window.mssWidgetForm = window.mssWidgetForm || {};
-window.mssWidgetQuestions = window.mssWidgetQuestions || [];
-
-document.addEventListener("DOMContentLoaded", async () => {
-  const root = document.getElementById("mss-widget-root");
-  if (!root) {
-    console.warn("No #mss-widget-root found.");
-    return;
-  }
-
-  const slug = root.dataset.schoolSlug || "mss-demo";
-
-  // SERVICE_BASE is defined in Widget.html
-  const base = (window.SERVICE_BASE || "").replace(/\/+$/, "");
-  const url = `${base}/api/widget/${encodeURIComponent(slug)}/bootstrap`;
-
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Bootstrap failed: ${res.status}`);
-    const data = await res.json();
-
-    const { config, form, imageUrl } = data || {};
-
-    // Save globally in case other code wants them
-    window.mssWidgetConfig = config || {};
-    window.mssWidgetForm = form || {};
-    window.mssWidgetQuestions = (form && Array.isArray(form.survey))
-      ? form.survey
-      : [];
-
-    // --- Populate UI from form/config ---
-
-    // Header
-    const brandEl = document.getElementById("brand");
-    const poweredEl = document.getElementById("powered");
-
-    if (brandEl) {
-      // Use form.headline first, fallback to config.theme label
-      brandEl.textContent =
-        (form && form.headline) ||
-        "CEFR Assessment";
-    }
-
-    if (poweredEl) {
-      poweredEl.textContent =
-        (form && form.poweredByLabel) || "Powered by MSS Vox";
-    }
-
-    // Logo image (once you seed logo.png into DB)
-    if (imageUrl) {
-      const logoEl = document.getElementById("logo");
-      if (logoEl) {
-        logoEl.src = imageUrl;
-      }
-    }
-
-    // Buttons / labels from form
-    const prevBtn = document.getElementById("prevBtn");
-    const nextBtn = document.getElementById("nextBtn");
-    const recBtn = document.getElementById("recBtn");
-    const stopBtn = document.getElementById("stopBtn");
-    const uploadLabelSpan = document.querySelector(
-      "#uploadBtn span"
-    );
-    const recState = document.getElementById("recState");
-    const submitBtn = document.getElementById("submitBtn");
-
-    if (prevBtn && form?.previousButton) prevBtn.textContent = form.previousButton;
-    if (nextBtn && form?.nextButton) nextBtn.textContent = form.nextButton;
-    if (recBtn && form?.recordButton) recBtn.textContent = form.recordButton;
-    if (stopBtn && form?.stopButton) stopBtn.textContent = form.stopButton;
-    if (uploadLabelSpan && form?.uploadButton) {
-      uploadLabelSpan.textContent = form.uploadButton;
-    }
-    if (recState && form?.NotRecordingLabel) {
-      recState.textContent = form.NotRecordingLabel;
-    }
-    if (submitBtn && form?.SubmitForScoringButton) {
-      submitBtn.textContent = form.SubmitForScoringButton;
-    }
-
-    // Upload visibility: your JSON key is "Permitupload"
-    const uploadRow = document.querySelector(".mss-file-row");
-    const permit =
-      config && typeof config.Permitupload === "boolean"
-        ? config.Permitupload
-        : true;
-
-    if (uploadRow) {
-      uploadRow.style.display = permit ? "inline-flex" : "none";
-    }
-
-    // First question + counter
-    const questionEl = document.getElementById("question");
-    const counterEl = document.getElementById("counter");
-
-    if (window.mssWidgetQuestions.length > 0) {
-      if (questionEl) {
-        questionEl.textContent = window.mssWidgetQuestions[0];
-      }
-      if (counterEl) {
-        counterEl.textContent = `Question 1 of ${window.mssWidgetQuestions.length}`;
-      }
-    } else {
-      if (questionEl) questionEl.textContent = "";
-      if (counterEl) counterEl.textContent = "";
-    }
-
-    console.log("Widget bootstrapped from Postgres for school:", slug);
-  } catch (err) {
-    console.error("Widget bootstrap error:", err);
-  }
-});
-
-// ---- end DB-backed widget bootstrap ----
 
   // Prepare audio
   setStatus("Preparing audio…");
@@ -810,8 +697,6 @@ async function logResultToCsv(mssBody, meta) {
   const base = (window.SERVICE_BASE || "").replace(/\/+$/, "");
   let url = (CONFIG?.logger?.url || "").trim();
 
-  // If no URL, or if it looks like a legacy /log or .json endpoint,
-  // use the new CSV+Postgres logger.
   if (
     !url ||
     url.endsWith("/log") ||
@@ -821,9 +706,7 @@ async function logResultToCsv(mssBody, meta) {
     url = base + "/log/submission";
   }
 
-  const ipPlaceholder = ""; // server fills real IP
-  const ts = new Date().toISOString();
-
+  const ipPlaceholder = "";
   const toefl =
     mssBody?.elsa_results?.toefl_score ?? mssBody?.toefl_score ?? "";
   const ielts =
@@ -848,7 +731,7 @@ async function logResultToCsv(mssBody, meta) {
   } catch {}
 
   const payload = {
-    timestamp: new Date().toISOString(),   // ✅ Add UTC ISO timestamp
+    timestamp: new Date().toISOString(),
     ip: ipPlaceholder,
     userId: "",
     fileName: meta.fileName || "",
@@ -890,15 +773,15 @@ async function logResultToCsv(mssBody, meta) {
     console.warn("Logger unreachable:", e);
   }
 }
-/* Dashboard modal */
+
+/* ---------- Dashboard modal ---------- */
+
 function openDashboard() {
   const m = $("dashModal");
   const f = $("dashFrame");
   if (!m || !f) return;
 
   dashboardWindow = f.contentWindow;
-
-  // Show modal – no aria-hidden changes
   m.hidden = false;
   m.style.display = "flex";
 }
@@ -906,8 +789,6 @@ function openDashboard() {
 function closeDashboard() {
   const m = $("dashModal");
   if (!m) return;
-
-  // Hide modal – no aria-hidden changes
   m.style.display = "none";
   m.hidden = true;
 }
@@ -923,14 +804,17 @@ if (dashModalEl) {
   });
 }
 
-/* Wire up */
-window.addEventListener("DOMContentLoaded", async () => {
-  await loadAll();
+/* ---------- Global init for embed.js + direct pages ---------- */
+
+let mssWidgetWired = false;
+
+async function wireWidgetOnce() {
+  if (mssWidgetWired) return;
+  mssWidgetWired = true;
 
   $("recBtn")?.addEventListener("click", startRecording);
   $("stopBtn")?.addEventListener("click", stopRecording);
   $("submitBtn")?.addEventListener("click", submitRecording);
-
 
   $("prevBtn")?.addEventListener("click", () => {
     idx--;
@@ -938,6 +822,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     resetRecordingUI("Not recording");
     hideDebug();
   });
+
   $("nextBtn")?.addEventListener("click", () => {
     idx++;
     renderQ();
@@ -950,4 +835,28 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!w) return;
     w.style.display = w.style.display === "block" ? "none" : "block";
   });
+}
+
+/**
+ * Main entrypoint expected by embed.js.
+ *
+ * @param {Object} opts
+ *   opts.containerId – currently unused (widget HTML already on page)
+ *   opts.schoolId    – currently unused here; we read window.mssWidgetSlug
+ */
+async function mssWidgetInit(opts = {}) {
+  try {
+    await loadAll();
+    await wireWidgetOnce();
+  } catch (err) {
+    console.error("[MSS widget] mssWidgetInit failed:", err);
+  }
+}
+
+window.mssWidgetInit = mssWidgetInit;
+
+// Fallback for pages that include widget-core.js directly (no embed.js)
+window.addEventListener("DOMContentLoaded", () => {
+  if (mssWidgetWired) return; // embed.js already initialised
+  mssWidgetInit();
 });
