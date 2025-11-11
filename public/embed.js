@@ -29,8 +29,8 @@
 
   function loadCore() {
     var coreScript = document.createElement("script");
-    // IMPORTANT: correct path into /js/
-    coreScript.src = baseOrigin + "/js/widget-core.v1.js";
+    // ✅ Load the core that actually defines mssWidgetInit
+    coreScript.src = baseOrigin + "/js/widget-core.js";
     coreScript.async = true;
 
     coreScript.onload = function () {
@@ -41,14 +41,14 @@
         });
       } else {
         console.warn(
-          "[MSS widget] widget-core.v1.js loaded, but mssWidgetInit() is not defined."
+          "[MSS widget] widget-core.js loaded, but mssWidgetInit() is not defined."
         );
       }
     };
 
     coreScript.onerror = function () {
       console.error(
-        "[MSS widget] Failed to load /js/widget-core.v1.js from " +
+        "[MSS widget] Failed to load /js/widget-core.js from " +
           coreScript.src
       );
     };
