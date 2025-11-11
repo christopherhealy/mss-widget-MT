@@ -93,28 +93,6 @@
               </label>
             </section>
 
-            <!-- Small card with preview button -->
-            <section class="mss-admin-card mss-admin-card-preview">
-              <h2 class="mss-admin-card-title">Widget preview</h2>
-              <p class="mss-admin-body-text">
-                Open a live preview of your speaking widget using the current
-                settings for this school.
-              </p>
-              <p class="mss-admin-body-text">
-                After you change settings and click
-                <strong>Save changes</strong>, re-open the preview to see your
-                updates.
-              </p>
-
-              <button
-                type="button"
-                id="mssOpenPreview"
-                class="mss-admin-primary-btn"
-              >
-                Open widget preview
-              </button>
-            </section>
-
             <!-- Theme & behaviour -->
             <section class="mss-admin-card">
               <h2 class="mss-admin-section-title">Theme &amp; behaviour</h2>
@@ -125,7 +103,7 @@
                   <option value="default">MSS default</option>
                   <option value="apple">Apple-style light</option>
                   <option value="pink">Pink accent</option>
-                  <!-- add other theme values as needed -->
+                  <!-- add more themes as needed -->
                 </select>
               </label>
 
@@ -165,7 +143,7 @@
               </div>
             </section>
 
-            <!-- Buttons visibility & labels -->
+            <!-- Buttons & labels -->
             <section class="mss-admin-card">
               <h2 class="mss-admin-section-title">Buttons &amp; labels</h2>
 
@@ -436,9 +414,18 @@
 
             <div class="mss-admin-footer">
               <p id="mssAdminStatus" class="mss-admin-status"></p>
-              <button type="submit" class="mss-admin-primary-btn">
-                Save changes
-              </button>
+              <div class="mss-admin-footer-actions">
+                <button type="submit" class="mss-admin-primary-btn">
+                  Save changes
+                </button>
+                <button
+                  type="button"
+                  id="mssOpenPreview"
+                  class="mss-admin-secondary-btn"
+                >
+                  Preview widget
+                </button>
+              </div>
             </div>
           </form>
         </section>
