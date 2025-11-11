@@ -350,3 +350,171 @@
 .mss-hidden {
   display: none !important;
 }
+
+.mss-admin-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mss-admin-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* You probably already have this one; included for clarity */
+.mss-admin-primary-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.35);
+}
+
+/* New “secondary” button style for Preview */
+.mss-admin-secondary-btn {
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+}
+
+.mss-admin-secondary-btn:hover {
+  background: #f8fafc;
+}
+/* --- Footer layout & buttons --- */
+.mss-admin-footer {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mss-admin-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Primary button (Save changes) */
+.mss-admin-primary-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #2563eb;
+  color: #ffffff;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+}
+.mss-admin-primary-btn:hover {
+  background: #1e4ed8;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+}
+
+/* Secondary button (Preview widget) */
+.mss-admin-secondary-btn {
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+.mss-admin-secondary-btn:hover {
+  background: #f8fafc;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
+}
+
+/* --- Preview modal styling --- */
+.mss-admin-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-in-out;
+}
+.mss-admin-overlay:not(.mss-hidden) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mss-admin-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.mss-admin-overlay-inner {
+  position: relative;
+  width: 90%;
+  max-width: 880px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.3);
+  overflow: hidden;
+  transform: translateY(25px);
+  animation: mssModalUp 0.25s ease-out forwards;
+}
+
+@keyframes mssModalUp {
+  from { opacity: 0; transform: translateY(25px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mss-admin-overlay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  font-weight: 600;
+  font-size: 15px;
+  background: #f9fafb;
+}
+
+.mss-admin-overlay-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #475569;
+}
+.mss-admin-overlay-close:hover {
+  color: #0f172a;
+}
+
+.mss-admin-overlay-frame {
+  width: 100%;
+  height: 540px;
+  border: none;
+  background: #f8fafc;
+}

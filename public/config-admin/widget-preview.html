@@ -2,26 +2,46 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>MSS Widget preview</title>
+    <title>MSS Widget – Preview</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Main MSS look & feel so the widget looks “real” -->
     <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
-    <style>
-      body {
-        margin: 0;
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 24px;
+      background: radial-gradient(circle at top, #f9fbff 0, #f1f5f9 45%, #e5e7eb 100%);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+        'Helvetica Neue', Arial, sans-serif;
+    "
+  >
+    <div
+      style="
+        max-width: 760px;
+        margin: 0 auto;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
         padding: 24px;
-        background: #f5f5fb;
-      }
-    </style>
+      "
+    >
+      <div id="mss-widget-container"></div>
+    </div>
+
     <script>
       (function () {
-        const params = new URLSearchParams(window.location.search);
-        const slug = (params.get("slug") || "mss-demo").trim();
-        window.mssWidgetSlug = slug;
+        // Read slug from ?slug=widget-academy etc
+        var params = new URLSearchParams(window.location.search);
+        var slug = (params.get("slug") || "mss-demo").trim();
+
+        // Dynamically inject the same embed snippet you give to schools
+        var s = document.createElement("script");
+        s.src = "/embed.js";
+        s.dataset.schoolId = slug; // embed.js uses data-school-id
+        document.body.appendChild(s);
       })();
     </script>
-  </head>
-  <body>
-    <div id="mss-widget-container"></div>
-    <script src="/widget-core.v1.js"></script>
   </body>
 </html>
