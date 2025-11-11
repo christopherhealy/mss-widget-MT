@@ -2,7 +2,7 @@
 console.log("✅ config-admin.js loaded");
 
 (function () {
-  const qs = (sel) => document.querySelector(sel);
+  const qs = (sel) => document.querySelector(sel); 
 
   // ----- read slug from URL -----
   const params = new URLSearchParams(window.location.search);
