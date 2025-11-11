@@ -12,512 +12,260 @@
 </head>
 <body class="mss-config-body">
   <div class="mss-config-shell">
-    <!-- Header + nav -->
+    <!-- Header -->
     <header class="mss-config-header">
       <div class="mss-config-brand">
         <div class="mss-config-mark">MSS</div>
         <div>
-          <div class="mss-config-brand-main">MSS Widget</div>
-          <div class="mss-config-brand-sub" id="configSchoolLabel">
-            Widget configuration
+          <div class="mss-config-brand-main">MSS Widget Admin</div>
+          <div class="mss-config-brand-sub">
+            Configure your school’s speaking practice widget
           </div>
         </div>
       </div>
 
-      <nav class="mss-config-nav">
-        <a id="navConfig" href="#" class="mss-config-nav-link active">
-          Configuration
-        </a>
-        <a id="navQuestions" href="#" class="mss-config-nav-link">
-          Questions
-        </a>
-        <a id="navReports" href="#" class="mss-config-nav-link">
-          Reports
-        </a>
-      </nav>
+      <div class="mss-config-school-chip">
+        School: <span id="schoolSlugLabel">–</span>
+      </div>
     </header>
 
+    <!-- Nav -->
+    <nav class="mss-config-nav">
+      <a id="navConfig" class="mss-config-nav-item mss-config-nav-item-active" href="#">
+        Configuration
+      </a>
+      <a id="navQuestions" class="mss-config-nav-item" href="#">
+        Questions
+      </a>
+      <a id="navReports" class="mss-config-nav-item" href="#">
+        Reports
+      </a>
+    </nav>
+
+    <!-- Main content -->
     <main class="mss-config-main">
-      <!-- Left column: forms -->
-      <section class="mss-config-columns">
-        <div class="mss-config-left">
+      <!-- Left column: configuration form -->
+      <section class="mss-config-card">
+        <h1 class="mss-config-title">Widget configuration</h1>
+        <p class="mss-config-intro">
+          Control how your widget looks and behaves. Question text is managed
+          in the <strong>Questions</strong> section.
+        </p>
 
-          <!-- Widget behaviour -->
-          <section class="mss-config-card">
-            <h2 class="mss-config-card-title">Widget behaviour</h2>
-            <p class="mss-config-card-sub">
-              Control which parts of the widget are visible to students.
-            </p>
+        <form id="configForm" class="mss-config-form">
+          <!-- Branding & text -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-title">Brand & text</h2>
 
-            <div class="mss-config-grid mss-config-grid-2">
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-headline" />
-                <span>Show headline</span>
-              </label>
+            <label class="mss-config-field">
+              <span>Headline</span>
+              <input
+                id="headlineInput"
+                type="text"
+                placeholder="CEFR Assessment"
+              />
+            </label>
 
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-recordButton" />
-                <span>Show “Record” button</span>
-              </label>
+            <label class="mss-config-field">
+              <span>Powered by label</span>
+              <input
+                id="poweredByLabelInput"
+                type="text"
+                placeholder="Powered by MSS Vox"
+              />
+            </label>
 
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-previousButton" />
-                <span>Show “Previous” button</span>
-              </label>
-
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-nextButton" />
-                <span>Show “Next” button</span>
-              </label>
-
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-stopButton" />
-                <span>Show “Stop” button</span>
-              </label>
-
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-uploadButton" />
-                <span>Show upload button</span>
-              </label>
-
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-poweredByLabel" />
-                <span>Show “Powered by” label</span>
-              </label>
-
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-NotRecordingLabel" />
-                <span>Show “Not recording” label</span>
-              </label>
-
-              <label class="mss-config-check">
-                <input type="checkbox" id="editable-SubmitForScoringButton" />
-                <span>Show “Submit for scoring” button</span>
+            <div class="mss-config-field-row">
+              <label class="mss-config-checkbox">
+                <input id="editableHeadlineInput" type="checkbox" />
+                <span>Allow headline editing in future (keep flexible)</span>
               </label>
             </div>
-
-            <div class="mss-config-divider"></div>
-
-            <label class="mss-config-check">
-              <input type="checkbox" id="config-Permitupload" />
-              <span>Allow file upload (instead of record-only)</span>
-            </label>
           </section>
 
-          <!-- Theme + recording limits -->
-          <section class="mss-config-card">
-            <h2 class="mss-config-card-title">Theme & limits</h2>
-            <p class="mss-config-card-sub">
-              Choose your visual theme and recording length constraints.
-            </p>
+          <!-- Theme & behaviour -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-title">Theme & behaviour</h2>
 
-            <div class="mss-config-field">
-              <label for="config-theme">Theme</label>
-              <select id="config-theme">
-                <option value="apple">Apple (light)</option>
-                <option value="mss">MSS Standard</option>
+            <label class="mss-config-field">
+              <span>Theme</span>
+              <select id="themeSelect">
+                <option value="MSSStylesheet">MSS (Blue)</option>
+                <option value="apple">Apple-style light</option>
                 <option value="dark">Dark</option>
               </select>
+            </label>
+
+            <div class="mss-config-field-row">
+              <label class="mss-config-checkbox">
+                <input id="permitUploadInput" type="checkbox" />
+                <span>Allow students to upload audio files</span>
+              </label>
             </div>
 
-            <div class="mss-config-grid mss-config-grid-2">
-              <div class="mss-config-field">
-                <label for="config-minSeconds">Minimum length (seconds)</label>
-                <input
-                  id="config-minSeconds"
-                  type="number"
-                  min="5"
-                  step="1"
-                  placeholder="20"
-                />
-              </div>
+            <div class="mss-config-field-row">
+              <label class="mss-config-inline">
+                <span>Min recording length (seconds)</span>
+                <input id="audioMinInput" type="number" min="5" step="1" />
+              </label>
 
-              <div class="mss-config-field">
-                <label for="config-maxSeconds">Maximum length (seconds)</label>
-                <input
-                  id="config-maxSeconds"
-                  type="number"
-                  min="10"
-                  step="1"
-                  placeholder="100"
-                />
-              </div>
+              <label class="mss-config-inline">
+                <span>Max recording length (seconds)</span>
+                <input id="audioMaxInput" type="number" min="10" step="1" />
+              </label>
             </div>
           </section>
 
-          <!-- API + logger -->
-          <section class="mss-config-card">
-            <h2 class="mss-config-card-title">API & logging</h2>
-            <p class="mss-config-card-sub">
-              MSS API credentials and where to log submissions.
-            </p>
+          <!-- API & logging -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-title">MSS API & logging</h2>
 
-            <div class="mss-config-field">
-              <label for="config-api-base">MSS API base URL</label>
+            <label class="mss-config-field">
+              <span>API base URL</span>
               <input
-                id="config-api-base"
+                id="apiBaseInput"
                 type="url"
                 placeholder="https://app.myspeakingscore.com"
               />
-            </div>
-
-            <div class="mss-config-grid mss-config-grid-2">
-              <div class="mss-config-field">
-                <label for="config-api-key">API key</label>
-                <input
-                  id="config-api-key"
-                  type="text"
-                  autocomplete="off"
-                />
-              </div>
-              <div class="mss-config-field">
-                <label for="config-api-secret">API secret</label>
-                <input
-                  id="config-api-secret"
-                  type="password"
-                  autocomplete="off"
-                />
-              </div>
-            </div>
-
-            <div class="mss-config-divider"></div>
-
-            <label class="mss-config-check">
-              <input type="checkbox" id="config-logger-enabled" />
-              <span>Enable logging</span>
             </label>
 
-            <div class="mss-config-field">
-              <label for="config-logger-url">Logger URL</label>
+            <label class="mss-config-field">
+              <span>API key</span>
               <input
-                id="config-logger-url"
-                type="url"
-                placeholder="(leave blank for default MSS logger)"
+                id="apiKeyInput"
+                type="text"
+                placeholder="Paste your MSS API key"
               />
+            </label>
+
+            <label class="mss-config-field">
+              <span>API secret</span>
+              <input
+                id="apiSecretInput"
+                type="password"
+                placeholder="Paste your MSS API secret"
+              />
+            </label>
+
+            <div class="mss-config-field-row">
+              <label class="mss-config-checkbox">
+                <input id="loggerEnabledInput" type="checkbox" />
+                <span>Enable logging of scores & transcripts</span>
+              </label>
             </div>
+
+            <label class="mss-config-field">
+              <span>Logger URL (optional)</span>
+              <input
+                id="loggerUrlInput"
+                type="url"
+                placeholder="Leave blank to use MSS default logger"
+              />
+            </label>
           </section>
 
-          <!-- Save -->
-          <section class="mss-config-actions">
-            <button id="config-saveBtn" class="mss-config-saveBtn">
+          <!-- Billing / usage limit -->
+          <section class="mss-config-section">
+            <h2 class="mss-config-section-title">Usage limit (per day)</h2>
+
+            <label class="mss-config-field">
+              <span>Daily test limit</span>
+              <input
+                id="dailyLimitInput"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0 = no limit"
+              />
+            </label>
+
+            <div class="mss-config-field-row">
+              <label class="mss-config-checkbox">
+                <input id="autoBlockOnLimitInput" type="checkbox" />
+                <span>Automatically block the widget when the limit is reached</span>
+              </label>
+            </div>
+
+            <div class="mss-config-field-row">
+              <label class="mss-config-checkbox">
+                <input id="notifyOnLimitInput" type="checkbox" />
+                <span>Email me when we hit the daily limit</span>
+              </label>
+            </div>
+
+            <label class="mss-config-field">
+              <span>Notification email</span>
+              <input
+                id="emailOnLimitInput"
+                type="email"
+                placeholder="admin@your-school.edu"
+              />
+            </label>
+          </section>
+
+          <!-- Actions -->
+          <div class="mss-config-actions">
+            <button type="button" id="resetBtn" class="mss-config-btn-secondary">
+              Reset to defaults
+            </button>
+            <button type="submit" id="saveBtn" class="mss-config-btn-primary">
               Save configuration
             </button>
-            <p id="config-saveStatus" class="mss-config-status"></p>
-          </section>
-        </div>
+          </div>
 
-        <!-- Right column: live-ish preview -->
-        <aside class="mss-config-right">
-          <section class="mss-config-card mss-config-preview-card">
-            <h2 class="mss-config-card-title">Widget preview</h2>
-            <p class="mss-config-card-sub">
-              This is how your students see the widget for this school.
-            </p>
-
-            <div class="mss-config-preview-frame-wrap">
-              <iframe
-                id="config-previewFrame"
-                src=""
-                class="mss-config-preview-frame"
-                title="Widget preview"
-              ></iframe>
-            </div>
-
-            <p class="mss-config-hint">
-              If changes don’t appear immediately, click “Save configuration”
-              and refresh this page or the student page.
-            </p>
-          </section>
-        </aside>
+          <p id="statusText" class="mss-config-status"></p>
+        </form>
       </section>
+
+      <!-- Right column: live preview hint -->
+      <aside class="mss-config-card mss-config-preview-card">
+        <h2 class="mss-config-section-title">Widget preview</h2>
+        <p class="mss-config-preview-copy">
+          This panel shows how your widget will feel to students on your site.
+        </p>
+        <p class="mss-config-preview-copy">
+          Changes saved here will affect:
+        </p>
+        <ul class="mss-config-preview-list">
+          <li>Headline & powered-by text</li>
+          <li>Theme & button behavior</li>
+          <li>Recording limits</li>
+          <li>Whether uploads are allowed</li>
+        </ul>
+        <p class="mss-config-preview-copy">
+          Question text and ordering are managed separately on the
+          <strong>Questions</strong> tab.
+        </p>
+
+        <div class="mss-config-preview-placeholder">
+          <span>Widget preview coming soon</span>
+        </div>
+      </aside>
     </main>
   </div>
 
+  <!-- Small inline script to wire nav links with ?slug= -->
   <script>
     (function () {
-      // --- helpers ---
-      function qs(id) {
-        return document.getElementById(id);
-      }
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get("slug") || "mss-demo";
 
-      function getSlug() {
-        const params = new URLSearchParams(window.location.search);
-        return params.get("slug") || "mss-demo";
-      }
+      const slugLabel = document.getElementById("schoolSlugLabel");
+      if (slugLabel) slugLabel.textContent = slug;
 
-      let currentSlug = null;
-      let currentConfig = null;
-      let currentForm = null;
-      let currentBilling = null;
+      const navConfig = document.getElementById("navConfig");
+      const navQuestions = document.getElementById("navQuestions");
+      const navReports = document.getElementById("navReports");
 
-      function wireNav(slug) {
-        const baseConfig = "/config-admin/";
-        const baseQuestions = "/questions-admin/";
-        const baseReports = "/reports/";
+      const q = "?slug=" + encodeURIComponent(slug);
 
-        const navConfig = qs("navConfig");
-        const navQuestions = qs("navQuestions");
-        const navReports = qs("navReports");
-
-        if (navConfig) {
-          navConfig.href = baseConfig + "?slug=" + encodeURIComponent(slug);
-        }
-        if (navQuestions) {
-          navQuestions.href =
-            baseQuestions + "?slug=" + encodeURIComponent(slug);
-        }
-        if (navReports) {
-          navReports.href =
-            baseReports + "?slug=" + encodeURIComponent(slug);
-        }
-      }
-
-      function setStatus(msg, ok = true) {
-        const el = qs("config-saveStatus");
-        if (!el) return;
-        el.textContent = msg || "";
-        el.className =
-          "mss-config-status " + (msg ? (ok ? "ok" : "err") : "");
-      }
-
-      function fillConfigUI(resp) {
-        const schoolId = resp.schoolId;
-        const slug = resp.slug;
-        const cfg = resp.config || {};
-        const editable = cfg.editable || {};
-        const billing = resp.billing || {};
-        const form = resp.form || {};
-
-        currentSlug = slug;
-        currentConfig = cfg;
-        currentForm = form;
-        currentBilling = billing;
-
-        const labelEl = qs("configSchoolLabel");
-        if (labelEl) {
-          labelEl.textContent =
-            "Widget configuration – " + (form.headline || slug);
-        }
-
-        // Editable toggles
-        const map = [
-          ["editable-headline", "headline"],
-          ["editable-recordButton", "recordButton"],
-          ["editable-previousButton", "previousButton"],
-          ["editable-nextButton", "nextButton"],
-          ["editable-stopButton", "stopButton"],
-          ["editable-uploadButton", "uploadButton"],
-          ["editable-poweredByLabel", "poweredByLabel"],
-          ["editable-NotRecordingLabel", "NotRecordingLabel"],
-          [
-            "editable-SubmitForScoringButton",
-            "SubmitForScoringButton"
-          ],
-        ];
-
-        map.forEach(([id, key]) => {
-          const cb = qs(id);
-          if (cb) cb.checked = editable[key] !== false;
-        });
-
-        const permitCb = qs("config-Permitupload");
-        if (permitCb) {
-          permitCb.checked = cfg.Permitupload !== false;
-        }
-
-        const themeSel = qs("config-theme");
-        if (themeSel) {
-          const theme = cfg.theme || "apple";
-          if ([...themeSel.options].some((o) => o.value === theme)) {
-            themeSel.value = theme;
-          } else {
-            themeSel.value = "apple";
-          }
-        }
-
-        const minI = qs("config-minSeconds");
-        const maxI = qs("config-maxSeconds");
-        if (minI) minI.value = cfg.audioMinSeconds ?? 20;
-        if (maxI) maxI.value = cfg.audioMaxSeconds ?? 100;
-
-        const api = cfg.api || {};
-        const logger = cfg.logger || {};
-
-        const apiBase = qs("config-api-base");
-        const apiKey = qs("config-api-key");
-        const apiSecret = qs("config-api-secret");
-        const loggerEnabled = qs("config-logger-enabled");
-        const loggerUrl = qs("config-logger-url");
-
-        if (apiBase) apiBase.value = api.baseUrl || "";
-        if (apiKey) apiKey.value = api.key || "";
-        if (apiSecret) apiSecret.value = api.secret || "";
-        if (loggerEnabled) loggerEnabled.checked = !!logger.enabled;
-        if (loggerUrl) loggerUrl.value = logger.url || "";
-
-        // Preview iframe
-        const frame = qs("config-previewFrame");
-        if (frame) {
-          const base = window.location.origin.replace(/\/+$/, "");
-          frame.src =
-            base +
-            "/Widget.html?slug=" +
-            encodeURIComponent(slug);
-        }
-      }
-
-      async function loadConfig() {
-        const slug = getSlug();
-        wireNav(slug);
-        setStatus("Loading configuration…", true);
-
-        try {
-          const res = await fetch(
-            "/api/admin/widget/" + encodeURIComponent(slug)
-          );
-          const body = await res.json().catch(() => ({}));
-
-          if (!res.ok || !body.ok) {
-            const msg =
-              body.message ||
-              body.error ||
-              "Failed to load widget configuration.";
-            setStatus(msg, false);
-            return;
-          }
-
-          fillConfigUI(body);
-          setStatus("");
-        } catch (err) {
-          console.error("loadConfig error:", err);
-          setStatus("Network error while loading configuration.", false);
-        }
-      }
-
-      function buildConfigFromUI() {
-        const cfg = currentConfig || {};
-        const editable = cfg.editable || {};
-
-        function isChecked(id, defaultVal = true) {
-          const cb = qs(id);
-          if (!cb) return defaultVal;
-          return !!cb.checked;
-        }
-
-        const newEditable = {
-          headline: isChecked("editable-headline"),
-          recordButton: isChecked("editable-recordButton"),
-          previousButton: isChecked("editable-previousButton"),
-          nextButton: isChecked("editable-nextButton"),
-          stopButton: isChecked("editable-stopButton"),
-          uploadButton: isChecked("editable-uploadButton"),
-          poweredByLabel: isChecked("editable-poweredByLabel"),
-          NotRecordingLabel: isChecked("editable-NotRecordingLabel"),
-          SubmitForScoringButton: isChecked(
-            "editable-SubmitForScoringButton"
-          ),
-        };
-
-        const permitCb = qs("config-Permitupload");
-        const themeSel = qs("config-theme");
-        const minI = qs("config-minSeconds");
-        const maxI = qs("config-maxSeconds");
-        const apiBase = qs("config-api-base");
-        const apiKey = qs("config-api-key");
-        const apiSecret = qs("config-api-secret");
-        const loggerEnabled = qs("config-logger-enabled");
-        const loggerUrl = qs("config-logger-url");
-
-        const minSeconds = Number(minI && minI.value) || 20;
-        const maxSeconds = Number(maxI && maxI.value) || 100;
-
-        const apiBaseUrl = apiBase ? apiBase.value.trim() : "";
-        const apiKeyVal = apiKey ? apiKey.value.trim() : "";
-        const apiSecretVal = apiSecret ? apiSecret.value.trim() : "";
-
-        const apiEnabled =
-          !!apiBaseUrl && !!apiKeyVal && !!apiSecretVal;
-
-        return {
-          ...cfg,
-          editable: newEditable,
-          Permitupload: permitCb ? !!permitCb.checked : true,
-          theme: themeSel ? themeSel.value : cfg.theme || "apple",
-          audioMinSeconds: minSeconds,
-          audioMaxSeconds: maxSeconds,
-          api: {
-            enabled: apiEnabled,
-            baseUrl: apiBaseUrl,
-            key: apiKeyVal,
-            secret: apiSecretVal,
-          },
-          logger: {
-            enabled: loggerEnabled ? !!loggerEnabled.checked : false,
-            url: loggerUrl ? loggerUrl.value.trim() : "",
-          },
-        };
-      }
-
-      async function saveConfig() {
-        if (!currentSlug) {
-          setStatus("No school loaded yet.", false);
-          return;
-        }
-
-        const btn = qs("config-saveBtn");
-        if (btn) btn.disabled = true;
-        setStatus("Saving…", true);
-
-        const newConfig = buildConfigFromUI();
-
-        const payload = {
-          config: newConfig,
-          // preserve current form & billing so we don’t wipe them
-          form: currentForm || {},
-          billing: currentBilling || {},
-        };
-
-        try {
-          const res = await fetch(
-            "/api/admin/widget/" + encodeURIComponent(currentSlug),
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            }
-          );
-          const body = await res.json().catch(() => ({}));
-
-          if (!res.ok || !body.ok) {
-            const msg =
-              body.message ||
-              body.error ||
-              "Failed to save configuration.";
-            setStatus(msg, false);
-            return;
-          }
-
-          currentConfig = newConfig;
-          setStatus("Configuration saved.", true);
-        } catch (err) {
-          console.error("saveConfig error:", err);
-          setStatus("Network error while saving configuration.", false);
-        } finally {
-          if (btn) btn.disabled = false;
-        }
-      }
-
-      window.addEventListener("DOMContentLoaded", () => {
-        const saveBtn = qs("config-saveBtn");
-        if (saveBtn) {
-          saveBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            saveConfig();
-          });
-        }
-        loadConfig();
-      });
+      if (navConfig) navConfig.href = "/config-admin/" + q;
+      if (navQuestions) navQuestions.href = "/questions-admin/" + q;
+      if (navReports) navReports.href = "/reports-admin/" + q;
     })();
   </script>
+
+  <!-- Main config logic -->
+  <script src="/config-admin/config-admin.js?v=1"></script>
 </body>
 </html>
