@@ -1,630 +1,523 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>MSS Widget – School settings</title>
+  <meta charset="UTF-8" />
+  <title>MSS Widget – Configuration</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Global MSS UI + config-admin tweaks -->
-  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
-  <link rel="stylesheet" href="/themes/mss-config-admin.css" />
+  <!-- Main MSS theme -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <!-- Config-admin specific styles -->
+  <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
 </head>
 <body class="mss-config-body">
-  <!-- Top bar -->
-  <header class="mss-config-top">
-    <div class="mss-config-top-inner">
-      <div>
-        <div class="mss-config-brand-title">MSS Widget</div>
-        <div class="mss-config-brand-sub">Per-school widget settings</div>
+  <div class="mss-config-shell">
+    <!-- Header + nav -->
+    <header class="mss-config-header">
+      <div class="mss-config-brand">
+        <div class="mss-config-mark">MSS</div>
+        <div>
+          <div class="mss-config-brand-main">MSS Widget</div>
+          <div class="mss-config-brand-sub" id="configSchoolLabel">
+            Widget configuration
+          </div>
+        </div>
       </div>
-      <div class="mss-config-env" id="envTag">–</div>
-    </div>
-  </header>
 
-  <main class="mss-config-shell">
-    <div class="mss-config-layout">
-      <!-- LEFT COLUMN: core school settings -->
-      <section class="mss-config-card">
-        <header class="mss-config-card-header">
-          <h1 class="mss-config-card-title">Widget settings</h1>
-          <p class="mss-config-card-subtitle">
-            Load settings for a school using its slug (for example
-            <code>mss-demo</code> or <code>widget-miracle-academy</code>).
-          </p>
-        </header>
+      <nav class="mss-config-nav">
+        <a id="navConfig" href="#" class="mss-config-nav-link active">
+          Configuration
+        </a>
+        <a id="navQuestions" href="#" class="mss-config-nav-link">
+          Questions
+        </a>
+        <a id="navReports" href="#" class="mss-config-nav-link">
+          Reports
+        </a>
+      </nav>
+    </header>
 
-        <!-- Slug loader -->
-        <div class="mss-field-row">
-          <div class="mss-field mss-field-grow">
-            <label class="mss-label" for="slugInput">School slug</label>
-            <input
-              id="slugInput"
-              class="mss-input"
-              type="text"
-              placeholder="mss-demo"
-            />
-          </div>
-          <div class="mss-field mss-field-auto">
-            <label class="mss-label">&nbsp;</label>
-            <button id="loadBtn" class="mss-btn mss-btn-secondary" type="button">
-              Load
-            </button>
-          </div>
-        </div>
-        <p id="loadStatus" class="mss-status"></p>
+    <main class="mss-config-main">
+      <!-- Left column: forms -->
+      <section class="mss-config-columns">
+        <div class="mss-config-left">
 
-        <hr class="mss-divider" />
+          <!-- Widget behaviour -->
+          <section class="mss-config-card">
+            <h2 class="mss-config-card-title">Widget behaviour</h2>
+            <p class="mss-config-card-sub">
+              Control which parts of the widget are visible to students.
+            </p>
 
-        <!-- Widget text & questions -->
-        <section>
-          <h2 class="mss-section-title">Widget text &amp; questions</h2>
+            <div class="mss-config-grid mss-config-grid-2">
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-headline" />
+                <span>Show headline</span>
+              </label>
 
-          <div class="mss-field">
-            <label class="mss-label" for="headline">Headline</label>
-            <input
-              id="headline"
-              class="mss-input"
-              type="text"
-              placeholder="CEFR Assessment"
-            />
-          </div>
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-recordButton" />
+                <span>Show “Record” button</span>
+              </label>
 
-          <div class="mss-field">
-            <label class="mss-label" for="questions">
-              Questions (one per line)
-            </label>
-            <textarea
-              id="questions"
-              class="mss-input mss-textarea"
-              rows="8"
-              placeholder="Each line becomes a separate question…"
-            ></textarea>
-            <div class="mss-muted">
-              Each non-empty line will be treated as a separate question in the
-              widget.
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-previousButton" />
+                <span>Show “Previous” button</span>
+              </label>
+
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-nextButton" />
+                <span>Show “Next” button</span>
+              </label>
+
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-stopButton" />
+                <span>Show “Stop” button</span>
+              </label>
+
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-uploadButton" />
+                <span>Show upload button</span>
+              </label>
+
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-poweredByLabel" />
+                <span>Show “Powered by” label</span>
+              </label>
+
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-NotRecordingLabel" />
+                <span>Show “Not recording” label</span>
+              </label>
+
+              <label class="mss-config-check">
+                <input type="checkbox" id="editable-SubmitForScoringButton" />
+                <span>Show “Submit for scoring” button</span>
+              </label>
             </div>
-          </div>
 
-          <h3 class="mss-section-subtitle">Button labels</h3>
+            <div class="mss-config-divider"></div>
 
-          <div class="mss-field-grid">
-            <label class="mss-field">
-              <span class="mss-label">Record button</span>
-              <input id="recordButton" class="mss-input" type="text" />
+            <label class="mss-config-check">
+              <input type="checkbox" id="config-Permitupload" />
+              <span>Allow file upload (instead of record-only)</span>
             </label>
+          </section>
 
-            <label class="mss-field">
-              <span class="mss-label">Stop button</span>
-              <input id="stopButton" class="mss-input" type="text" />
-            </label>
-          </div>
+          <!-- Theme + recording limits -->
+          <section class="mss-config-card">
+            <h2 class="mss-config-card-title">Theme & limits</h2>
+            <p class="mss-config-card-sub">
+              Choose your visual theme and recording length constraints.
+            </p>
 
-          <div class="mss-field-grid">
-            <label class="mss-field">
-              <span class="mss-label">Previous button</span>
-              <input id="previousButton" class="mss-input" type="text" />
-            </label>
-
-            <label class="mss-field">
-              <span class="mss-label">Next button</span>
-              <input id="nextButton" class="mss-input" type="text" />
-            </label>
-          </div>
-
-          <div class="mss-field-grid">
-            <label class="mss-field">
-              <span class="mss-label">Upload button</span>
-              <input id="uploadButton" class="mss-input" type="text" />
-            </label>
-
-            <label class="mss-field">
-              <span class="mss-label">Submit button</span>
-              <input
-                id="submitButton"
-                class="mss-input"
-                type="text"
-              />
-            </label>
-          </div>
-
-          <div class="mss-field-grid">
-            <label class="mss-field">
-              <span class="mss-label">Powered by label</span>
-              <input id="poweredByLabel" class="mss-input" type="text" />
-            </label>
-
-            <label class="mss-field">
-              <span class="mss-label">“Not recording” label</span>
-              <input id="notRecordingLabel" class="mss-input" type="text" />
-            </label>
-          </div>
-        </section>
-
-        <hr class="mss-divider" />
-
-        <!-- Recording limits + upload -->
-        <section>
-          <h2 class="mss-section-title">Recording limits</h2>
-
-          <div class="mss-field-grid">
-            <label class="mss-field">
-              <span class="mss-label">Min seconds</span>
-              <input
-                id="audioMin"
-                class="mss-input"
-                type="number"
-                min="0"
-                step="1"
-              />
-            </label>
-            <label class="mss-field">
-              <span class="mss-label">Max seconds</span>
-              <input
-                id="audioMax"
-                class="mss-input"
-                type="number"
-                min="0"
-                step="1"
-              />
-            </label>
-          </div>
-
-          <div class="mss-field">
-            <label class="mss-pill-checkbox">
-              <input id="permitUpload" type="checkbox" />
-              <span>Allow students to upload audio files (instead of recording)</span>
-            </label>
-          </div>
-        </section>
-
-        <hr class="mss-divider" />
-
-        <!-- Billing / usage -->
-        <section>
-          <h2 class="mss-section-title">Usage &amp; safety limits</h2>
-
-          <div class="mss-field">
-            <label class="mss-label" for="dailyLimit">Daily limit</label>
-            <input
-              id="dailyLimit"
-              class="mss-input"
-              type="number"
-              min="0"
-              step="1"
-            />
-            <div class="mss-muted">
-              Maximum submissions per day for this school. Use 0 for “no limit”
-              (not recommended for production).
+            <div class="mss-config-field">
+              <label for="config-theme">Theme</label>
+              <select id="config-theme">
+                <option value="apple">Apple (light)</option>
+                <option value="mss">MSS Standard</option>
+                <option value="dark">Dark</option>
+              </select>
             </div>
-          </div>
 
-          <div class="mss-field">
-            <label class="mss-pill-checkbox">
-              <input id="notifyOnLimit" type="checkbox" />
-              <span>Email the admin when the daily limit is reached</span>
-            </label>
-          </div>
+            <div class="mss-config-grid mss-config-grid-2">
+              <div class="mss-config-field">
+                <label for="config-minSeconds">Minimum length (seconds)</label>
+                <input
+                  id="config-minSeconds"
+                  type="number"
+                  min="5"
+                  step="1"
+                  placeholder="20"
+                />
+              </div>
 
-          <div class="mss-field">
-            <label class="mss-label" for="emailOnLimit">Notification email</label>
-            <input
-              id="emailOnLimit"
-              class="mss-input"
-              type="email"
-              placeholder="admin@example.com"
-            />
-            <div class="mss-muted">
-              Where to send limit notifications. Defaults to the signup admin email.
+              <div class="mss-config-field">
+                <label for="config-maxSeconds">Maximum length (seconds)</label>
+                <input
+                  id="config-maxSeconds"
+                  type="number"
+                  min="10"
+                  step="1"
+                  placeholder="100"
+                />
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div class="mss-field">
-            <label class="mss-pill-checkbox">
-              <input id="autoBlockOnLimit" type="checkbox" />
-              <span>Automatically block the widget when the daily limit is reached</span>
-            </label>
-          </div>
-        </section>
+          <!-- API + logger -->
+          <section class="mss-config-card">
+            <h2 class="mss-config-card-title">API & logging</h2>
+            <p class="mss-config-card-sub">
+              MSS API credentials and where to log submissions.
+            </p>
 
-        <div class="mss-actions-bottom">
-          <button id="saveBtn" class="mss-btn mss-btn-primary" type="button">
-            Save settings
-          </button>
-          <span id="saveStatus" class="mss-status"></span>
-        </div>
-      </section>
+            <div class="mss-config-field">
+              <label for="config-api-base">MSS API base URL</label>
+              <input
+                id="config-api-base"
+                type="url"
+                placeholder="https://app.myspeakingscore.com"
+              />
+            </div>
 
-      <!-- RIGHT COLUMN: advanced config and raw JSON -->
-      <section class="mss-config-card">
-        <header class="mss-config-card-header">
-          <h2 class="mss-config-card-title">Advanced config</h2>
-          <p class="mss-config-card-subtitle">
-            Theme, API, logging, and which labels are editable.
-          </p>
-        </header>
+            <div class="mss-config-grid mss-config-grid-2">
+              <div class="mss-config-field">
+                <label for="config-api-key">API key</label>
+                <input
+                  id="config-api-key"
+                  type="text"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="mss-config-field">
+                <label for="config-api-secret">API secret</label>
+                <input
+                  id="config-api-secret"
+                  type="password"
+                  autocomplete="off"
+                />
+              </div>
+            </div>
 
-        <section>
-          <h3 class="mss-section-subtitle">Theme</h3>
-          <div class="mss-field">
-            <label class="mss-label" for="theme">Theme</label>
-            <select id="theme" class="mss-input">
-              <option value="apple">Apple</option>
-              <option value="pink">Pink</option>
-              <option value="default">Default</option>
-            </select>
-          </div>
-        </section>
+            <div class="mss-config-divider"></div>
 
-        <hr class="mss-divider" />
-
-        <section>
-          <h3 class="mss-section-subtitle">VoX API</h3>
-
-          <div class="mss-field">
-            <label class="mss-pill-checkbox">
-              <input id="apiEnabled" type="checkbox" />
-              <span>Enable API calls</span>
-            </label>
-          </div>
-
-          <div class="mss-field">
-            <label class="mss-label" for="apiBase">API base URL</label>
-            <input
-              id="apiBase"
-              class="mss-input"
-              type="text"
-              placeholder="https://app.myspeakingscore.com"
-            />
-          </div>
-
-          <div class="mss-field">
-            <label class="mss-label" for="apiKey">API-KEY</label>
-            <input id="apiKey" class="mss-input" type="text" autocomplete="off" />
-          </div>
-
-          <div class="mss-field">
-            <label class="mss-label" for="apiSecret">X-API-SECRET</label>
-            <input
-              id="apiSecret"
-              class="mss-input"
-              type="password"
-              autocomplete="off"
-            />
-          </div>
-        </section>
-
-        <hr class="mss-divider" />
-
-        <section>
-          <h3 class="mss-section-subtitle">Logging</h3>
-
-          <div class="mss-field">
-            <label class="mss-pill-checkbox">
-              <input id="logEnabled" type="checkbox" />
+            <label class="mss-config-check">
+              <input type="checkbox" id="config-logger-enabled" />
               <span>Enable logging</span>
             </label>
-          </div>
 
-          <div class="mss-field">
-            <label class="mss-label" for="logUrl">Logger URL</label>
-            <input
-              id="logUrl"
-              class="mss-input"
-              type="text"
-              placeholder="/log/submission"
-            />
-          </div>
-        </section>
+            <div class="mss-config-field">
+              <label for="config-logger-url">Logger URL</label>
+              <input
+                id="config-logger-url"
+                type="url"
+                placeholder="(leave blank for default MSS logger)"
+              />
+            </div>
+          </section>
 
-        <hr class="mss-divider" />
+          <!-- Save -->
+          <section class="mss-config-actions">
+            <button id="config-saveBtn" class="mss-config-saveBtn">
+              Save configuration
+            </button>
+            <p id="config-saveStatus" class="mss-config-status"></p>
+          </section>
+        </div>
 
-        <section>
-          <h3 class="mss-section-subtitle">Editable fields</h3>
-          <div id="editableContainer" class="mss-editable-pills">
-            <!-- Filled dynamically from config.editable -->
-          </div>
-        </section>
+        <!-- Right column: live-ish preview -->
+        <aside class="mss-config-right">
+          <section class="mss-config-card mss-config-preview-card">
+            <h2 class="mss-config-card-title">Widget preview</h2>
+            <p class="mss-config-card-sub">
+              This is how your students see the widget for this school.
+            </p>
 
-        <hr class="mss-divider" />
+            <div class="mss-config-preview-frame-wrap">
+              <iframe
+                id="config-previewFrame"
+                src=""
+                class="mss-config-preview-frame"
+                title="Widget preview"
+              ></iframe>
+            </div>
 
-        <section>
-          <h3 class="mss-section-subtitle">Raw settings (read-only)</h3>
-          <pre id="rawJson" class="mss-json-box">{}</pre>
-        </section>
+            <p class="mss-config-hint">
+              If changes don’t appear immediately, click “Save configuration”
+              and refresh this page or the student page.
+            </p>
+          </section>
+        </aside>
       </section>
-    </div>
-  </main>
+    </main>
+  </div>
 
   <script>
-    const $ = (id) => document.getElementById(id);
-    const SERVICE_BASE = window.location.origin.replace(/\/+$/, "");
-
-    let CURRENT = {
-      slug: null,
-      schoolId: null,
-      config: null,
-      form: null,
-      billing: null,
-    };
-
-    function setEnvTag() {
-      const el = $('envTag');
-      if (!el) return;
-      el.textContent = location.hostname.includes('localhost')
-        ? 'LOCAL'
-        : 'RENDER';
-    }
-
-    function setLoadStatus(msg, kind = 'neutral') {
-      const el = $('loadStatus');
-      if (!el) return;
-      el.textContent = msg || '';
-      el.className = 'mss-status ' + kind;
-    }
-
-    function setSaveStatus(msg, kind = 'neutral') {
-      const el = $('saveStatus');
-      if (!el) return;
-      el.textContent = msg || '';
-      el.className = 'mss-status ' + kind;
-    }
-
-    function toLines(arr) {
-      if (!Array.isArray(arr)) return '';
-      return arr.join('\\n');
-    }
-
-    function fromLines(str) {
-      return (str || '')
-        .split(/\\r?\\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-
-    function hydrateEditable(editable) {
-      const container = $('editableContainer');
-      if (!container) return;
-      container.innerHTML = '';
-      const map = editable || {};
-      Object.keys(map).forEach((key) => {
-        const checked = !!map[key];
-        const label = document.createElement('label');
-        label.className = 'mss-pill-checkbox mss-chip';
-        label.innerHTML = \`
-          <input type="checkbox" data-editable-key="\${key}" \${checked ? 'checked' : ''}/>
-          <span>\${key}</span>
-        \`;
-        container.appendChild(label);
-      });
-    }
-
-    function hydrateUI() {
-      const cfg = CURRENT.config || {};
-      const form = CURRENT.form || {};
-      const billing = CURRENT.billing || {};
-
-      // Form text
-      $('headline').value = form.headline || '';
-      $('questions').value = toLines(form.survey);
-
-      $('recordButton').value = form.recordButton || '';
-      $('stopButton').value = form.stopButton || '';
-      $('previousButton').value = form.previousButton || '';
-      $('nextButton').value = form.nextButton || '';
-      $('uploadButton').value = form.uploadButton || '';
-      $('submitButton').value = form.SubmitForScoringButton || '';
-      $('poweredByLabel').value = form.poweredByLabel || '';
-      $('notRecordingLabel').value = form.NotRecordingLabel || '';
-
-      // Recording limits / upload
-      $('audioMin').value = Number(cfg.audioMinSeconds ?? 30);
-      $('audioMax').value = Number(cfg.audioMaxSeconds ?? 61);
-      $('permitUpload').checked = cfg.Permitupload !== false; // default true
-
-      // Billing
-      $('dailyLimit').value = Number(billing.dailyLimit ?? 0);
-      $('notifyOnLimit').checked = billing.notifyOnLimit !== false;
-      $('emailOnLimit').value = billing.emailOnLimit || '';
-      $('autoBlockOnLimit').checked = billing.autoBlockOnLimit !== false;
-
-      // Advanced: theme
-      $('theme').value = (cfg.theme || 'apple').toLowerCase();
-
-      // API
-      const api = cfg.api || {};
-      $('apiEnabled').checked = api.enabled !== false;
-      $('apiBase').value = api.baseUrl || '';
-      $('apiKey').value = api.key || '';
-      $('apiSecret').value = api.secret || '';
-
-      // Logger
-      const logger = cfg.logger || {};
-      $('logEnabled').checked = !!logger.enabled;
-      $('logUrl').value = logger.url || '';
-
-      // Editable map
-      hydrateEditable(cfg.editable || {});
-
-      // Raw JSON (for sanity checks)
-      $('rawJson').textContent = JSON.stringify(
-        {
-          schoolId: CURRENT.schoolId,
-          slug: CURRENT.slug,
-          config: cfg,
-          form,
-          billing,
-        },
-        null,
-        2,
-      );
-    }
-
-    function buildPayloadFromUI() {
-      const cfg = JSON.parse(JSON.stringify(CURRENT.config || {}));
-      const form = JSON.parse(JSON.stringify(CURRENT.form || {}));
-      const billing = JSON.parse(JSON.stringify(CURRENT.billing || {}));
-
-      // ---- form ----
-      form.headline = $('headline').value.trim();
-      form.survey = fromLines($('questions').value);
-
-      form.recordButton = $('recordButton').value.trim();
-      form.stopButton = $('stopButton').value.trim();
-      form.previousButton = $('previousButton').value.trim();
-      form.nextButton = $('nextButton').value.trim();
-      form.uploadButton = $('uploadButton').value.trim();
-      form.SubmitForScoringButton = $('submitButton').value.trim();
-      form.poweredByLabel = $('poweredByLabel').value.trim();
-      form.NotRecordingLabel = $('notRecordingLabel').value.trim();
-
-      // ---- config (widgetConfig) ----
-      cfg.theme = $('theme').value || 'apple';
-
-      const minS = Number($('audioMin').value || 0);
-      const maxS = Number($('audioMax').value || 0);
-      cfg.audioMinSeconds = Number.isFinite(minS) && minS >= 0 ? minS : 30;
-      cfg.audioMaxSeconds = Number.isFinite(maxS) && maxS > 0 ? maxS : 61;
-
-      cfg.Permitupload = $('permitUpload').checked;
-
-      cfg.api = cfg.api || {};
-      cfg.api.enabled = $('apiEnabled').checked;
-      cfg.api.baseUrl = $('apiBase').value.trim();
-      cfg.api.key = $('apiKey').value.trim();
-      cfg.api.secret = $('apiSecret').value.trim();
-
-      cfg.logger = cfg.logger || {};
-      cfg.logger.enabled = $('logEnabled').checked;
-      cfg.logger.url = $('logUrl').value.trim();
-
-      cfg.editable = cfg.editable || {};
-      document.querySelectorAll('[data-editable-key]').forEach((el) => {
-        const key = el.getAttribute('data-editable-key');
-        cfg.editable[key] = el.checked;
-      });
-
-      // ---- billing ----
-      const dl = Number($('dailyLimit').value || 0);
-      billing.dailyLimit = Number.isFinite(dl) && dl >= 0 ? dl : 0;
-      billing.notifyOnLimit = $('notifyOnLimit').checked;
-      billing.emailOnLimit = $('emailOnLimit').value.trim();
-      billing.autoBlockOnLimit = $('autoBlockOnLimit').checked;
-
-      return { config: cfg, form, billing };
-    }
-
-    async function loadForSlug(slug) {
-      slug = (slug || '').trim();
-      if (!slug) {
-        setLoadStatus('Enter a slug to load.', 'err');
-        return;
+    (function () {
+      // --- helpers ---
+      function qs(id) {
+        return document.getElementById(id);
       }
 
-      setLoadStatus('Loading…', 'neutral');
-      setSaveStatus('', 'neutral');
+      function getSlug() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("slug") || "mss-demo";
+      }
 
-      try {
-        const res = await fetch(
-          SERVICE_BASE + '/api/admin/widget/' + encodeURIComponent(slug),
-          { cache: 'no-store' },
-        );
-        const body = await res.json().catch(() => ({}));
+      let currentSlug = null;
+      let currentConfig = null;
+      let currentForm = null;
+      let currentBilling = null;
 
-        if (!res.ok || !body.ok) {
-          const msg =
-            body.error ||
-            body.message ||
-            'Could not load settings for this slug.';
-          setLoadStatus(msg, 'err');
-          return;
+      function wireNav(slug) {
+        const baseConfig = "/config-admin/";
+        const baseQuestions = "/questions-admin/";
+        const baseReports = "/reports/";
+
+        const navConfig = qs("navConfig");
+        const navQuestions = qs("navQuestions");
+        const navReports = qs("navReports");
+
+        if (navConfig) {
+          navConfig.href = baseConfig + "?slug=" + encodeURIComponent(slug);
+        }
+        if (navQuestions) {
+          navQuestions.href =
+            baseQuestions + "?slug=" + encodeURIComponent(slug);
+        }
+        if (navReports) {
+          navReports.href =
+            baseReports + "?slug=" + encodeURIComponent(slug);
+        }
+      }
+
+      function setStatus(msg, ok = true) {
+        const el = qs("config-saveStatus");
+        if (!el) return;
+        el.textContent = msg || "";
+        el.className =
+          "mss-config-status " + (msg ? (ok ? "ok" : "err") : "");
+      }
+
+      function fillConfigUI(resp) {
+        const schoolId = resp.schoolId;
+        const slug = resp.slug;
+        const cfg = resp.config || {};
+        const editable = cfg.editable || {};
+        const billing = resp.billing || {};
+        const form = resp.form || {};
+
+        currentSlug = slug;
+        currentConfig = cfg;
+        currentForm = form;
+        currentBilling = billing;
+
+        const labelEl = qs("configSchoolLabel");
+        if (labelEl) {
+          labelEl.textContent =
+            "Widget configuration – " + (form.headline || slug);
         }
 
-        CURRENT.slug = slug;
-        CURRENT.schoolId = body.schoolId;
-        CURRENT.config = body.config || {};
-        CURRENT.form = body.form || {};
-        CURRENT.billing = body.billing || {};
+        // Editable toggles
+        const map = [
+          ["editable-headline", "headline"],
+          ["editable-recordButton", "recordButton"],
+          ["editable-previousButton", "previousButton"],
+          ["editable-nextButton", "nextButton"],
+          ["editable-stopButton", "stopButton"],
+          ["editable-uploadButton", "uploadButton"],
+          ["editable-poweredByLabel", "poweredByLabel"],
+          ["editable-NotRecordingLabel", "NotRecordingLabel"],
+          [
+            "editable-SubmitForScoringButton",
+            "SubmitForScoringButton"
+          ],
+        ];
 
-        setLoadStatus(
-          'Loaded settings for slug "' + slug + '" (school ID ' + body.schoolId + ').',
-          'ok',
-        );
-        hydrateUI();
-      } catch (e) {
-        console.error('loadForSlug error', e);
-        setLoadStatus('Network error while loading settings.', 'err');
+        map.forEach(([id, key]) => {
+          const cb = qs(id);
+          if (cb) cb.checked = editable[key] !== false;
+        });
+
+        const permitCb = qs("config-Permitupload");
+        if (permitCb) {
+          permitCb.checked = cfg.Permitupload !== false;
+        }
+
+        const themeSel = qs("config-theme");
+        if (themeSel) {
+          const theme = cfg.theme || "apple";
+          if ([...themeSel.options].some((o) => o.value === theme)) {
+            themeSel.value = theme;
+          } else {
+            themeSel.value = "apple";
+          }
+        }
+
+        const minI = qs("config-minSeconds");
+        const maxI = qs("config-maxSeconds");
+        if (minI) minI.value = cfg.audioMinSeconds ?? 20;
+        if (maxI) maxI.value = cfg.audioMaxSeconds ?? 100;
+
+        const api = cfg.api || {};
+        const logger = cfg.logger || {};
+
+        const apiBase = qs("config-api-base");
+        const apiKey = qs("config-api-key");
+        const apiSecret = qs("config-api-secret");
+        const loggerEnabled = qs("config-logger-enabled");
+        const loggerUrl = qs("config-logger-url");
+
+        if (apiBase) apiBase.value = api.baseUrl || "";
+        if (apiKey) apiKey.value = api.key || "";
+        if (apiSecret) apiSecret.value = api.secret || "";
+        if (loggerEnabled) loggerEnabled.checked = !!logger.enabled;
+        if (loggerUrl) loggerUrl.value = logger.url || "";
+
+        // Preview iframe
+        const frame = qs("config-previewFrame");
+        if (frame) {
+          const base = window.location.origin.replace(/\/+$/, "");
+          frame.src =
+            base +
+            "/Widget.html?slug=" +
+            encodeURIComponent(slug);
+        }
       }
-    }
 
-    async function saveCurrent() {
-      if (!CURRENT.slug) {
-        setSaveStatus('Load a school first.', 'err');
-        return;
+      async function loadConfig() {
+        const slug = getSlug();
+        wireNav(slug);
+        setStatus("Loading configuration…", true);
+
+        try {
+          const res = await fetch(
+            "/api/admin/widget/" + encodeURIComponent(slug)
+          );
+          const body = await res.json().catch(() => ({}));
+
+          if (!res.ok || !body.ok) {
+            const msg =
+              body.message ||
+              body.error ||
+              "Failed to load widget configuration.";
+            setStatus(msg, false);
+            return;
+          }
+
+          fillConfigUI(body);
+          setStatus("");
+        } catch (err) {
+          console.error("loadConfig error:", err);
+          setStatus("Network error while loading configuration.", false);
+        }
       }
 
-      const payload = buildPayloadFromUI();
-      setSaveStatus('Saving…', 'neutral');
-      $('saveBtn').disabled = true;
+      function buildConfigFromUI() {
+        const cfg = currentConfig || {};
+        const editable = cfg.editable || {};
 
-      try {
-        const res = await fetch(
-          SERVICE_BASE + '/api/admin/widget/' + encodeURIComponent(CURRENT.slug),
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+        function isChecked(id, defaultVal = true) {
+          const cb = qs(id);
+          if (!cb) return defaultVal;
+          return !!cb.checked;
+        }
+
+        const newEditable = {
+          headline: isChecked("editable-headline"),
+          recordButton: isChecked("editable-recordButton"),
+          previousButton: isChecked("editable-previousButton"),
+          nextButton: isChecked("editable-nextButton"),
+          stopButton: isChecked("editable-stopButton"),
+          uploadButton: isChecked("editable-uploadButton"),
+          poweredByLabel: isChecked("editable-poweredByLabel"),
+          NotRecordingLabel: isChecked("editable-NotRecordingLabel"),
+          SubmitForScoringButton: isChecked(
+            "editable-SubmitForScoringButton"
+          ),
+        };
+
+        const permitCb = qs("config-Permitupload");
+        const themeSel = qs("config-theme");
+        const minI = qs("config-minSeconds");
+        const maxI = qs("config-maxSeconds");
+        const apiBase = qs("config-api-base");
+        const apiKey = qs("config-api-key");
+        const apiSecret = qs("config-api-secret");
+        const loggerEnabled = qs("config-logger-enabled");
+        const loggerUrl = qs("config-logger-url");
+
+        const minSeconds = Number(minI && minI.value) || 20;
+        const maxSeconds = Number(maxI && maxI.value) || 100;
+
+        const apiBaseUrl = apiBase ? apiBase.value.trim() : "";
+        const apiKeyVal = apiKey ? apiKey.value.trim() : "";
+        const apiSecretVal = apiSecret ? apiSecret.value.trim() : "";
+
+        const apiEnabled =
+          !!apiBaseUrl && !!apiKeyVal && !!apiSecretVal;
+
+        return {
+          ...cfg,
+          editable: newEditable,
+          Permitupload: permitCb ? !!permitCb.checked : true,
+          theme: themeSel ? themeSel.value : cfg.theme || "apple",
+          audioMinSeconds: minSeconds,
+          audioMaxSeconds: maxSeconds,
+          api: {
+            enabled: apiEnabled,
+            baseUrl: apiBaseUrl,
+            key: apiKeyVal,
+            secret: apiSecretVal,
           },
-        );
-        const body = await res.json().catch(() => ({}));
+          logger: {
+            enabled: loggerEnabled ? !!loggerEnabled.checked : false,
+            url: loggerUrl ? loggerUrl.value.trim() : "",
+          },
+        };
+      }
 
-        if (!res.ok || !body.ok) {
-          const msg =
-            body.error ||
-            body.message ||
-            'Save failed for this school.';
-          setSaveStatus(msg, 'err');
-          $('saveBtn').disabled = false;
+      async function saveConfig() {
+        if (!currentSlug) {
+          setStatus("No school loaded yet.", false);
           return;
         }
 
-        // Update in-memory copy and raw JSON
-        CURRENT.config = payload.config;
-        CURRENT.form = payload.form;
-        CURRENT.billing = payload.billing;
-        hydrateUI();
+        const btn = qs("config-saveBtn");
+        if (btn) btn.disabled = true;
+        setStatus("Saving…", true);
 
-        setSaveStatus('Saved.', 'ok');
-        $('saveBtn').disabled = false;
-      } catch (e) {
-        console.error('saveCurrent error', e);
-        setSaveStatus('Network error while saving.', 'err');
-        $('saveBtn').disabled = false;
-      }
-    }
+        const newConfig = buildConfigFromUI();
 
-    window.addEventListener('DOMContentLoaded', () => {
-      setEnvTag();
+        const payload = {
+          config: newConfig,
+          // preserve current form & billing so we don’t wipe them
+          form: currentForm || {},
+          billing: currentBilling || {},
+        };
 
-      const params = new URLSearchParams(window.location.search);
-      const slugFromUrl = params.get('slug') || params.get('s') || '';
-      if (slugFromUrl) {
-        $('slugInput').value = slugFromUrl;
-        loadForSlug(slugFromUrl);
-      }
+        try {
+          const res = await fetch(
+            "/api/admin/widget/" + encodeURIComponent(currentSlug),
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            }
+          );
+          const body = await res.json().catch(() => ({}));
 
-      $('loadBtn').addEventListener('click', () => {
-        loadForSlug($('slugInput').value);
-      });
+          if (!res.ok || !body.ok) {
+            const msg =
+              body.message ||
+              body.error ||
+              "Failed to save configuration.";
+            setStatus(msg, false);
+            return;
+          }
 
-      $('slugInput').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          loadForSlug($('slugInput').value);
+          currentConfig = newConfig;
+          setStatus("Configuration saved.", true);
+        } catch (err) {
+          console.error("saveConfig error:", err);
+          setStatus("Network error while saving configuration.", false);
+        } finally {
+          if (btn) btn.disabled = false;
         }
-      });
+      }
 
-      $('saveBtn').addEventListener('click', saveCurrent);
-    });
+      window.addEventListener("DOMContentLoaded", () => {
+        const saveBtn = qs("config-saveBtn");
+        if (saveBtn) {
+          saveBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            saveConfig();
+          });
+        }
+        loadConfig();
+      });
+    })();
   </script>
 </body>
 </html>
