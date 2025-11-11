@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MSS Widget</title>
 
-  <!-- Fixed MSS theme -->
+  <!-- Global MSS theme -->
   <link id="themeCss" rel="stylesheet" href="themes/MSSStylesheet.css?v=1" />
 
   <style>
@@ -349,10 +349,14 @@
   </style>
 
   <script>
-    // Where the Render/Express widget service lives
-    window.SERVICE_BASE = (window.location.hostname.includes("localhost")
-      ? "http://localhost:3000"
-      : "https://mss-widget-mt.onrender.com"
+    // Where the widget backend lives.
+    // Allow a host page to predefine window.SERVICE_BASE, otherwise default
+    // to localhost / Render based on hostname.
+    window.SERVICE_BASE = (
+      window.SERVICE_BASE ||
+      (window.location.hostname.includes("localhost")
+        ? "http://localhost:3000"
+        : "https://mss-widget-mt.onrender.com")
     ).replace(/\/+$/, "");
   </script>
 </head>
@@ -360,10 +364,10 @@
 <body class="mssVoxAurora">
   <div class="shell">
     <section
-  id="mss-widget-root"
-  class="mss-card"
-  data-school-slug="mss-demo"
->
+      id="mss-widget-root"
+      class="mss-card"
+      data-school-slug=""
+    >
       <!-- Header -->
       <div class="mss-head">
         <img id="logo" class="mss-logo" alt="Brand logo" />
@@ -469,7 +473,25 @@
     </div>
   </div>
 
-  <!-- New external widget logic (all the audio/API work) -->
-  <script src="js/widget-core.js?v=3"></script>
+  <!-- Pass slug into widget-core via data attribute -->
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const urlSlug = params.get("slug");
+      // Fallback to window.mssWidgetSlug for host pages that set it explicitly
+      const slug = (urlSlug || window.mssWidgetSlug || "mss-demo").trim();
+
+      const root = document.getElementById("mss-widget-root");
+      if (root) {
+        root.dataset.schoolSlug = slug;
+      }
+
+      // Optional: expose for debugging
+      window.mssActiveWidgetSlug = slug;
+    })();
+  </script>
+
+  <!-- Widget logic (audio, API calls, DB bootstrap, etc.) -->
+  <script src="js/widget-core.js?v=4"></script>
 </body>
 </html>
