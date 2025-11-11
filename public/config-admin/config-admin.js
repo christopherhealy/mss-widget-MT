@@ -48,32 +48,34 @@ console.log("✅ config-admin.js loaded");
   }
 
   // ----- build live preview iframe using embed.js + schoolId -----
-  function buildPreview() {
-    if (!previewIframe || !currentSchoolId) return;
+  // ----- build live preview iframe using widget-core.js + schoolId -----
+function buildPreview() {
+  if (!previewIframe || !currentSchoolId) return;
 
-    const base = window.location.origin.replace(/\/+$/, "");
+  const base = window.location.origin.replace(/\/+$/, "");
+  const widgetScript = `${base}/js/widget-core.js?v=1`; // <-- real script path
 
-    const snippetLines = [
-      "<!DOCTYPE html>",
-      '<html lang="en">',
-      "<head>",
-      '  <meta charset="UTF-8" />',
-      "  <title>Widget preview</title>",
-      '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-      `  <link rel="stylesheet" href="${base}/themes/MSSStylesheet.css?v=1" />`,
-      "</head>",
-      "<body>",
-      '  <div id="mss-widget-container" style="padding:24px;"></div>',
-      // avoid literal </script> in the JS file by splitting it:
-      `  <script src="${base}/embed.js" data-school-id="${currentSchoolId}"></` +
-        "script>",
-      "</body>",
-      "</html>",
-    ];
+  const snippetLines = [
+    "<!DOCTYPE html>",
+    '<html lang="en">',
+    "<head>",
+    '  <meta charset="UTF-8" />',
+    "  <title>Widget preview</title>",
+    '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+    // main MSS styles so preview frame looks like the real page
+    `  <link rel="stylesheet" href="${base}/themes/MSSStylesheet.css?v=1" />`,
+    "</head>",
+    "<body>",
+    '  <div id="mss-widget-container" style="padding:24px;"></div>',
+    // IMPORTANT: use the real widget script, not /embed.js
+    `  <script src="${widgetScript}" data-school-id="${currentSchoolId}"></` +
+      "script>",
+    "</body>",
+    "</html>",
+  ];
 
-    previewIframe.srcdoc = snippetLines.join("\n");
-  }
-
+  previewIframe.srcdoc = snippetLines.join("\n");
+}
   // ----- populate form from server data -----
   async function loadConfig() {
     try {
