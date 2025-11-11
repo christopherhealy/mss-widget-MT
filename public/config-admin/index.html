@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>MSS Widget – Configuration</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" /> 
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <!-- Main MSS theme -->
     <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
@@ -56,8 +56,7 @@
             <h1 class="mss-admin-page-title">Widget configuration</h1>
             <p class="mss-admin-intro">
               Control how your widget looks and behaves. Question text and
-              ordering can be edited on the
-              <strong>Questions</strong> tab.
+              ordering can be edited on the <strong>Questions</strong> tab.
             </p>
 
             <!-- Brand & text -->
@@ -94,6 +93,28 @@
               </label>
             </section>
 
+            <!-- Small card with preview button -->
+            <section class="mss-admin-card mss-admin-card-preview">
+              <h2 class="mss-admin-card-title">Widget preview</h2>
+              <p class="mss-admin-body-text">
+                Open a live preview of your speaking widget using the current
+                settings for this school.
+              </p>
+              <p class="mss-admin-body-text">
+                After you change settings and click
+                <strong>Save changes</strong>, re-open the preview to see your
+                updates.
+              </p>
+
+              <button
+                type="button"
+                id="mssOpenPreview"
+                class="mss-admin-primary-btn"
+              >
+                Open widget preview
+              </button>
+            </section>
+
             <!-- Theme & behaviour -->
             <section class="mss-admin-card">
               <h2 class="mss-admin-section-title">Theme &amp; behaviour</h2>
@@ -101,10 +122,10 @@
               <label class="mss-admin-field">
                 <span class="mss-admin-label">Theme</span>
                 <select id="cfgTheme" class="mss-admin-select">
-                  <option value="mss-default">MSS default</option>
+                  <option value="default">MSS default</option>
                   <option value="apple">Apple-style light</option>
-                  <option value="apple-dark">Apple-style dark</option>
-                  <option value="pink">Pink highlight</option>
+                  <option value="pink">Pink accent</option>
+                  <!-- add other theme values as needed -->
                 </select>
               </label>
 
@@ -125,7 +146,6 @@
                   <input
                     id="cfgMinSec"
                     type="number"
-                    min="0"
                     class="mss-admin-input"
                     placeholder="20"
                   />
@@ -138,7 +158,6 @@
                   <input
                     id="cfgMaxSec"
                     type="number"
-                    min="0"
                     class="mss-admin-input"
                     placeholder="100"
                   />
@@ -319,7 +338,7 @@
               </div>
             </section>
 
-            <!-- API & logging -->
+            <!-- MSS API & logging -->
             <section class="mss-admin-card">
               <h2 class="mss-admin-section-title">MSS API &amp; logging</h2>
 
@@ -423,28 +442,30 @@
             </div>
           </form>
         </section>
-
-        <!-- Right: widget preview -->
-        <aside class="mss-admin-column mss-admin-column-right">
-          <section class="mss-admin-card mss-admin-preview-card">
-            <h2 class="mss-admin-section-title">Widget preview</h2>
-            <p class="mss-admin-help">
-              This shows how your speaking widget will appear to students on
-              your site, using the current settings for this school.
-              After you change settings and click
-              <strong>Save changes</strong>, the preview will refresh.
-            </p>
-
-            <div class="mss-admin-preview-frame">
-              <iframe
-                id="mssWidgetPreview"
-                title="Widget preview"
-                class="mss-admin-preview-iframe"
-              ></iframe>
-            </div>
-          </section>
-        </aside>
       </main>
+    </div>
+
+    <!-- Preview modal -->
+    <div id="mssPreviewOverlay" class="mss-admin-overlay mss-hidden">
+      <div class="mss-admin-overlay-backdrop"></div>
+      <div class="mss-admin-overlay-inner">
+        <div class="mss-admin-overlay-header">
+          <div class="mss-admin-overlay-title">Widget preview</div>
+          <button
+            type="button"
+            id="mssPreviewClose"
+            class="mss-admin-overlay-close"
+            aria-label="Close preview"
+          >
+            ×
+          </button>
+        </div>
+        <iframe
+          id="mssPreviewFrame"
+          class="mss-admin-overlay-frame"
+          title="Widget preview"
+        ></iframe>
+      </div>
     </div>
 
     <script src="/config-admin/config-admin.js?v=1"></script>
