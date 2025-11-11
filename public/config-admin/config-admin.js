@@ -208,8 +208,9 @@ console.log("✅ config-admin.js loaded");
   }
 
   // ---------- BUILD PREVIEW ----------
+   // ---------- BUILD PREVIEW ----------
   function buildPreview() {
-    if (!previewIframe || !currentSchoolId) return;
+    if (!previewIframe) return;
 
     const base = window.location.origin.replace(/\/+$/, "");
 
@@ -221,21 +222,20 @@ console.log("✅ config-admin.js loaded");
       "  <title>Widget preview</title>",
       '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
       `  <link rel="stylesheet" href="${base}/themes/MSSStylesheet.css?v=1" />`,
-      // The widget itself loads its own theme CSS based on config;
-      // this extra stylesheet just keeps the background nice.
       "</head>",
+      // light grey background, a little padding
       '<body style="margin:0;padding:24px;background:#f5f5fb;">',
+      // tell the widget which school to load (same pattern as Widget Academy)
+      `  <script>window.mssWidgetSlug = "${slug}";</` + "script>",
       '  <div id="mss-widget-container"></div>',
-      // split closing tag to avoid ending the surrounding script
-      `  <script src="${base}/embed.js" data-school-id="${currentSchoolId}"></` +
-        "script>",
+      // use the existing widget script instead of /embed.js
+      `  <script src="${base}/widget-core.v1.js"></` + "script>",
       "</body>",
       "</html>",
     ].join("\n");
 
     previewIframe.srcdoc = html;
   }
-
   // ---------- SAVE CONFIG BACK TO SERVER ----------
   async function saveConfig(e) {
     e.preventDefault();
