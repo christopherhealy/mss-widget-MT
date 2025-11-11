@@ -7,6 +7,8 @@ console.log("✅ config-admin.js loaded");
   // ----- read slug from URL -----
   const params = new URLSearchParams(window.location.search);
   const slug = (params.get("slug") || "mss-demo").trim();
+
+  // Show slug in header
   const schoolSlugEl = qs("#mssAdminSchoolSlug");
   if (schoolSlugEl) schoolSlugEl.textContent = slug;
 
@@ -45,6 +47,33 @@ console.log("✅ config-admin.js loaded");
     statusEl.className = "mss-admin-status" + (cls ? " " + cls : "");
   }
 
+  // ----- build live preview iframe using embed.js + schoolId -----
+  function buildPreview() {
+    if (!previewIframe || !currentSchoolId) return;
+
+    const base = window.location.origin.replace(/\/+$/, "");
+
+    const snippetLines = [
+      "<!DOCTYPE html>",
+      '<html lang="en">',
+      "<head>",
+      '  <meta charset="UTF-8" />',
+      "  <title>Widget preview</title>",
+      '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+      `  <link rel="stylesheet" href="${base}/themes/MSSStylesheet.css?v=1" />`,
+      "</head>",
+      "<body>",
+      '  <div id="mss-widget-container" style="padding:24px;"></div>',
+      // avoid literal </script> in the JS file by splitting it:
+      `  <script src="${base}/embed.js" data-school-id="${currentSchoolId}"></` +
+        "script>",
+      "</body>",
+      "</html>",
+    ];
+
+    previewIframe.srcdoc = snippetLines.join("\n");
+  }
+
   // ----- populate form from server data -----
   async function loadConfig() {
     try {
@@ -68,70 +97,122 @@ console.log("✅ config-admin.js loaded");
       currentBilling = body.billing || {};
 
       // ---- Brand / text ----
-      qs("#cfgHeadline").value = currentForm.headline || "CEFR Assessment";
-      qs("#cfgPoweredBy").value =
-        currentForm.poweredByLabel || "Powered by MSS Vox";
-      qs("#cfgEditableHeadline").checked = !!(
-        currentConfig.editable?.headline ?? true
-      );
+      const cfgHeadline = qs("#cfgHeadline");
+      const cfgPoweredBy = qs("#cfgPoweredBy");
+      const cfgEditableHeadline = qs("#cfgEditableHeadline");
+
+      if (cfgHeadline)
+        cfgHeadline.value = currentForm.headline || "CEFR Assessment";
+      if (cfgPoweredBy)
+        cfgPoweredBy.value =
+          currentForm.poweredByLabel || "Powered by MSS Vox";
+      if (cfgEditableHeadline)
+        cfgEditableHeadline.checked = !!(
+          currentConfig.editable?.headline ?? true
+        );
 
       // ---- Theme & behaviour ----
-      qs("#cfgTheme").value = currentConfig.theme || "apple";
+      const cfgTheme = qs("#cfgTheme");
+      const cfgAllowUpload = qs("#cfgAllowUpload");
+      const cfgMinSec = qs("#cfgMinSec");
+      const cfgMaxSec = qs("#cfgMaxSec");
 
-      qs("#cfgAllowUpload").checked = !!(
-        currentConfig.Permitupload ?? true
-      );
+      if (cfgTheme) cfgTheme.value = currentConfig.theme || "apple";
+      if (cfgAllowUpload)
+        cfgAllowUpload.checked = !!(currentConfig.Permitupload ?? true);
 
-      qs("#cfgMinSec").value =
-        currentConfig.audioMinSeconds != null
-          ? currentConfig.audioMinSeconds
-          : 20;
-      qs("#cfgMaxSec").value =
-        currentConfig.audioMaxSeconds != null
-          ? currentConfig.audioMaxSeconds
-          : 100;
+      if (cfgMinSec)
+        cfgMinSec.value =
+          currentConfig.audioMinSeconds != null
+            ? currentConfig.audioMinSeconds
+            : 20;
+      if (cfgMaxSec)
+        cfgMaxSec.value =
+          currentConfig.audioMaxSeconds != null
+            ? currentConfig.audioMaxSeconds
+            : 100;
 
       const show = currentConfig.show || {};
-      qs("#showHeadline").checked = show.headline ?? true;
-      qs("#showRecordButton").checked = show.recordButton ?? true;
-      qs("#showPrevButton").checked = show.prevButton ?? true;
-      qs("#showNextButton").checked = show.nextButton ?? true;
-      qs("#showStopButton").checked = show.stopButton ?? true;
-      qs("#showUploadButton").checked = show.uploadButton ?? true;
-      qs("#showPoweredByLabel").checked = show.poweredByLabel ?? true;
-      qs("#showNotRecordingLabel").checked = show.notRecordingLabel ?? true;
-      qs("#showSubmitButton").checked = show.submitButton ?? true;
+      const showHeadline = qs("#showHeadline");
+      const showRecordButton = qs("#showRecordButton");
+      const showPrevButton = qs("#showPrevButton");
+      const showNextButton = qs("#showNextButton");
+      const showStopButton = qs("#showStopButton");
+      const showUploadButton = qs("#showUploadButton");
+      const showPoweredByLabel = qs("#showPoweredByLabel");
+      const showNotRecordingLabel = qs("#showNotRecordingLabel");
+      const showSubmitButton = qs("#showSubmitButton");
+
+      if (showHeadline) showHeadline.checked = show.headline ?? true;
+      if (showRecordButton)
+        showRecordButton.checked = show.recordButton ?? true;
+      if (showPrevButton) showPrevButton.checked = show.prevButton ?? true;
+      if (showNextButton) showNextButton.checked = show.nextButton ?? true;
+      if (showStopButton) showStopButton.checked = show.stopButton ?? true;
+      if (showUploadButton)
+        showUploadButton.checked = show.uploadButton ?? true;
+      if (showPoweredByLabel)
+        showPoweredByLabel.checked = show.poweredByLabel ?? true;
+      if (showNotRecordingLabel)
+        showNotRecordingLabel.checked = show.notRecordingLabel ?? true;
+      if (showSubmitButton)
+        showSubmitButton.checked = show.submitButton ?? true;
 
       // ---- Labels from form ----
-      qs("#labelRecord").value =
-        currentForm.recordButton || "Record your response";
-      qs("#labelPrev").value = currentForm.previousButton || "Previous";
-      qs("#labelNext").value = currentForm.nextButton || "Next";
-      qs("#labelStop").value = currentForm.stopButton || "Stop";
-      qs("#labelUpload").value =
-        currentForm.uploadButton || "Choose an audio file";
-      qs("#labelSubmit").value =
-        currentForm.SubmitForScoringButton || "Submit for scoring";
-      qs("#labelNotRecording").value =
-        currentForm.NotRecordingLabel || "Not recording";
+      const labelRecord = qs("#labelRecord");
+      const labelPrev = qs("#labelPrev");
+      const labelNext = qs("#labelNext");
+      const labelStop = qs("#labelStop");
+      const labelUpload = qs("#labelUpload");
+      const labelSubmit = qs("#labelSubmit");
+      const labelNotRecording = qs("#labelNotRecording");
+
+      if (labelRecord)
+        labelRecord.value =
+          currentForm.recordButton || "Record your response";
+      if (labelPrev) labelPrev.value = currentForm.previousButton || "Previous";
+      if (labelNext) labelNext.value = currentForm.nextButton || "Next";
+      if (labelStop) labelStop.value = currentForm.stopButton || "Stop";
+      if (labelUpload)
+        labelUpload.value =
+          currentForm.uploadButton || "Choose an audio file";
+      if (labelSubmit)
+        labelSubmit.value =
+          currentForm.SubmitForScoringButton || "Submit for scoring";
+      if (labelNotRecording)
+        labelNotRecording.value =
+          currentForm.NotRecordingLabel || "Not recording";
 
       // ---- API & logging ----
       const api = currentConfig.api || {};
-      qs("#cfgApiBaseUrl").value = api.baseUrl || "";
-      qs("#cfgApiKey").value = api.key || "";
-      qs("#cfgApiSecret").value = api.secret || "";
+      const cfgApiBaseUrl = qs("#cfgApiBaseUrl");
+      const cfgApiKey = qs("#cfgApiKey");
+      const cfgApiSecret = qs("#cfgApiSecret");
+
+      if (cfgApiBaseUrl) cfgApiBaseUrl.value = api.baseUrl || "";
+      if (cfgApiKey) cfgApiKey.value = api.key || "";
+      if (cfgApiSecret) cfgApiSecret.value = api.secret || "";
 
       const logger = currentConfig.logger || {};
-      qs("#cfgLoggerEnabled").checked = !!logger.enabled;
-      qs("#cfgLoggerUrl").value = logger.url || "";
+      const cfgLoggerEnabled = qs("#cfgLoggerEnabled");
+      const cfgLoggerUrl = qs("#cfgLoggerUrl");
+
+      if (cfgLoggerEnabled) cfgLoggerEnabled.checked = !!logger.enabled;
+      if (cfgLoggerUrl) cfgLoggerUrl.value = logger.url || "";
 
       // ---- Billing ----
-      qs("#cfgDailyLimit").value =
-        currentBilling.dailyLimit != null ? currentBilling.dailyLimit : 50;
-      qs("#cfgNotifyOnLimit").checked =
-        currentBilling.notifyOnLimit ?? true;
-      qs("#cfgAutoBlockOnLimit").checked =
-        currentBilling.autoBlockOnLimit ?? true;
+      const cfgDailyLimit = qs("#cfgDailyLimit");
+      const cfgNotifyOnLimit = qs("#cfgNotifyOnLimit");
+      const cfgAutoBlockOnLimit = qs("#cfgAutoBlockOnLimit");
+
+      if (cfgDailyLimit)
+        cfgDailyLimit.value =
+          currentBilling.dailyLimit != null ? currentBilling.dailyLimit : 50;
+      if (cfgNotifyOnLimit)
+        cfgNotifyOnLimit.checked = currentBilling.notifyOnLimit ?? true;
+      if (cfgAutoBlockOnLimit)
+        cfgAutoBlockOnLimit.checked =
+          currentBilling.autoBlockOnLimit ?? true;
 
       setStatus("Configuration loaded.", "is-ok");
       buildPreview();
@@ -139,32 +220,6 @@ console.log("✅ config-admin.js loaded");
       console.error("loadConfig exception:", err);
       setStatus("Network error while loading configuration.", "is-error");
     }
-  }
-
-  // ----- build live preview iframe using embed.js + schoolId -----
-  function buildPreview() {
-    if (!previewIframe || !currentSchoolId) return;
-    const base = window.location.origin.replace(/\/+$/, "");
-
-    const snippetLines = [
-      '<!DOCTYPE html>',
-      '<html lang="en">',
-      "<head>",
-      '  <meta charset="UTF-8" />',
-      "  <title>Widget preview</title>",
-      '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-      `  <link rel="stylesheet" href="${base}/themes/MSSStylesheet.css?v=1" />`,
-      "</head>",
-      "<body>",
-      '  <div id="mss-widget-container" style="padding:32px;"></div>',
-      // avoid literal </script> inside JS string
-      `  <script src="${base}/embed.js" data-school-id="${currentSchoolId}"></` +
-        "script>",
-      "</body>",
-      "</html>",
-    ];
-
-    previewIframe.srcdoc = snippetLines.join("\n");
   }
 
   // ----- collect + save configuration back to server -----
@@ -176,60 +231,123 @@ console.log("✅ config-admin.js loaded");
     const billingOut = { ...(currentBilling || {}) };
 
     // Brand / text
-    formOut.headline = qs("#cfgHeadline").value.trim();
-    formOut.poweredByLabel = qs("#cfgPoweredBy").value.trim();
+    const cfgHeadline = qs("#cfgHeadline");
+    const cfgPoweredBy = qs("#cfgPoweredBy");
+    const cfgEditableHeadline = qs("#cfgEditableHeadline");
+
+    if (cfgHeadline) formOut.headline = cfgHeadline.value.trim();
+    if (cfgPoweredBy) formOut.poweredByLabel = cfgPoweredBy.value.trim();
+
     configOut.editable = {
       ...(configOut.editable || {}),
-      headline: qs("#cfgEditableHeadline").checked,
+      headline: cfgEditableHeadline ? cfgEditableHeadline.checked : true,
     };
 
     // Theme & behaviour
-    configOut.theme = qs("#cfgTheme").value;
-    configOut.Permitupload = qs("#cfgAllowUpload").checked;
-    configOut.audioMinSeconds = Number(qs("#cfgMinSec").value || 0);
-    configOut.audioMaxSeconds = Number(qs("#cfgMaxSec").value || 0);
+    const cfgTheme = qs("#cfgTheme");
+    const cfgAllowUpload = qs("#cfgAllowUpload");
+    const cfgMinSec = qs("#cfgMinSec");
+    const cfgMaxSec = qs("#cfgMaxSec");
 
-    configOut.show = {
-      headline: qs("#showHeadline").checked,
-      recordButton: qs("#showRecordButton").checked,
-      prevButton: qs("#showPrevButton").checked,
-      nextButton: qs("#showNextButton").checked,
-      stopButton: qs("#showStopButton").checked,
-      uploadButton: qs("#showUploadButton").checked,
-      poweredByLabel: qs("#showPoweredByLabel").checked,
-      notRecordingLabel: qs("#showNotRecordingLabel").checked,
-      submitButton: qs("#showSubmitButton").checked,
-    };
+    if (cfgTheme) configOut.theme = cfgTheme.value;
+    if (cfgAllowUpload)
+      configOut.Permitupload = cfgAllowUpload.checked;
+    if (cfgMinSec)
+      configOut.audioMinSeconds = Number(cfgMinSec.value || 0);
+    if (cfgMaxSec)
+      configOut.audioMaxSeconds = Number(cfgMaxSec.value || 0);
+
+    const show = {};
+    const showHeadline = qs("#showHeadline");
+    const showRecordButton = qs("#showRecordButton");
+    const showPrevButton = qs("#showPrevButton");
+    const showNextButton = qs("#showNextButton");
+    const showStopButton = qs("#showStopButton");
+    const showUploadButton = qs("#showUploadButton");
+    const showPoweredByLabel = qs("#showPoweredByLabel");
+    const showNotRecordingLabel = qs("#showNotRecordingLabel");
+    const showSubmitButton = qs("#showSubmitButton");
+
+    show.headline = showHeadline ? showHeadline.checked : true;
+    show.recordButton = showRecordButton
+      ? showRecordButton.checked
+      : true;
+    show.prevButton = showPrevButton ? showPrevButton.checked : true;
+    show.nextButton = showNextButton ? showNextButton.checked : true;
+    show.stopButton = showStopButton ? showStopButton.checked : true;
+    show.uploadButton = showUploadButton
+      ? showUploadButton.checked
+      : true;
+    show.poweredByLabel = showPoweredByLabel
+      ? showPoweredByLabel.checked
+      : true;
+    show.notRecordingLabel = showNotRecordingLabel
+      ? showNotRecordingLabel.checked
+      : true;
+    show.submitButton = showSubmitButton
+      ? showSubmitButton.checked
+      : true;
+
+    configOut.show = show;
 
     // Labels
-    formOut.recordButton = qs("#labelRecord").value.trim();
-    formOut.previousButton = qs("#labelPrev").value.trim();
-    formOut.nextButton = qs("#labelNext").value.trim();
-    formOut.stopButton = qs("#labelStop").value.trim();
-    formOut.uploadButton = qs("#labelUpload").value.trim();
-    formOut.SubmitForScoringButton =
-      qs("#labelSubmit").value.trim();
-    formOut.NotRecordingLabel =
-      qs("#labelNotRecording").value.trim();
+    const labelRecord = qs("#labelRecord");
+    const labelPrev = qs("#labelPrev");
+    const labelNext = qs("#labelNext");
+    const labelStop = qs("#labelStop");
+    const labelUpload = qs("#labelUpload");
+    const labelSubmit = qs("#labelSubmit");
+    const labelNotRecording = qs("#labelNotRecording");
+
+    if (labelRecord)
+      formOut.recordButton = labelRecord.value.trim();
+    if (labelPrev)
+      formOut.previousButton = labelPrev.value.trim();
+    if (labelNext)
+      formOut.nextButton = labelNext.value.trim();
+    if (labelStop) formOut.stopButton = labelStop.value.trim();
+    if (labelUpload)
+      formOut.uploadButton = labelUpload.value.trim();
+    if (labelSubmit)
+      formOut.SubmitForScoringButton = labelSubmit.value.trim();
+    if (labelNotRecording)
+      formOut.NotRecordingLabel = labelNotRecording.value.trim();
 
     // API & logging
+    const cfgApiBaseUrl = qs("#cfgApiBaseUrl");
+    const cfgApiKey = qs("#cfgApiKey");
+    const cfgApiSecret = qs("#cfgApiSecret");
+
     configOut.api = {
       ...(configOut.api || {}),
-      baseUrl: qs("#cfgApiBaseUrl").value.trim(),
-      key: qs("#cfgApiKey").value.trim(),
-      secret: qs("#cfgApiSecret").value.trim(),
+      baseUrl: cfgApiBaseUrl ? cfgApiBaseUrl.value.trim() : "",
+      key: cfgApiKey ? cfgApiKey.value.trim() : "",
+      secret: cfgApiSecret ? cfgApiSecret.value.trim() : "",
     };
+
+    const cfgLoggerEnabled = qs("#cfgLoggerEnabled");
+    const cfgLoggerUrl = qs("#cfgLoggerUrl");
 
     configOut.logger = {
       ...(configOut.logger || {}),
-      enabled: qs("#cfgLoggerEnabled").checked,
-      url: qs("#cfgLoggerUrl").value.trim(),
+      enabled: cfgLoggerEnabled ? cfgLoggerEnabled.checked : false,
+      url: cfgLoggerUrl ? cfgLoggerUrl.value.trim() : "",
     };
 
     // Billing
-    billingOut.dailyLimit = Number(qs("#cfgDailyLimit").value || 0);
-    billingOut.notifyOnLimit = qs("#cfgNotifyOnLimit").checked;
-    billingOut.autoBlockOnLimit = qs("#cfgAutoBlockOnLimit").checked;
+    const cfgDailyLimit = qs("#cfgDailyLimit");
+    const cfgNotifyOnLimit = qs("#cfgNotifyOnLimit");
+    const cfgAutoBlockOnLimit = qs("#cfgAutoBlockOnLimit");
+
+    billingOut.dailyLimit = cfgDailyLimit
+      ? Number(cfgDailyLimit.value || 0)
+      : 0;
+    billingOut.notifyOnLimit = cfgNotifyOnLimit
+      ? cfgNotifyOnLimit.checked
+      : true;
+    billingOut.autoBlockOnLimit = cfgAutoBlockOnLimit
+      ? cfgAutoBlockOnLimit.checked
+      : true;
 
     const payload = {
       config: configOut,

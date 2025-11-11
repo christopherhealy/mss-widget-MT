@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Widget – Admin preview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Use the normal widget styles so the preview looks real -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <link rel="stylesheet" href="/themes/mss-widget-apple.css?v=1" />
+  <!-- (the theme CSS will actually be chosen by widget-core via CONFIG) -->
+
+  <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <div id="mss-widget-container"></div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get("slug") || "mss-demo";
+
+      // Tell embed.js / widget-core which school to bootstrap
+      window.mssWidgetSlug = slug;
+    })();
+  </script>
+
+  <!-- Your normal embed script that mounts the widget into #mss-widget-container -->
+  <script src="/embed.js"></script>
+</body>
+</html>

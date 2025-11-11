@@ -306,29 +306,30 @@
         </section>
 
         <!-- Right-hand preview panel -->
-        <aside class="mss-admin-main-right">
-          <section class="mss-admin-card mss-admin-preview-card">
-            <h2 class="mss-admin-section-title">Widget preview</h2>
-            <p class="mss-admin-card-intro">
-              This preview shows how the widget will look to students on your
-              site using the current configuration.
-            </p>
+       <!-- Right column: live widget preview -->
+<aside class="mss-config-preview-card">
+  <h2 class="mss-config-preview-title">Widget preview</h2>
+  <p class="mss-config-preview-copy">
+    This shows how your speaking widget will appear to students on your site,
+    using the current settings for this school.
+  </p>
 
-            <div class="mss-admin-preview-frame">
-              <iframe
-                id="mssWidgetPreview"
-                title="Widget preview"
-                loading="lazy"
-              ></iframe>
-            </div>
+  <div class="mss-config-preview-frame-wrap">
+    <iframe
+      id="widgetPreviewFrame"
+      class="mss-config-preview-frame"
+      title="Widget preview"
+      src="about:blank"
+    ></iframe>
+  </div>
 
-            <p class="mss-admin-preview-note">
-              Question text is managed on the
-              <strong>Questions</strong> tab. Changes to labels, theme, upload
-              settings, and limits will appear here after you save.
-            </p>
-          </section>
-        </aside>
+
+
+  <p class="mss-config-preview-hint">
+    After you change settings and click <strong>Save changes</strong>, the
+    preview will refresh with your new configuration.
+  </p>
+</aside>
       </main>
     </div>
 
