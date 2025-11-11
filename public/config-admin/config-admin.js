@@ -2,16 +2,16 @@
 console.log("✅ config-admin.js loaded");
 
 (function () {
-  const qs = (sel) => document.querySelector(sel); 
+  const qs = (sel) => document.querySelector(sel);
 
-  // ----- slug + header -----
+  // ----- basic slug wiring -----
   const params = new URLSearchParams(window.location.search);
   const slug = (params.get("slug") || "mss-demo").trim();
 
   const schoolSlugEl = qs("#mssAdminSchoolSlug");
   if (schoolSlugEl) schoolSlugEl.textContent = slug;
 
-  // ----- top nav wiring -----
+  // ----- top nav -----
   const makeUrl = (path) => `${path}?slug=${encodeURIComponent(slug)}`;
 
   const tabConfig = qs("#mssAdminTabConfig");
@@ -27,10 +27,10 @@ console.log("✅ config-admin.js loaded");
   }
   if (tabReports) {
     tabReports.href = makeUrl("/reports/");
-    tabReports.classList.add("mss-admin-tab--disabled");
+    tabReports.classList.add("is-disabled"); // placeholder
   }
 
-  // ----- DOM refs -----
+  // ----- key elements -----
   const formEl = qs("#mssConfigForm");
   const statusEl = qs("#mssAdminStatus");
   const previewIframe = qs("#mssWidgetPreview");
@@ -46,15 +46,15 @@ console.log("✅ config-admin.js loaded");
     statusEl.className = "mss-admin-status" + (cls ? " " + cls : "");
   }
 
-  // ----- load config from server -----
+  // ---------- LOAD CONFIG FROM SERVER ----------
   async function loadConfig() {
     try {
       setStatus("Loading configuration…", "is-working");
 
-      const res = await fetch(
-        `/api/admin/widget/${encodeURIComponent(slug)}`,
-        { headers: { Accept: "application/json" } }
-      );
+      const url = `/api/admin/widget/${encodeURIComponent(slug)}`;
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok || !body.ok) {
@@ -71,133 +71,132 @@ console.log("✅ config-admin.js loaded");
       currentForm = body.form || {};
       currentBilling = body.billing || {};
 
-      // ---------- Brand & text ----------
-      const cfgHeadline = qs("#cfgHeadline");
-      const cfgPoweredBy = qs("#cfgPoweredBy");
-      const cfgEditableHeadline = qs("#cfgEditableHeadline");
+      const editable = currentConfig.editable || {};
+      const show = currentConfig.show || {};
+      const api = currentConfig.api || {};
+      const logger = currentConfig.logger || {};
 
-      if (cfgHeadline) {
-        cfgHeadline.value = currentForm.headline || "CEFR Assessment";
+      // ----- Brand / text -----
+      const elHeadline = qs("#cfgHeadline");
+      if (elHeadline) {
+        elHeadline.value = currentForm.headline || "CEFR Assessment";
       }
-      if (cfgPoweredBy) {
-        cfgPoweredBy.value =
+
+      const elPoweredBy = qs("#cfgPoweredBy");
+      if (elPoweredBy) {
+        elPoweredBy.value =
           currentForm.poweredByLabel || "Powered by MSS Vox";
       }
-      if (cfgEditableHeadline) {
-        cfgEditableHeadline.checked = !!(
-          currentConfig.editable?.headline ?? true
-        );
+
+      const elEditableHeadline = qs("#cfgEditableHeadline");
+      if (elEditableHeadline) {
+        elEditableHeadline.checked =
+          editable.headline !== undefined ? !!editable.headline : true;
       }
 
-      // ---------- Theme & behaviour ----------
-      const cfgTheme = qs("#cfgTheme");
-      const cfgAllowUpload = qs("#cfgAllowUpload");
-      const cfgMinSec = qs("#cfgMinSec");
-      const cfgMaxSec = qs("#cfgMaxSec");
+      // ----- Theme & behaviour -----
+      const elTheme = qs("#cfgTheme");
+      if (elTheme) {
+        elTheme.value = currentConfig.theme || "default";
+      }
 
-      if (cfgTheme) {
-        cfgTheme.value = currentConfig.theme || "mss-default";
+      const elAllowUpload = qs("#cfgAllowUpload");
+      if (elAllowUpload) {
+        elAllowUpload.checked =
+          currentConfig.Permitupload !== undefined
+            ? !!currentConfig.Permitupload
+            : true;
       }
-      if (cfgAllowUpload) {
-        cfgAllowUpload.checked =
-          currentConfig.allowUpload ?? currentConfig.Permitupload ?? true;
-      }
-      if (cfgMinSec) {
-        cfgMinSec.value =
+
+      const elMin = qs("#cfgMinSec");
+      if (elMin) {
+        elMin.value =
           currentConfig.audioMinSeconds != null
             ? currentConfig.audioMinSeconds
             : 20;
       }
-      if (cfgMaxSec) {
-        cfgMaxSec.value =
+
+      const elMax = qs("#cfgMaxSec");
+      if (elMax) {
+        elMax.value =
           currentConfig.audioMaxSeconds != null
             ? currentConfig.audioMaxSeconds
             : 100;
       }
 
-      // ---------- Visibility toggles ----------
-      const show = currentConfig.show || {};
+      // ----- Buttons visibility -----
+      const mapShow = [
+        ["#showHeadline", "headline"],
+        ["#showRecordButton", "recordButton"],
+        ["#showPrevButton", "prevButton"],
+        ["#showNextButton", "nextButton"],
+        ["#showStopButton", "stopButton"],
+        ["#showUploadButton", "uploadButton"],
+        ["#showPoweredByLabel", "poweredByLabel"],
+        ["#showNotRecordingLabel", "notRecordingLabel"],
+        ["#showSubmitButton", "submitButton"],
+      ];
 
-      const visMap = {
-        showHeadline: "headline",
-        showRecordButton: "recordButton",
-        showPrevButton: "prevButton",
-        showNextButton: "nextButton",
-        showStopButton: "stopButton",
-        showUploadButton: "uploadButton",
-        showPoweredByLabel: "poweredByLabel",
-        showNotRecordingLabel: "notRecordingLabel",
-        showSubmitButton: "submitButton",
-      };
-
-      Object.entries(visMap).forEach(([id, key]) => {
-        const el = qs("#" + id);
-        if (el) el.checked = show[key] ?? true;
-      });
-
-      // ---------- Text labels ----------
-      const labelDefaults = {
-        recordButton: "Record your response",
-        previousButton: "Previous",
-        nextButton: "Next",
-        stopButton: "Stop",
-        uploadButton: "Choose an audio file",
-        SubmitForScoringButton: "Submit for scoring",
-        NotRecordingLabel: "Not recording",
-      };
-
-      const labelMap = {
-        labelRecord: "recordButton",
-        labelPrev: "previousButton",
-        labelNext: "nextButton",
-        labelStop: "stopButton",
-        labelUpload: "uploadButton",
-        labelSubmit: "SubmitForScoringButton",
-        labelNotRecording: "NotRecordingLabel",
-      };
-
-      Object.entries(labelMap).forEach(([inputId, formKey]) => {
-        const el = qs("#" + inputId);
+      mapShow.forEach(([selector, key]) => {
+        const el = qs(selector);
         if (!el) return;
-        const val =
-          currentForm[formKey] != null
-            ? currentForm[formKey]
-            : labelDefaults[formKey] || "";
-        el.value = val;
+        el.checked = show[key] !== undefined ? !!show[key] : true;
       });
 
-      // ---------- API & logging ----------
-      const api = currentConfig.api || {};
-      const logger = currentConfig.logger || {};
+      // ----- Labels -----
+      const labelMap = [
+        ["#labelRecord", "recordButton", "Record your response"],
+        ["#labelPrev", "previousButton", "Previous"],
+        ["#labelNext", "nextButton", "Next"],
+        ["#labelStop", "stopButton", "Stop"],
+        ["#labelUpload", "uploadButton", "Choose an audio file"],
+        ["#labelSubmit", "SubmitForScoringButton", "Submit for scoring"],
+        ["#labelNotRecording", "NotRecordingLabel", "Not recording"],
+      ];
 
-      const cfgApiBaseUrl = qs("#cfgApiBaseUrl");
-      const cfgApiKey = qs("#cfgApiKey");
-      const cfgApiSecret = qs("#cfgApiSecret");
-      const cfgLoggerEnabled = qs("#cfgLoggerEnabled");
-      const cfgLoggerUrl = qs("#cfgLoggerUrl");
+      labelMap.forEach(([selector, key, fallback]) => {
+        const el = qs(selector);
+        if (!el) return;
+        el.value = currentForm[key] || fallback;
+      });
 
-      if (cfgApiBaseUrl) cfgApiBaseUrl.value = api.baseUrl || "";
-      if (cfgApiKey) cfgApiKey.value = api.key || "";
-      if (cfgApiSecret) cfgApiSecret.value = api.secret || "";
-      if (cfgLoggerEnabled) cfgLoggerEnabled.checked = !!logger.enabled;
-      if (cfgLoggerUrl) cfgLoggerUrl.value = logger.url || "";
+      // ----- API & logging -----
+      const elBase = qs("#cfgApiBaseUrl");
+      if (elBase) elBase.value = api.baseUrl || "";
 
-      // ---------- Billing ----------
-      const cfgDailyLimit = qs("#cfgDailyLimit");
-      const cfgNotifyOnLimit = qs("#cfgNotifyOnLimit");
-      const cfgAutoBlockOnLimit = qs("#cfgAutoBlockOnLimit");
+      const elKey = qs("#cfgApiKey");
+      if (elKey) elKey.value = api.key || "";
 
-      if (cfgDailyLimit) {
-        cfgDailyLimit.value =
+      const elSecret = qs("#cfgApiSecret");
+      if (elSecret) elSecret.value = api.secret || "";
+
+      const elLoggerEnabled = qs("#cfgLoggerEnabled");
+      if (elLoggerEnabled) elLoggerEnabled.checked = !!logger.enabled;
+
+      const elLoggerUrl = qs("#cfgLoggerUrl");
+      if (elLoggerUrl) elLoggerUrl.value = logger.url || "";
+
+      // ----- Billing -----
+      const elDaily = qs("#cfgDailyLimit");
+      if (elDaily) {
+        elDaily.value =
           currentBilling.dailyLimit != null ? currentBilling.dailyLimit : 50;
       }
-      if (cfgNotifyOnLimit) {
-        cfgNotifyOnLimit.checked =
-          currentBilling.notifyOnLimit ?? true;
+
+      const elNotify = qs("#cfgNotifyOnLimit");
+      if (elNotify) {
+        elNotify.checked =
+          currentBilling.notifyOnLimit !== undefined
+            ? !!currentBilling.notifyOnLimit
+            : true;
       }
-      if (cfgAutoBlockOnLimit) {
-        cfgAutoBlockOnLimit.checked =
-          currentBilling.autoBlockOnLimit ?? true;
+
+      const elAutoBlock = qs("#cfgAutoBlockOnLimit");
+      if (elAutoBlock) {
+        elAutoBlock.checked =
+          currentBilling.autoBlockOnLimit !== undefined
+            ? !!currentBilling.autoBlockOnLimit
+            : true;
       }
 
       setStatus("Configuration loaded.", "is-ok");
@@ -208,13 +207,12 @@ console.log("✅ config-admin.js loaded");
     }
   }
 
-  // ----- build widget preview in the iframe -----
+  // ---------- BUILD PREVIEW ----------
   function buildPreview() {
     if (!previewIframe || !currentSchoolId) return;
 
     const base = window.location.origin.replace(/\/+$/, "");
 
-    // Html for the iframe – uses embed.js just like a real school site.
     const html = [
       "<!DOCTYPE html>",
       '<html lang="en">',
@@ -223,12 +221,12 @@ console.log("✅ config-admin.js loaded");
       "  <title>Widget preview</title>",
       '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
       `  <link rel="stylesheet" href="${base}/themes/MSSStylesheet.css?v=1" />`,
+      // The widget itself loads its own theme CSS based on config;
+      // this extra stylesheet just keeps the background nice.
       "</head>",
-      "<body>",
-      '  <div id="mss-widget-container" style="padding:24px;"></div>',
-      "  <script>",
-      `    window.mssWidgetSchoolId = ${JSON.stringify(currentSchoolId)};`,
-      "  </" + "script>",
+      '<body style="margin:0;padding:24px;background:#f5f5fb;">',
+      '  <div id="mss-widget-container"></div>',
+      // split closing tag to avoid ending the surrounding script
       `  <script src="${base}/embed.js" data-school-id="${currentSchoolId}"></` +
         "script>",
       "</body>",
@@ -238,117 +236,103 @@ console.log("✅ config-admin.js loaded");
     previewIframe.srcdoc = html;
   }
 
-  // ----- save config back to server -----
-  async function saveConfig(ev) {
-    ev.preventDefault();
+  // ---------- SAVE CONFIG BACK TO SERVER ----------
+  async function saveConfig(e) {
+    e.preventDefault();
 
-    const configOut = { ...(currentConfig || {}) };
+    const cfgOut = { ...(currentConfig || {}) };
     const formOut = { ...(currentForm || {}) };
     const billingOut = { ...(currentBilling || {}) };
 
-    // Brand & text
-    const cfgHeadline = qs("#cfgHeadline");
-    const cfgPoweredBy = qs("#cfgPoweredBy");
-    const cfgEditableHeadline = qs("#cfgEditableHeadline");
+    // Brand / text
+    const elHeadline = qs("#cfgHeadline");
+    if (elHeadline) formOut.headline = elHeadline.value.trim();
 
-    formOut.headline = (cfgHeadline?.value || "").trim();
-    formOut.poweredByLabel = (cfgPoweredBy?.value || "").trim();
-    configOut.editable = {
-      ...(configOut.editable || {}),
-      headline: !!(cfgEditableHeadline && cfgEditableHeadline.checked),
+    const elPoweredBy = qs("#cfgPoweredBy");
+    if (elPoweredBy) formOut.poweredByLabel = elPoweredBy.value.trim();
+
+    const elEditableHeadline = qs("#cfgEditableHeadline");
+    cfgOut.editable = {
+      ...(cfgOut.editable || {}),
+      headline: elEditableHeadline ? elEditableHeadline.checked : true,
     };
 
     // Theme & behaviour
-    const cfgTheme = qs("#cfgTheme");
-    const cfgAllowUpload = qs("#cfgAllowUpload");
-    const cfgMinSec = qs("#cfgMinSec");
-    const cfgMaxSec = qs("#cfgMaxSec");
+    const elTheme = qs("#cfgTheme");
+    if (elTheme) cfgOut.theme = elTheme.value;
 
-    if (cfgTheme) configOut.theme = cfgTheme.value;
-    configOut.allowUpload = !!(cfgAllowUpload && cfgAllowUpload.checked);
-    configOut.audioMinSeconds = Number(cfgMinSec?.value || 0);
-    configOut.audioMaxSeconds = Number(cfgMaxSec?.value || 0);
+    const elAllowUpload = qs("#cfgAllowUpload");
+    if (elAllowUpload) cfgOut.Permitupload = elAllowUpload.checked;
 
-    // Visibility
-    const visMap = {
-      showHeadline: "headline",
-      showRecordButton: "recordButton",
-      showPrevButton: "prevButton",
-      showNextButton: "nextButton",
-      showStopButton: "stopButton",
-      showUploadButton: "uploadButton",
-      showPoweredByLabel: "poweredByLabel",
-      showNotRecordingLabel: "notRecordingLabel",
-      showSubmitButton: "submitButton",
+    const elMin = qs("#cfgMinSec");
+    const elMax = qs("#cfgMaxSec");
+    cfgOut.audioMinSeconds = elMin ? Number(elMin.value || 0) : 0;
+    cfgOut.audioMaxSeconds = elMax ? Number(elMax.value || 0) : 0;
+
+    // Buttons visibility
+    cfgOut.show = {
+      headline: qs("#showHeadline")?.checked ?? true,
+      recordButton: qs("#showRecordButton")?.checked ?? true,
+      prevButton: qs("#showPrevButton")?.checked ?? true,
+      nextButton: qs("#showNextButton")?.checked ?? true,
+      stopButton: qs("#showStopButton")?.checked ?? true,
+      uploadButton: qs("#showUploadButton")?.checked ?? true,
+      poweredByLabel: qs("#showPoweredByLabel")?.checked ?? true,
+      notRecordingLabel: qs("#showNotRecordingLabel")?.checked ?? true,
+      submitButton: qs("#showSubmitButton")?.checked ?? true,
     };
-
-    configOut.show = configOut.show || {};
-    Object.entries(visMap).forEach(([id, key]) => {
-      const el = qs("#" + id);
-      if (el) configOut.show[key] = !!el.checked;
-    });
 
     // Labels
-    const labelMap = {
-      labelRecord: "recordButton",
-      labelPrev: "previousButton",
-      labelNext: "nextButton",
-      labelStop: "stopButton",
-      labelUpload: "uploadButton",
-      labelSubmit: "SubmitForScoringButton",
-      labelNotRecording: "NotRecordingLabel",
-    };
+    const labelMap = [
+      ["#labelRecord", "recordButton"],
+      ["#labelPrev", "previousButton"],
+      ["#labelNext", "nextButton"],
+      ["#labelStop", "stopButton"],
+      ["#labelUpload", "uploadButton"],
+      ["#labelSubmit", "SubmitForScoringButton"],
+      ["#labelNotRecording", "NotRecordingLabel"],
+    ];
 
-    Object.entries(labelMap).forEach(([inputId, formKey]) => {
-      const el = qs("#" + inputId);
+    labelMap.forEach(([selector, key]) => {
+      const el = qs(selector);
       if (!el) return;
-      formOut[formKey] = el.value.trim();
+      formOut[key] = el.value.trim();
     });
 
     // API & logging
-    const cfgApiBaseUrl = qs("#cfgApiBaseUrl");
-    const cfgApiKey = qs("#cfgApiKey");
-    const cfgApiSecret = qs("#cfgApiSecret");
-    const cfgLoggerEnabled = qs("#cfgLoggerEnabled");
-    const cfgLoggerUrl = qs("#cfgLoggerUrl");
-
-    configOut.api = {
-      ...(configOut.api || {}),
-      baseUrl: (cfgApiBaseUrl?.value || "").trim(),
-      key: (cfgApiKey?.value || "").trim(),
-      secret: (cfgApiSecret?.value || "").trim(),
+    cfgOut.api = {
+      ...(cfgOut.api || {}),
+      baseUrl: qs("#cfgApiBaseUrl")?.value.trim() || "",
+      key: qs("#cfgApiKey")?.value.trim() || "",
+      secret: qs("#cfgApiSecret")?.value.trim() || "",
     };
 
-    configOut.logger = {
-      ...(configOut.logger || {}),
-      enabled: !!(cfgLoggerEnabled && cfgLoggerEnabled.checked),
-      url: (cfgLoggerUrl?.value || "").trim(),
+    cfgOut.logger = {
+      ...(cfgOut.logger || {}),
+      enabled: !!qs("#cfgLoggerEnabled")?.checked,
+      url: qs("#cfgLoggerUrl")?.value.trim() || "",
     };
 
     // Billing
-    const cfgDailyLimit = qs("#cfgDailyLimit");
-    const cfgNotifyOnLimit = qs("#cfgNotifyOnLimit");
-    const cfgAutoBlockOnLimit = qs("#cfgAutoBlockOnLimit");
+    billingOut.dailyLimit = Number(qs("#cfgDailyLimit")?.value || 0);
+    billingOut.notifyOnLimit = !!qs("#cfgNotifyOnLimit")?.checked;
+    billingOut.autoBlockOnLimit = !!qs("#cfgAutoBlockOnLimit")?.checked;
 
-    billingOut.dailyLimit = Number(cfgDailyLimit?.value || 0);
-    billingOut.notifyOnLimit = !!(cfgNotifyOnLimit && cfgNotifyOnLimit.checked);
-    billingOut.autoBlockOnLimit = !!(
-      cfgAutoBlockOnLimit && cfgAutoBlockOnLimit.checked
-    );
-
-    const payload = { config: configOut, form: formOut, billing: billingOut };
+    const payload = {
+      config: cfgOut,
+      form: formOut,
+      billing: billingOut,
+    };
 
     try {
       setStatus("Saving…", "is-working");
 
-      const res = await fetch(
-        `/api/admin/widget/${encodeURIComponent(slug)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      const url = `/api/admin/widget/${encodeURIComponent(slug)}`;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok || !body.ok) {
@@ -360,11 +344,11 @@ console.log("✅ config-admin.js loaded");
         return;
       }
 
-      setStatus("Saved. Preview updated.", "is-ok");
-      currentConfig = configOut;
+      currentConfig = cfgOut;
       currentForm = formOut;
       currentBilling = billingOut;
 
+      setStatus("Saved. Preview updated.", "is-ok");
       buildPreview();
     } catch (err) {
       console.error("saveConfig exception:", err);
@@ -372,10 +356,10 @@ console.log("✅ config-admin.js loaded");
     }
   }
 
+  // wire up form + initial load
   if (formEl) {
     formEl.addEventListener("submit", saveConfig);
   }
 
-  // Kick off initial load
   loadConfig();
 })();
