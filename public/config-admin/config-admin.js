@@ -2,7 +2,7 @@
 console.log("✅ config-admin.js loaded");
 
 (function () {
-  const qs = (sel) => document.querySelector(sel); 
+  const qs = (sel) => document.querySelector(sel);
 
   // ----- read slug from URL -----
   const params = new URLSearchParams(window.location.search);
@@ -47,35 +47,18 @@ console.log("✅ config-admin.js loaded");
     statusEl.className = "mss-admin-status" + (cls ? " " + cls : "");
   }
 
-  // ----- build live preview iframe using embed.js + schoolId -----
-  // ----- build live preview iframe using widget-core.js + schoolId -----
-function buildPreview() {
-  if (!previewIframe || !currentSchoolId) return;
+   // ----- build widget preview iframe -----
+  function buildPreview() {
+    if (!previewIframe) return;
 
-  const base = window.location.origin.replace(/\/+$/, "");
-  const widgetScript = `${base}/js/widget-core.js?v=1`; // <-- real script path
+    const base = window.location.origin.replace(/\/+$/, "");
+    // Load the real widget page for this school inside the iframe
+    const url = `${base}/Widget.html?slug=${encodeURIComponent(currentSlug)}`;
 
-  const snippetLines = [
-    "<!DOCTYPE html>",
-    '<html lang="en">',
-    "<head>",
-    '  <meta charset="UTF-8" />',
-    "  <title>Widget preview</title>",
-    '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-    // main MSS styles so preview frame looks like the real page
-    `  <link rel="stylesheet" href="${base}/themes/MSSStylesheet.css?v=1" />`,
-    "</head>",
-    "<body>",
-    '  <div id="mss-widget-container" style="padding:24px;"></div>',
-    // IMPORTANT: use the real widget script, not /embed.js
-    `  <script src="${widgetScript}" data-school-id="${currentSchoolId}"></` +
-      "script>",
-    "</body>",
-    "</html>",
-  ];
+    // Simple: just point the iframe at the widget page
+    previewIframe.src = url;
+  }
 
-  previewIframe.srcdoc = snippetLines.join("\n");
-}
   // ----- populate form from server data -----
   async function loadConfig() {
     try {
