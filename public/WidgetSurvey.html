@@ -1,4 +1,4 @@
-<!-- WidgetSurvey Build: 2025-11-12 15:31 ET -->
+<!-- Build: 2025-11-12 15:55 ET -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -61,9 +61,8 @@
   .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
   .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
 
-  /* Hide Save-to-file for now */
-  #saveToFileBtnTop,
-  #saveToFileBtnBottom { display:none !important; }
+  /* Hide Save-to-file buttons (we’ll show them only on fallback) */
+  #saveToFileBtnTop, #saveToFileBtnBottom { display:none !important; }
 </style>
 
 <script>
@@ -160,21 +159,52 @@
   </div>
 
 <script>
+/* ========= Build: 2025-11-12 15:55 ET ========= */
+
 /* ------------------------------------------------------------------
-   SLUG + ENDPOINTS (relative paths => works on localhost & Render)
+   SLUG + MULTI-ENDPOINT STRATEGY
 ------------------------------------------------------------------ */
-// SLUG + ENDPOINTS
 const params = new URLSearchParams(location.search);
-const SLUG = (params.get("slug") || "mss-demo").trim();
+const SLUG = (params.get('slug') || 'mss-demo').trim();
 
-const ADMIN_READ_URL  = `/api/admin/widget/${encodeURIComponent(SLUG)}`;
-const ADMIN_WRITE_URL = `/api/admin/widget/${encodeURIComponent(SLUG)}`;
+// Candidate API hosts (same-origin first)
+const HOSTS = [
+  window.location.origin,
+  'https://mss-widget-mt.onrender.com',
+  'https://msswidget-dev.onrender.com'
+];
 
-// ✅ use a relative fallback so /questions-admin/form.json is loaded
-const FALLBACK_FORM_URL = `./form.json?ts=${Date.now()}`;
+// Candidate READ urls (in order)
+function readCandidates(slug){
+  const s = encodeURIComponent(slug);
+  return [
+    `${HOSTS[0]}/api/admin/widget/${s}/form`,
+    `${HOSTS[1]}/api/admin/widget/${s}/form`,
+    `${HOSTS[2]}/api/admin/widget/${s}/form`,
+    `${HOSTS[0]}/config/forms?slug=${s}`,
+    `${HOSTS[1]}/config/forms?slug=${s}`,
+    `${HOSTS[2]}/config/forms?slug=${s}`,
+    // Final local fallback (no slug)
+    `./form.json?ts=${Date.now()}`
+  ];
+}
+
+// Candidate WRITE urls (in order)
+function writeCandidates(slug){
+  const s = encodeURIComponent(slug);
+  return [
+    { url: `${HOSTS[0]}/api/admin/widget/${s}/form`, method: 'PUT' },
+    { url: `${HOSTS[1]}/api/admin/widget/${s}/form`, method: 'PUT' },
+    { url: `${HOSTS[2]}/api/admin/widget/${s}/form`, method: 'PUT' },
+    { url: `${HOSTS[0]}/config/forms?slug=${s}`,       method: 'PUT' },
+    { url: `${HOSTS[1]}/config/forms?slug=${s}`,       method: 'PUT' },
+    { url: `${HOSTS[2]}/config/forms?slug=${s}`,       method: 'PUT' }
+  ];
+}
+
 /* ========= state ========= */
-let schema = null;          // latest server form object
-let survey = [];            // editable list
+let schema = null;
+let survey = [];
 let _fileHandle = null;
 let aeMode = 'add';
 let aeIndex = -1;
@@ -296,8 +326,8 @@ function twoBtnConfirm(title,cancelLabel='Cancel',okLabel='OK'){ return new Prom
 function triConfirm(title,left='No',mid='Cancel',right='Yes'){ return new Promise(resolve=>{ const ov=$('confirmOverlay'); $('confirmTitle').textContent=title; $('confirmMsg').textContent='';
   const ok=$('confirmOk'), cancel=$('confirmCancel'), wrap=ok.parentNode; wrap.innerHTML='';
   const L=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent:left});
-  const M=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent:mid});
-  const R=Object.assign(document.createElement('button'),{className:'btn primary',type:'button',textContent:right});
+  const M=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent=mid});
+  const R=Object.assign(document.createElement('button'),{className:'btn primary',type:'button',textContent=right});
   wrap.appendChild(L); wrap.appendChild(M); wrap.appendChild(R);
   ov.hidden = false;
   const cleanup=()=>{ ov.hidden = true; wrap.innerHTML=''; wrap.appendChild(cancel); wrap.appendChild(ok); };
@@ -306,24 +336,29 @@ function triConfirm(title,left='No',mid='Cancel',right='Yes'){ return new Promis
   R.onclick=()=>{ cleanup(); resolve('save'); };
 });}
 
-/* ========= Save to DB with file fallback ========= */
+/* ========= Save to DB (first working) with file fallback ========= */
 async function saveToServer(){
-  const formOut = { ...(schema||{}), survey: survey.slice() };
-  try{
-    const res = await fetch(ADMIN_WRITE_URL, {
-      method:'PUT',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ form: formOut })
-    });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    setStatus('Saved to server'); return 'server';
-  }catch(err){
-    console.error('Remote save failed, falling back to file:', err);
-    setStatus('Server save failed, saving to file instead', false);
-    const r = await saveToFilePicker(formOut, 'form.json');
-    return r; // 'saved' | 'download' | 'canceled'
+  const payload = { ...(schema||{}), survey: survey.slice(), slug: SLUG };
+  for (const cand of writeCandidates(SLUG)){
+    try{
+      const r = await fetch(cand.url, {
+        method: cand.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload, null, 2)
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      setStatus('Saved to server');
+      console.log('[WidgetSurvey] saved to', cand.url);
+      return 'server';
+    }catch(e){
+      console.warn('[WidgetSurvey] save failed @', cand.url, e);
+    }
   }
+  // Fallback to file
+  const res = await saveToFilePicker(payload, 'form.json');
+  return res; // 'saved' | 'download' | 'canceled'
 }
+
 async function saveToFilePicker(jsonObj, suggestedName='form.json'){
   const blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:'application/json'});
   if(!('showSaveFilePicker' in window)){
@@ -341,50 +376,37 @@ async function saveToFilePicker(jsonObj, suggestedName='form.json'){
   }catch(e){ console.warn('Save canceled/failed:', e); return 'canceled'; }
 }
 
-/* ========= Load (DB first → seed from /form.json if empty) ========= */
+/* ========= Load (try multiple endpoints → local fallback) ========= */
 async function load(){
-  try{
-    const r = await fetch(ADMIN_READ_URL, { headers:{Accept:'application/json'}, cache:'no-store' });
-    const text = await r.text();
-    if(!r.ok){
-      throw new Error(`admin read ${r.status}`);
-    }
-    let body;
-    try { body = JSON.parse(text); }
-    catch { throw new Error('admin returned non-JSON'); }
+  const candidates = readCandidates(SLUG);
+  let lastErr = null;
 
-    schema = body.form || {};
-    let list = Array.isArray(schema.survey) ? [...schema.survey] : [];
-
-    if(!list.length){
-      const seedRes = await fetch(FALLBACK_FORM_URL, { cache:'no-store' });
-      const seed = await seedRes.json();
-      list = Array.isArray(seed.survey) ? [...seed.survey] : [];
-
-      const newForm = { ...(schema||{}), ...(seed||{}), survey: list };
-      await fetch(ADMIN_WRITE_URL, {
-        method:'PUT', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ form: newForm })
-      });
-      schema = newForm;
-    }
-
-    survey = [...list];
-    $('meta').textContent = (schema.headline || `Questions for ${SLUG}`) + ' • ' + new Date().toLocaleString();
-    render();
-  }catch(err){
-    console.error('[WidgetSurvey] admin load failed:', err);
+  for (const url of candidates){
     try{
-      const res = await fetch(FALLBACK_FORM_URL, { cache:'no-store' });
-      const local = await res.json();
-      schema = local || {};
-      survey = Array.isArray(schema.survey) ? [...schema.survey] : [];
-      $('meta').textContent = (schema.headline || 'My Speaking Score') + ' • ' + new Date().toLocaleString();
-      render(); setStatus('Loaded local form.json fallback', false);
+      const r = await fetch(url, { cache:'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+
+      // Some endpoints return {form: {...}}, some the object directly
+      const raw = await r.json();
+      const body = raw && typeof raw === 'object' && (raw.form || raw) || {};
+      schema = body;
+      survey = Array.isArray(body.survey) ? body.survey.slice() : [];
+
+      $('meta').textContent =
+        `${body.headline || `Questions for ${SLUG}` } • ${new Date().toLocaleString()} • slug=${SLUG}`;
+      render();
+      console.log('[WidgetSurvey] loaded from', url);
+      return; // success
     }catch(e){
-      setStatus('Failed to load questions', false);
+      lastErr = e;
+      console.warn('[WidgetSurvey] load failed @', url, e);
     }
   }
+
+  // If we’re here, everything failed
+  $('meta').textContent = `Could not load survey • slug=${SLUG}`;
+  setStatus('Load failed', false);
+  if (lastErr) console.error(lastErr);
 }
 
 /* ========= Finished dialog ========= */
@@ -419,7 +441,6 @@ async function finishedFlow(){
     else if (r === 'saved')  setStatus('Saved to file');
     else if (r === 'download') setStatus('Downloaded');
   }
-  // nosave/cancel → stay
 }
 
 /* ========= Row actions / boot ========= */
