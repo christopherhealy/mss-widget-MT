@@ -2,12 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MSS Widget – Configuration</title> 
+  <title>MSS Widget – Configuration</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
   <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
   <style>
-    /* Small helpers so chevrons + collapse work even if CSS file lags */
     .mss-admin-card-body[hidden]{ display:none; }
     .mss-admin-toggle { display:inline-flex; gap:6px; align-items:center; }
     .mss-admin-toggle .chev { transition: transform .15s ease; }
@@ -16,7 +15,6 @@
 </head>
 <body class="mss-admin-body">
   <div class="mss-admin-shell" data-app="config-admin">
-    <!-- Header -->
     <header class="mss-admin-header">
       <div class="mss-admin-brand">
         <div class="mss-admin-mark">MSS</div>
@@ -30,19 +28,18 @@
       </div>
     </header>
 
-    <!-- Tabs: Configuration (static), Questions, Reports -->
     <nav class="mss-admin-tabs">
       <div class="mss-admin-tab mss-admin-tab--static is-active">Configuration</div>
       <button id="mssAdminBtnQuestions" type="button" class="mss-admin-tab">Questions</button>
-      <button id="mssAdminBtnReports" type="button" class="mss-admin-tab mss-admin-tab--disabled">Reports</button>
+      <button id="mssAdminBtnReports" type="button" class="mss-admin-tab mss-admin-tab--disabled" disabled>Reports</button>
     </nav>
 
     <main class="mss-admin-main">
       <section class="mss-admin-column mss-admin-column-left">
-        <form id="mssConfigForm" class="mss-admin-form">
+        <form id="mssConfigForm" class="mss-admin-form" autocomplete="off">
           <h1 class="mss-admin-page-title">Widget configuration</h1>
           <p class="mss-admin-intro">
-            Control how your widget looks and behaves. Edit question text and order on the <strong>Questions</strong> page.
+            Control how your widget looks and behaves. Edit question text/order on the <strong>Questions</strong> page.
           </p>
 
           <!-- Brand & text -->
@@ -96,11 +93,11 @@
               <div class="mss-admin-grid mss-admin-grid-2">
                 <label class="mss-admin-field">
                   <span class="mss-admin-label">Minimum length (seconds)</span>
-                  <input id="cfgMinSec" type="number" min="0" class="mss-admin-input" placeholder="30"/>
+                  <input id="cfgMinSec" type="number" inputmode="numeric" min="0" class="mss-admin-input" placeholder="30"/>
                 </label>
                 <label class="mss-admin-field">
                   <span class="mss-admin-label">Maximum length (seconds)</span>
-                  <input id="cfgMaxSec" type="number" min="0" class="mss-admin-input" placeholder="61"/>
+                  <input id="cfgMaxSec" type="number" inputmode="numeric" min="0" class="mss-admin-input" placeholder="61"/>
                 </label>
               </div>
               <p class="mss-admin-help">These limits are enforced when students submit audio for scoring.</p>
@@ -148,7 +145,7 @@
             </div>
           </section>
 
-          <!-- API & logging -->
+          <!-- MSS API & logging -->
           <section class="mss-admin-card" data-section="api">
             <div class="mss-admin-card-header">
               <h2 class="mss-admin-section-title">MSS API &amp; logging</h2>
@@ -157,7 +154,7 @@
               </button>
             </div>
             <div class="mss-admin-card-body" hidden>
-              <label class="mss-admin-field"><span class="mss-admin-label">MSS API base URL</span><input id="cfgApiBaseUrl" type="text" class="mss-admin-input" placeholder="https://app.myspeakingscore.com"/></label>
+              <label class="mss-admin-field"><span class="mss-admin-label">MSS API base URL</span><input id="cfgApiBaseUrl" type="text" class="mss-admin-input" placeholder="https://app.myspeakingscore.com" autocomplete="off"/></label>
               <label class="mss-admin-field"><span class="mss-admin-label">API key</span><input id="cfgApiKey" type="text" class="mss-admin-input" autocomplete="off"/></label>
               <label class="mss-admin-field"><span class="mss-admin-label">API secret</span><input id="cfgApiSecret" type="password" class="mss-admin-input" autocomplete="off"/></label>
               <div class="mss-admin-subsection">
@@ -179,7 +176,7 @@
             <div class="mss-admin-card-body" hidden>
               <label class="mss-admin-field">
                 <span class="mss-admin-label">Daily limit</span>
-                <input id="cfgDailyLimit" type="number" min="0" class="mss-admin-input" placeholder="50"/>
+                <input id="cfgDailyLimit" type="number" inputmode="numeric" min="0" class="mss-admin-input" placeholder="50"/>
                 <span class="mss-admin-help">0 = no limit (not recommended in production).</span>
               </label>
               <label class="mss-admin-checkbox"><input id="cfgNotifyOnLimit" type="checkbox" class="mss-admin-checkbox-input"/><span>Email the admin when the daily limit is reached</span></label>
@@ -206,7 +203,12 @@
                     <span class="mss-admin-label">Upload logo (PNG or JPG)</span>
                     <input id="mssBrandLogoFile" type="file" accept="image/*" class="mss-admin-input" />
                   </label>
-                  <p class="mss-admin-help">Recommended: square ≥ 200×200 px. Used in the widget header.</p>
+                  <progress id="mssBrandLogoProg" max="100" value="0" style="width:100%;display:none;"></progress>
+                  <div class="mss-admin-actions" style="display:flex;gap:8px;margin-top:8px;">
+                    <button type="button" id="mssBrandLogoUpload" class="mss-admin-secondary-btn">Upload</button>
+                    <button type="button" id="mssBrandLogoRemove" class="mss-admin-secondary-btn">Remove</button>
+                  </div>
+                  <p class="mss-admin-help">Stored as <code>brandLogoUrl</code> in your config.</p>
                 </div>
               </div>
             </div>
@@ -214,7 +216,7 @@
 
           <!-- Footer -->
           <div class="mss-admin-footer">
-            <p id="mssAdminStatus" class="mss-admin-status"></p>
+            <p id="mssAdminStatus" class="mss-admin-status" role="status" aria-live="polite"></p>
             <div class="mss-admin-footer-actions">
               <button type="button" id="mssOpenWidget" class="mss-admin-secondary-btn">Open widget</button>
               <button type="submit" class="mss-admin-primary-btn">Save changes</button>
@@ -225,19 +227,21 @@
     </main>
   </div>
 
-  <script src="/config-admin/config-admin.js?v=2"></script>
+  <script src="/config-admin/config-admin.js?v=3.1"></script>
   <script>
-    // Minimal inline wiring so UX is correct even before JS bundle updates.
-    (function () {
+    (function setSlugFromQuery(){
+      const el = document.getElementById('mssAdminSchoolSlug');
+      const slug = new URLSearchParams(location.search).get('slug');
+      if (slug) { el.dataset.slug = slug; el.textContent = slug; }
+    })();
+
+    (function wireCollapse(){
       const qs = (s, r = document) => r.querySelector(s);
       const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
-
-      // Chevron/collapse: default collapsed
       qsa('.mss-admin-card').forEach(card => {
         const btn = qs('.mss-admin-toggle', card);
         const body = qs('.mss-admin-card-body', card);
         if (!btn || !body) return;
-        // ensure collapsed by default
         btn.setAttribute('aria-expanded', 'false');
         body.hidden = true;
         btn.addEventListener('click', () => {
@@ -247,23 +251,22 @@
           btn.lastElementChild.textContent = open ? 'Expand' : 'Collapse';
         });
       });
+    })();
 
-      // Buttons → real pages
+    (function wireTabs(){
       const slugEl = document.getElementById('mssAdminSchoolSlug');
       const getSlug = () => (slugEl?.dataset.slug || slugEl?.textContent || '').trim();
-
       document.getElementById('mssAdminBtnQuestions')?.addEventListener('click', () => {
-        const slug = getSlug();
-        if (!slug) return alert('School slug not ready yet.');
+        const slug = getSlug(); if (!slug) return alert('School slug not ready yet.');
         location.href = `/questions-admin/WidgetSurvey.html?slug=${encodeURIComponent(slug)}`;
       });
-
       document.getElementById('mssOpenWidget')?.addEventListener('click', () => {
-        const slug = getSlug();
-        if (!slug) return alert('School slug not ready yet.');
+        const slug = getSlug(); if (!slug) return alert('School slug not ready yet.');
         window.open(`/Widget.html?slug=${encodeURIComponent(slug)}`, '_blank', 'noopener');
       });
     })();
+
+    document.getElementById('mssConfigForm')?.addEventListener('submit', (e)=>{ e.preventDefault(); });
   </script>
 </body>
 </html>
