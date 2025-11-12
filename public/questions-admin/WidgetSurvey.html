@@ -1,4 +1,4 @@
-<!-- Build: 2025-11-12 16:20 ET (WS v3.1 stable) -->
+<!-- Build: 2025-11-12 16:35 ET (WS v3.2 reset) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -61,12 +61,13 @@
   .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
   .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
 
-  /* Hide Save-to-file buttons unless we fall back */
-  #saveToFileBtnTop, #saveToFileBtnBottom { display:none !important; }
+  /* Hide Save-to-file buttons until needed (fallback) */
+  #saveToFileBtnTop,
+  #saveToFileBtnBottom { display:none !important; }
 </style>
 
 <script>
-  // Strip any orphaned listeners from old DOM if reloaded hot
+  // Safety: strip any stray old listeners on the removed buttons
   window.addEventListener('DOMContentLoaded', () => {
     for (const id of ['saveToFileBtnTop','saveToFileBtnBottom']) {
       const el = document.getElementById(id);
@@ -80,7 +81,10 @@
     <div class="head">
       <div>
         <div class="title">All-in-One Questions</div>
-        <div class="muted">Drag with the index circle, edit in place, add/remove, import/export. Saves the <code>survey</code> order & content per <b>slug</b>.</div>
+        <div class="muted">
+          Drag with the index circle, edit in place, add/remove, import/export.
+          Saves the <code>survey</code> order &amp; content per <b>slug</b>.
+        </div>
       </div>
       <div class="muted" id="meta">Loading…</div>
     </div>
@@ -127,7 +131,7 @@
       <div class="modalFoot">
         <button id="aeCancel" type="button" class="btn">Cancel</button>
         <button id="aeSave" type="button" class="btn">Save</button>
-        <button id="aeSaveNew" type="button" class="btn">Save & New</button>
+        <button id="aeSaveNew" type="button" class="btn">Save &amp; New</button>
         <button id="aeClose" type="button" class="btn primary">Close</button>
       </div>
     </div>
@@ -159,47 +163,19 @@
   </div>
 
 <script>
-/* ========= Build: 2025-11-12 16:20 ET ========= */
+/* ========= Build: 2025-11-12 16:35 ET (WS v3.2 reset) ========= */
 
 /* ------------------------------------------------------------------
-   SLUG + MULTI-ENDPOINT STRATEGY
+   SLUG + SINGLE CANONICAL ENDPOINT (+ LOCAL FALLBACK)
 ------------------------------------------------------------------ */
 const params = new URLSearchParams(location.search);
 const SLUG = (params.get('slug') || 'mss-demo').trim();
 
-// Candidate API hosts (same-origin first)
-const HOSTS = [
-  window.location.origin,
-  'https://mss-widget-mt.onrender.com',
-  'https://msswidget-dev.onrender.com'
-];
-
-// Read candidates (working /config/forms first)
-function readCandidates(slug){
-  const s = encodeURIComponent(slug);
-  return [
-    `${HOSTS[0]}/config/forms?slug=${s}`,
-    `${HOSTS[1]}/config/forms?slug=${s}`,
-    `${HOSTS[2]}/config/forms?slug=${s}`,
-    `${HOSTS[0]}/api/admin/widget/${s}/form`,
-    `${HOSTS[1]}/api/admin/widget/${s}/form`,
-    `${HOSTS[2]}/api/admin/widget/${s}/form`,
-    `./form.json?ts=${Date.now()}`
-  ];
-}
-
-// Write candidates (try /config/forms first if supported)
-function writeCandidates(slug){
-  const s = encodeURIComponent(slug);
-  return [
-    { url: `${HOSTS[0]}/config/forms?slug=${s}`,       method: 'PUT' },
-    { url: `${HOSTS[1]}/config/forms?slug=${s}`,       method: 'PUT' },
-    { url: `${HOSTS[2]}/config/forms?slug=${s}`,       method: 'PUT' },
-    { url: `${HOSTS[0]}/api/admin/widget/${s}/form`,   method: 'PUT' },
-    { url: `${HOSTS[1]}/api/admin/widget/${s}/form`,   method: 'PUT' },
-    { url: `${HOSTS[2]}/api/admin/widget/${s}/form`,   method: 'PUT' }
-  ];
-}
+const ORIGIN = window.location.origin;
+// Canonical API for questions
+const QUESTIONS_URL = ORIGIN + '/config/forms?slug=' + encodeURIComponent(SLUG);
+// Local dev / safety fallback
+const LOCAL_FORM_URL = './form.json?ts=' + Date.now();
 
 /* ========= state ========= */
 let schema = null;
@@ -218,82 +194,194 @@ function setStatus(msg, ok=true){
   clearTimeout(setStatus._t);
   setStatus._t = setTimeout(()=>{ el.textContent=''; }, 1800);
 }
-function escapeHtml(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function escapeHtml(s){
+  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
 function summarize(q){
   const parts = String(q).split(/\n+/);
   const head = escapeHtml(parts[0] || '');
   const rest = escapeHtml(parts.slice(1).join('\n'));
-  return `<div class="qtext"><div class="qfirst">${head}</div>${rest ? `<div class="muted" style="margin-top:4px;white-space:pre-line">${rest}</div>` : ''}</div>`;
+  return '<div class="qtext"><div class="qfirst">' + head + '</div>' +
+         (rest ? '<div class="muted" style="margin-top:4px;white-space:pre-line">' + rest + '</div>' : '') +
+         '</div>';
 }
-function getMerged(){ return { ...(schema||{}), survey: survey.slice() }; }
+function getMerged(){
+  const base = schema && typeof schema === 'object' ? schema : {};
+  const copy = survey.slice();
+  const merged = {};
+  Object.keys(base).forEach(k => { merged[k] = base[k]; });
+  merged.survey = copy;
+  merged.slug = SLUG;
+  return merged;
+}
 
 /* ========= render list ========= */
-function move(i, d){ const j=i+d; if(j<0||j>=survey.length) return; [survey[i],survey[j]]=[survey[j],survey[i]]; render(); }
-function moveTo(i, dest){ dest=Math.max(0,Math.min(dest,survey.length-1)); if(i===dest) return; const it=survey.splice(i,1)[0]; survey.splice(dest,0,it); render(); }
+function move(i, d){
+  const j = i + d;
+  if (j < 0 || j >= survey.length) return;
+  const tmp = survey[i];
+  survey[i] = survey[j];
+  survey[j] = tmp;
+  render();
+}
+function moveTo(i, dest){
+  const max = survey.length - 1;
+  const target = Math.max(0, Math.min(dest, max));
+  if (i === target) return;
+  const item = survey.splice(i, 1)[0];
+  survey.splice(target, 0, item);
+  render();
+}
 function render(){
   const list = $('list');
   if (!survey.length){
-    list.innerHTML = `<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>`;
+    list.innerHTML =
+      '<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>';
     return;
   }
-  list.innerHTML = survey.map((q,i)=>`
-    <div class="row" data-idx="${i}" draggable="true">
-      <div class="idx" title="Drag to reorder">${i+1}</div>
-      <div>${summarize(q)}</div>
-      <div class="ctrls">
-        <button type="button" class="btn" data-act="edit">Edit</button>
-        <button type="button" class="btn" data-act="top">Top</button>
-        <button type="button" class="btn" data-act="up">Up</button>
-        <button type="button" class="btn" data-act="down">Down</button>
-        <button type="button" class="btn" data-act="bottom">Bottom</button>
-        <button type="button" class="btn" data-act="remove">✕</button>
-      </div>
-    </div>
-  `).join('');
+  list.innerHTML = survey.map(function(q, i){
+    return (
+      '<div class="row" data-idx="' + i + '" draggable="true">' +
+        '<div class="idx" title="Drag to reorder">' + (i + 1) + '</div>' +
+        '<div>' + summarize(q) + '</div>' +
+        '<div class="ctrls">' +
+          '<button type="button" class="btn" data-act="edit">Edit</button>' +
+          '<button type="button" class="btn" data-act="top">Top</button>' +
+          '<button type="button" class="btn" data-act="up">Up</button>' +
+          '<button type="button" class="btn" data-act="down">Down</button>' +
+          '<button type="button" class="btn" data-act="bottom">Bottom</button>' +
+          '<button type="button" class="btn" data-act="remove">✕</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
   wireDnd(list);
 }
 
 /* ========= DnD ========= */
 function wireDnd(container){
-  let ph=null, dragging=null, src=null;
-  container.querySelectorAll('.row').forEach(row=>{
-    row.dataset.allow="";
-    row.addEventListener('dragstart',start);
-    row.addEventListener('dragend',end);
-    row.querySelector('.idx').addEventListener('pointerdown',()=>{ row.dataset.allow="1"; },{passive:true});
+  let ph = null, dragging = null, src = null;
+
+  container.querySelectorAll('.row').forEach(function(row){
+    row.dataset.allow = '';
+    row.addEventListener('dragstart', start);
+    row.addEventListener('dragend', end);
+    var idxEl = row.querySelector('.idx');
+    if (idxEl){
+      idxEl.addEventListener('pointerdown', function(){
+        row.dataset.allow = '1';
+      }, { passive: true });
+    }
   });
-  container.addEventListener('dragover',over);
-  container.addEventListener('drop',drop);
+
+  container.addEventListener('dragover', over);
+  container.addEventListener('drop', drop);
 
   function start(e){
-    const row=e.currentTarget; if(row.dataset.allow!=="1"){ e.preventDefault(); return; } row.dataset.allow="";
-    dragging=row; src=+row.dataset.idx; row.classList.add('dragging');
-    ph=document.createElement('div'); ph.className='placeholder'; ph.style.height=row.getBoundingClientRect().height+'px'; row.after(ph);
-    e.dataTransfer.effectAllowed='move';
-    try{ e.dataTransfer.setData('text/plain',String(src)); e.dataTransfer.setDragImage(row.querySelector('.idx')||row,16,16);}catch{}
+    var row = e.currentTarget;
+    if (row.dataset.allow !== '1'){
+      e.preventDefault();
+      return;
+    }
+    row.dataset.allow = '';
+    dragging = row;
+    src = Number(row.dataset.idx);
+    row.classList.add('dragging');
+
+    ph = document.createElement('div');
+    ph.className = 'placeholder';
+    ph.style.height = row.getBoundingClientRect().height + 'px';
+    row.after(ph);
+
+    if (e.dataTransfer){
+      e.dataTransfer.effectAllowed = 'move';
+      try{
+        e.dataTransfer.setData('text/plain', String(src));
+        e.dataTransfer.setDragImage(row.querySelector('.idx') || row, 16, 16);
+      }catch(_e){}
+    }
   }
-  function over(e){ if(!dragging||!ph) return; e.preventDefault(); e.dataTransfer.dropEffect='move';
-    const after=getAfter(container,e.clientY); if(after==null) container.appendChild(ph); else container.insertBefore(ph,after); }
-  function drop(e){ if(!dragging||!ph) return; e.preventDefault(); let target=0;
-    for(const c of container.children){ if(c===ph) break; if(c.classList.contains('row')) target++; }
-    const from=src; if(from<target) target--; cleanup(); if(from==null||from===target) return;
-    const [m]=survey.splice(from,1); survey.splice(target,0,m); render();
+
+  function over(e){
+    if (!dragging || !ph) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const after = getAfter(container, e.clientY);
+    if (!after) container.appendChild(ph);
+    else container.insertBefore(ph, after);
   }
-  function end(){ cleanup(); }
-  function cleanup(){ container.querySelectorAll('.row').forEach(r=>r.dataset.allow=""); dragging&&dragging.classList.remove('dragging'); dragging=null; src=null; ph&&ph.remove(); ph=null; }
-  function getAfter(container,y){
-    const rows=[...container.querySelectorAll('.row:not(.dragging)')];
-    return rows.reduce((c,ch)=>{ const box=ch.getBoundingClientRect(); const off=y-box.top-box.height/2; return (off<0&&off>c.offset)?{offset:off,element:ch}:c; }, {offset:-Infinity,element:null}).element;
+
+  function drop(e){
+    if (!dragging || !ph) return;
+    e.preventDefault();
+    let target = 0;
+    Array.prototype.forEach.call(container.children, function(c){
+      if (c === ph) return;
+      if (c.classList && c.classList.contains('row')) target++;
+    });
+    const from = src;
+    if (from < target) target--;
+    cleanup();
+    if (from == null || from === target) return;
+    const item = survey.splice(from, 1)[0];
+    survey.splice(target, 0, item);
+    render();
+  }
+
+  function end(){
+    cleanup();
+  }
+
+  function cleanup(){
+    container.querySelectorAll('.row').forEach(function(r){
+      r.dataset.allow = '';
+    });
+    if (dragging) dragging.classList.remove('dragging');
+    dragging = null;
+    src = null;
+    if (ph) ph.remove();
+    ph = null;
+  }
+
+  function getAfter(container, y){
+    const rows = Array.prototype.filter.call(
+      container.querySelectorAll('.row'),
+      function(r){ return !r.classList.contains('dragging'); }
+    );
+    let best = { offset: -Infinity, element: null };
+    rows.forEach(function(ch){
+      const box = ch.getBoundingClientRect();
+      const off = y - box.top - box.height / 2;
+      if (off < 0 && off > best.offset){
+        best = { offset: off, element: ch };
+      }
+    });
+    return best.element;
   }
 }
 
 /* ========= Modals / confirms ========= */
-function openAddModal(){ aeMode='add'; aeIndex=-1; aeDirty=false; $('aeTitle').textContent='Add Question'; $('aeTextarea').value=''; showOverlay('aeOverlay',true); }
-function openEditModal(i){ aeMode='edit'; aeIndex=i; aeDirty=false; $('aeTitle').textContent='Edit Question'; $('aeTextarea').value=survey[i]||''; showOverlay('aeOverlay',true); }
+function openAddModal(){
+  aeMode = 'add';
+  aeIndex = -1;
+  aeDirty = false;
+  $('aeTitle').textContent = 'Add Question';
+  $('aeTextarea').value = '';
+  showOverlay('aeOverlay', true);
+}
+function openEditModal(i){
+  aeMode = 'edit';
+  aeIndex = i;
+  aeDirty = false;
+  $('aeTitle').textContent = 'Edit Question';
+  $('aeTextarea').value = survey[i] || '';
+  showOverlay('aeOverlay', true);
+}
 
-function showOverlay(id,show){
-  const el=$(id); if(!el) return;
-  if (show) {
+function showOverlay(id, show){
+  const el = $(id);
+  if (!el) return;
+  if (show){
     el.hidden = false;
   } else {
     if (document.activeElement) document.activeElement.blur();
@@ -302,131 +390,264 @@ function showOverlay(id,show){
 }
 
 function wireAddEdit(){
-  const ta=$('aeTextarea'); ta.addEventListener('input',()=>aeDirty=true);
-  $('aeCancel').addEventListener('click',()=>{ $('aeTextarea').value=''; aeDirty=false; showOverlay('aeOverlay',false); });
-  $('aeSave').addEventListener('click',()=>{ const v=ta.value.trim(); if(!v){ setStatus('Nothing to save',false); return; }
-    if(aeMode==='add') survey.push(v); else if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v; aeDirty=false; render(); setStatus('Saved'); });
-  $('aeSaveNew').addEventListener('click',()=>{ const v=ta.value.trim(); if(!v){ setStatus('Nothing to save',false); return; }
-    if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v; else survey.push(v); render(); ta.value=''; aeMode='add'; aeIndex=-1; aeDirty=false; setStatus('Saved. Ready for next.'); });
-  $('aeClose').addEventListener('click', async ()=>{ if(aeDirty&&$('aeTextarea').value.trim()){
-      const choice=await triConfirm('Save your question?','No','Cancel','Save');
-      if(choice==='save'){ const v=$('aeTextarea').value.trim(); if(aeMode==='add') survey.push(v); else if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v; render(); aeDirty=false; showOverlay('aeOverlay',false); setStatus('Saved'); }
-      else if(choice==='nosave'){ aeDirty=false; showOverlay('aeOverlay',false); }
-    } else { showOverlay('aeOverlay',false); } });
+  const ta = $('aeTextarea');
+  ta.addEventListener('input', function(){ aeDirty = true; });
+
+  $('aeCancel').addEventListener('click', function(){
+    $('aeTextarea').value = '';
+    aeDirty = false;
+    showOverlay('aeOverlay', false);
+  });
+
+  $('aeSave').addEventListener('click', function(){
+    const v = ta.value.trim();
+    if (!v){ setStatus('Nothing to save', false); return; }
+    if (aeMode === 'add') survey.push(v);
+    else if (aeMode === 'edit' && aeIndex > -1) survey[aeIndex] = v;
+    aeDirty = false;
+    render();
+    setStatus('Saved');
+  });
+
+  $('aeSaveNew').addEventListener('click', function(){
+    const v = ta.value.trim();
+    if (!v){ setStatus('Nothing to save', false); return; }
+    if (aeMode === 'edit' && aeIndex > -1) survey[aeIndex] = v;
+    else survey.push(v);
+    render();
+    ta.value = '';
+    aeMode = 'add';
+    aeIndex = -1;
+    aeDirty = false;
+    setStatus('Saved. Ready for next.');
+  });
+
+  $('aeClose').addEventListener('click', async function(){
+    if (aeDirty && $('aeTextarea').value.trim()){
+      const choice = await triConfirm('Save your question?', 'No', 'Cancel', 'Save');
+      if (choice === 'save'){
+        const v = $('aeTextarea').value.trim();
+        if (aeMode === 'add') survey.push(v);
+        else if (aeMode === 'edit' && aeIndex > -1) survey[aeIndex] = v;
+        render();
+        aeDirty = false;
+        showOverlay('aeOverlay', false);
+        setStatus('Saved');
+      } else if (choice === 'nosave'){
+        aeDirty = false;
+        showOverlay('aeOverlay', false);
+      }
+    } else {
+      showOverlay('aeOverlay', false);
+    }
+  });
 }
 
-async function confirmRemove(i){ const ok=await twoBtnConfirm('Remove this question?','Cancel','Remove'); if(!ok) return; survey.splice(i,1); render(); setStatus('Question removed'); }
-function twoBtnConfirm(title,cancelLabel='Cancel',okLabel='OK'){ return new Promise(resolve=>{ const ov=$('confirmOverlay'); $('confirmTitle').textContent=title; $('confirmMsg').textContent='';
-  const ok=$('confirmOk'), cancel=$('confirmCancel'); ok.textContent=okLabel; cancel.textContent=cancelLabel;
-  ov.hidden = false;
-  const done=v=>{ ov.hidden = true; ok.onclick=cancel.onclick=null; resolve(v); };
-  ok.onclick=()=>done(true); cancel.onclick=()=>done(false);
-});}
-function triConfirm(title,left='No',mid='Cancel',right='Yes'){ return new Promise(resolve=>{ const ov=$('confirmOverlay'); $('confirmTitle').textContent=title; $('confirmMsg').textContent='';
-  const ok=$('confirmOk'), cancel=$('confirmCancel'), wrap=ok.parentNode; wrap.innerHTML='';
-  const L=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent:left});
-  const M=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent=mid});
-  const R=Object.assign(document.createElement('button'),{className:'btn primary',type:'button',textContent=right});
-  wrap.appendChild(L); wrap.appendChild(M); wrap.appendChild(R);
-  ov.hidden = false;
-  const cleanup=()=>{ ov.hidden = true; wrap.innerHTML=''; wrap.appendChild(cancel); wrap.appendChild(ok); };
-  L.onclick=()=>{ cleanup(); resolve('nosave'); };
-  M.onclick=()=>{ cleanup(); resolve('cancel'); };
-  R.onclick=()=>{ cleanup(); resolve('save'); };
-});}
+async function confirmRemove(i){
+  const ok = await twoBtnConfirm('Remove this question?', 'Cancel', 'Remove');
+  if (!ok) return;
+  survey.splice(i, 1);
+  render();
+  setStatus('Question removed');
+}
 
-/* ========= Save to DB (first working) with file fallback ========= */
-async function saveToServer(){
-  const payload = { ...(schema||{}), survey: survey.slice(), slug: SLUG };
-  for (const cand of writeCandidates(SLUG)){
-    try{
-      const r = await fetch(cand.url, {
-        method: cand.method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      setStatus('Saved to server');
-      console.log('[WidgetSurvey] saved to', cand.url);
-      return 'server';
-    }catch(e){
-      console.debug('[WidgetSurvey] save candidate failed @', cand.url, e?.message || e);
+function twoBtnConfirm(title, cancelLabel, okLabel){
+  if (cancelLabel == null) cancelLabel = 'Cancel';
+  if (okLabel == null) okLabel = 'OK';
+  return new Promise(function(resolve){
+    const ov = $('confirmOverlay');
+    $('confirmTitle').textContent = title;
+    $('confirmMsg').textContent = '';
+    const ok = $('confirmOk');
+    const cancel = $('confirmCancel');
+    ok.textContent = okLabel;
+    cancel.textContent = cancelLabel;
+    ov.hidden = false;
+    const done = function(v){
+      ov.hidden = true;
+      ok.onclick = null;
+      cancel.onclick = null;
+      resolve(v);
+    };
+    ok.onclick = function(){ done(true); };
+    cancel.onclick = function(){ done(false); };
+  });
+}
+
+function triConfirm(title, left, mid, right){
+  if (left == null) left = 'No';
+  if (mid == null) mid = 'Cancel';
+  if (right == null) right = 'Yes';
+  return new Promise(function(resolve){
+    const ov = $('confirmOverlay');
+    $('confirmTitle').textContent = title;
+    $('confirmMsg').textContent = '';
+    const ok = $('confirmOk');
+    const cancel = $('confirmCancel');
+    const wrap = ok.parentNode;
+    wrap.innerHTML = '';
+
+    const L = document.createElement('button');
+    L.className = 'btn';
+    L.type = 'button';
+    L.textContent = left;
+
+    const M = document.createElement('button');
+    M.className = 'btn';
+    M.type = 'button';
+    M.textContent = mid;
+
+    const R = document.createElement('button');
+    R.className = 'btn primary';
+    R.type = 'button';
+    R.textContent = right;
+
+    wrap.appendChild(L);
+    wrap.appendChild(M);
+    wrap.appendChild(R);
+    ov.hidden = false;
+
+    function cleanup(result){
+      ov.hidden = true;
+      wrap.innerHTML = '';
+      wrap.appendChild(cancel);
+      wrap.appendChild(ok);
+      resolve(result);
     }
+
+    L.onclick = function(){ cleanup('nosave'); };
+    M.onclick = function(){ cleanup('cancel'); };
+    R.onclick = function(){ cleanup('save'); };
+  });
+}
+
+/* ========= Save to DB with file fallback ========= */
+async function saveToServer(){
+  const payload = getMerged();
+
+  // Try canonical questions endpoint first
+  try{
+    const r = await fetch(QUESTIONS_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload, null, 2)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    setStatus('Saved to server');
+    console.log('[WidgetSurvey] saved to', QUESTIONS_URL);
+    return 'server';
+  }catch(e){
+    console.warn('[WidgetSurvey] server save failed:', e);
   }
+
+  // Fallback to file
   const res = await saveToFilePicker(payload, 'form.json');
   return res; // 'saved' | 'download' | 'canceled'
 }
 
-async function saveToFilePicker(jsonObj, suggestedName='form.json'){
-  const blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:'application/json'});
-  if(!('showSaveFilePicker' in window)){
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.setAttribute('download',suggestedName);
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+async function saveToFilePicker(jsonObj, suggestedName){
+  if (!suggestedName) suggestedName = 'form.json';
+  const blob = new Blob([JSON.stringify(jsonObj, null, 2)], {type:'application/json'});
+
+  if (!('showSaveFilePicker' in window)){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.setAttribute('download', suggestedName);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
     return 'download';
   }
+
   try{
-    if(_fileHandle){
-      const perm=await _fileHandle.requestPermission({mode:'readwrite'});
-      if(perm==='granted'){ const w=await _fileHandle.createWritable(); await w.write(blob); await w.close(); return 'saved'; }
+    if (_fileHandle){
+      const perm = await _fileHandle.requestPermission({mode:'readwrite'});
+      if (perm === 'granted'){
+        const w = await _fileHandle.createWritable();
+        await w.write(blob);
+        await w.close();
+        return 'saved';
+      }
     }
-    _fileHandle=await window.showSaveFilePicker({ suggestedName, types:[{description:'JSON', accept:{'application/json':['.json']}}] });
-    const w=await _fileHandle.createWritable(); await w.write(blob); await w.close(); return 'saved';
-  }catch(e){ console.warn('Save canceled/failed:', e); return 'canceled'; }
+    _fileHandle = await window.showSaveFilePicker({
+      suggestedName: suggestedName,
+      types: [{description:'JSON', accept:{'application/json':['.json']}}]
+    });
+    const w = await _fileHandle.createWritable();
+    await w.write(blob);
+    await w.close();
+    return 'saved';
+  }catch(e){
+    console.warn('Save canceled/failed:', e);
+    return 'canceled';
+  }
 }
 
-/* ========= Load (try multiple endpoints → local fallback) ========= */
+/* ========= Load (server first → local fallback) ========= */
 async function load(){
-  const candidates = readCandidates(SLUG);
-  let lastErr = null;
-
-  for (const url of candidates){
-    try{
-      const r = await fetch(url, { cache:'no-store' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-
-      const raw = await r.json();
-      const body = (raw && typeof raw === 'object' && (raw.form || raw)) || {};
-      schema = body;
-      survey = Array.isArray(body.survey) ? body.survey.slice() : [];
-
-      $('meta').textContent =
-        `${body.headline || `Questions for ${SLUG}` } • ${new Date().toLocaleString()} • slug=${SLUG}`;
-      render();
-      console.log('[WidgetSurvey] loaded from', url);
-      return; // success
-    }catch(e){
-      lastErr = e;
-      console.debug('[WidgetSurvey] candidate failed @', url, e?.message || e);
-    }
+  console.log('[WidgetSurvey] loading for slug=', SLUG, 'via', QUESTIONS_URL);
+  try{
+    const r = await fetch(QUESTIONS_URL, { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const raw = await r.json();
+    const body = raw && typeof raw === 'object' && (raw.form || raw) || {};
+    schema = body;
+    survey = Array.isArray(body.survey) ? body.survey.slice() : [];
+    $('meta').textContent =
+      (body.headline || ('Questions for ' + SLUG)) +
+      ' • ' + new Date().toLocaleString() +
+      ' • slug=' + SLUG;
+    render();
+    console.log('[WidgetSurvey] loaded from server');
+    return;
+  }catch(e){
+    console.warn('[WidgetSurvey] server load failed:', e);
   }
 
-  // Final local fallback already tried; if we're here, everything failed.
-  $('meta').textContent = `Could not load survey • slug=${SLUG}`;
-  setStatus('Load failed', false);
-  if (lastErr) console.error(lastErr);
+  // Fallback to local ./form.json
+  try{
+    const r = await fetch(LOCAL_FORM_URL, { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const local = await r.json();
+    schema = local || {};
+    survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
+    $('meta').textContent =
+      (schema.headline || 'My Speaking Score') +
+      ' • ' + new Date().toLocaleString() +
+      ' • slug=' + SLUG;
+    render();
+    setStatus('Loaded local form.json fallback', false);
+  }catch(e2){
+    console.error('[WidgetSurvey] local fallback failed:', e2);
+    $('meta').textContent = 'Could not load survey • slug=' + SLUG;
+    setStatus('Failed to load questions', false);
+  }
 }
 
 /* ========= Finished dialog ========= */
 function showFinishDialog(){
-  return new Promise(resolve=>{
-    const ov = document.getElementById('finishOverlay');
-    const save   = document.getElementById('finishSave');
-    const noSave = document.getElementById('finishNoSave');
-    const cancel = document.getElementById('finishCancel');
+  return new Promise(function(resolve){
+    const ov = $('finishOverlay');
+    const save = $('finishSave');
+    const noSave = $('finishNoSave');
+    const cancel = $('finishCancel');
 
     ov.hidden = false;
-    queueMicrotask(()=> save?.focus());
+    queueMicrotask(function(){ if (save) save.focus(); });
 
-    const close = (result)=>{
+    function close(result){
       if (document.activeElement) document.activeElement.blur();
       ov.hidden = true;
-      save.onclick = noSave.onclick = cancel.onclick = null;
+      save.onclick = null;
+      noSave.onclick = null;
+      cancel.onclick = null;
       resolve(result);
-    };
+    }
 
-    save.onclick   = ()=> close('save');
-    noSave.onclick = ()=> close('nosave');
-    cancel.onclick = ()=> close('cancel');
+    save.onclick = function(){ close('save'); };
+    noSave.onclick = function(){ close('nosave'); };
+    cancel.onclick = function(){ close('cancel'); };
   });
 }
 
@@ -434,31 +655,34 @@ async function finishedFlow(){
   const choice = await showFinishDialog();
   if (choice === 'save'){
     const r = await saveToServer();
-    if (r === 'server')      setStatus('Saved to server');
-    else if (r === 'saved')  setStatus('Saved to file');
+    if (r === 'server')       setStatus('Saved to server');
+    else if (r === 'saved')   setStatus('Saved to file');
     else if (r === 'download') setStatus('Downloaded');
   }
 }
 
 /* ========= Row actions / boot ========= */
 function wireRowActions(){
-  const listEl=$('list');
-  listEl.addEventListener('click',(e)=>{
-    const btn=e.target.closest('button[data-act]'); if(!btn) return;
-    const row=btn.closest('.row'); if(!row) return; const i=+row.dataset.idx;
+  const listEl = $('list');
+  listEl.addEventListener('click', function(e){
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const row = btn.closest('.row');
+    if (!row) return;
+    const i = Number(row.dataset.idx);
     switch(btn.dataset.act){
-      case 'edit': openEditModal(i); break;
-      case 'top': moveTo(i,0); break;
-      case 'up': move(i,-1); break;
-      case 'down': move(i,1); break;
-      case 'bottom': moveTo(i,survey.length-1); break;
+      case 'edit':   openEditModal(i); break;
+      case 'top':    moveTo(i, 0); break;
+      case 'up':     move(i, -1); break;
+      case 'down':   move(i, 1); break;
+      case 'bottom': moveTo(i, survey.length - 1); break;
       case 'remove': confirmRemove(i); break;
     }
   });
 }
 
-window.addEventListener('DOMContentLoaded', ()=>{
-  console.log(`🧩 MSS Questions Admin for slug="${SLUG}"`);
+window.addEventListener('DOMContentLoaded', function(){
+  console.log('🧩 MSS Questions Admin for slug="' + SLUG + '"');
   load();
   wireRowActions();
   $('addBtnTop').addEventListener('click', openAddModal);
@@ -466,15 +690,22 @@ window.addEventListener('DOMContentLoaded', ()=>{
   wireAddEdit();
 
   // Export
-  $('exportBtnTop').addEventListener('click', ()=>{
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([JSON.stringify(getMerged(),null,2)],{type:'application/json'}));
-    a.setAttribute('download','form.json');
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  $('exportBtnTop').addEventListener('click', function(){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(
+      [JSON.stringify(getMerged(), null, 2)],
+      {type:'application/json'}
+    ));
+    a.setAttribute('download', 'form.json');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
     setStatus('Exported');
   });
-  $('exportBtnBottom').addEventListener('click', ()=>$('exportBtnTop').click());
+  $('exportBtnBottom').addEventListener('click', function(){
+    $('exportBtnTop').click();
+  });
 
   // Finished
   $('finishedBtnTop').addEventListener('click', finishedFlow);
@@ -482,50 +713,128 @@ window.addEventListener('DOMContentLoaded', ()=>{
 
   // Imports
   (function wireImportJson(){
-    const f=$('importJson'); f.addEventListener('change', async (e)=>{
-      const file=e.target.files&&e.target.files[0]; e.target.value=''; if(!file) return;
+    const f = $('importJson');
+    f.addEventListener('change', async function(e){
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
       try{
-        const parsed=JSON.parse(await file.text());
-        if(!parsed||typeof parsed!=='object') throw new Error('Invalid JSON object.');
-        schema=parsed; survey=Array.isArray(parsed.survey)?parsed.survey.slice():[];
-        setStatus('Imported JSON'); render();
-        $('meta').textContent=(schema.headline||'My Speaking Score')+' • '+(new Date()).toLocaleString();
-      }catch(err){ alert('Import failed: '+err.message); }
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== 'object') throw new Error('Invalid JSON object.');
+        schema = parsed;
+        survey = Array.isArray(parsed.survey) ? parsed.survey.slice() : [];
+        setStatus('Imported JSON');
+        render();
+        $('meta').textContent =
+          (schema.headline || 'My Speaking Score') +
+          ' • ' + (new Date()).toLocaleString() +
+          ' • slug=' + SLUG;
+      }catch(err){
+        alert('Import failed: ' + err.message);
+      }
     });
   })();
+
   (function wireImportCsv(){
-    const f=$('importCsv'); f.addEventListener('change', async (e)=>{
-      const file=e.target.files&&e.target.files[0]; e.target.value=''; if(!file) return;
-      const rows=parseCSV(await file.text()); if(!rows.length){ setStatus('CSV is empty',false); return; }
-      const col=findSingleDataColumn(rows); if(col===-1){ alert('CSV must contain exactly one column with data.'); return; }
-      const first=String(rows[0][col]??'').trim().toLowerCase(); const hasHeader=(first==='name'||first==='title');
-      const start=hasHeader?1:0; const qs=rows.slice(start).map(r=>normalizeCell(r[col])).filter(Boolean);
-      if(!qs.length){ setStatus('No questions parsed',false); return; }
-      const choice=await triConfirm('Append to existing questions?','Replace','Cancel','Append'); if(choice==='cancel') return;
-      if(choice==='save') survey=survey.concat(qs); else if(choice==='nosave') survey=qs.slice();
-      render(); setStatus('CSV imported');
+    const f = $('importCsv');
+    f.addEventListener('change', async function(e){
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const rows = parseCSV(await file.text());
+      if (!rows.length){
+        setStatus('CSV is empty', false);
+        return;
+      }
+      const col = findSingleDataColumn(rows);
+      if (col === -1){
+        alert('CSV must contain exactly one column with data.');
+        return;
+      }
+      const first = String(rows[0][col] == null ? '' : rows[0][col]).trim().toLowerCase();
+      const hasHeader = (first === 'name' || first === 'title');
+      const start = hasHeader ? 1 : 0;
+      const qs = rows.slice(start).map(function(r){
+        return normalizeCell(r[col]);
+      }).filter(Boolean);
+      if (!qs.length){
+        setStatus('No questions parsed', false);
+        return;
+      }
+      const choice = await triConfirm('Append to existing questions?', 'Replace', 'Cancel', 'Append');
+      if (choice === 'cancel') return;
+      if (choice === 'save') survey = survey.concat(qs);
+      else if (choice === 'nosave') survey = qs.slice();
+      render();
+      setStatus('CSV imported');
     });
   })();
 });
 
 /* ========= CSV helpers ========= */
-function normalizeCell(s){ if(s==null) return ''; let t=String(s).replace(/\r\n/g,'\n').trim(); t=t.replace(/\n+/g,' // ').replace(/\s*\/\/\s*/g,' // '); return t; }
-function parseCSV(text){ const rows=[]; let field='',row=[],inQ=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i],n=text[i+1];
-    if(inQ){ if(c==='"'&&n==='"'){ field+='"'; i++; } else if(c==='"'){ inQ=false; } else { field+=c; } }
-    else { if(c==='\"'){ inQ=true; } else if(c===','){ row.push(field); field=''; } else if(c==='\n'){ row.push(field); field=''; rows.push(row); row=[]; } else if(c!=='\r'){ field+=c; } }
+function normalizeCell(s){
+  if (s == null) return '';
+  let t = String(s).replace(/\r\n/g, '\n').trim();
+  t = t.replace(/\n+/g, ' // ').replace(/\s*\/\/\s*/g, ' // ');
+  return t;
+}
+
+function parseCSV(text){
+  const rows = [];
+  let field = '';
+  let row = [];
+  let inQ = false;
+
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    const n = text[i + 1];
+    if (inQ){
+      if (c === '"' && n === '"'){
+        field += '"';
+        i++;
+      } else if (c === '"'){
+        inQ = false;
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"'){
+        inQ = true;
+      } else if (c === ','){
+        row.push(field);
+        field = '';
+      } else if (c === '\n'){
+        row.push(field);
+        field = '';
+        rows.push(row);
+        row = [];
+      } else if (c !== '\r'){
+        field += c;
+      }
+    }
   }
-  row.push(field); rows.push(row);
-  while(rows.length&&rows[rows.length-1].every(v=>String(v).trim()==='')) rows.pop();
+  row.push(field);
+  rows.push(row);
+  while (rows.length && rows[rows.length - 1].every(function(v){
+    return String(v).trim() === '';
+  })){
+    rows.pop();
+  }
   return rows;
 }
+
 function findSingleDataColumn(rows){
-  const max=Math.max(...rows.map(r=>r.length));
-  let idx=-1;
-  for(let c=0;c<max;c++){
-    const has=rows.some(r=>r[c]!=null&&String(r[c]).trim()!=='');
-    if(has){ if(idx!==-1) return -1; idx=c; }
+  const max = Math.max.apply(null, rows.map(function(r){ return r.length; }));
+  let idx = -1;
+  for (let c = 0; c < max; c++){
+    const has = rows.some(function(r){
+      return r[c] != null && String(r[c]).trim() !== '';
+    });
+    if (has){
+      if (idx !== -1) return -1;
+      idx = c;
+    }
   }
   return idx;
 }
