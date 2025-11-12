@@ -29,6 +29,193 @@
   gap: 12px;
 }
 
+/* ────────────────────────────────────────────────
+   MSS Config-Admin: Enhanced section styling
+   Chevrons, collapse animation, modal polish
+──────────────────────────────────────────────────*/
+
+/* Card base */
+.mss-admin-card {
+  border: 1px solid var(--mss-edge, #e5e7eb);
+  border-radius: 16px;
+  background: #fff;
+  margin-bottom: 14px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+.mss-admin-card:hover {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+}
+
+/* Header with chevron */
+.mss-admin-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 10px 14px;
+  background: #f9fafb;
+  border-bottom: 1px solid var(--mss-edge, #e5e7eb);
+  cursor: pointer;
+}
+
+/* Section title */
+.mss-admin-section-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--mss-text, #222);
+  flex: 1;
+}
+
+/* Chevron button (left side) */
+.mss-admin-chevron {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  color: #6b7280;
+  transform: rotate(90deg); /* collapsed default */
+  transition: transform 0.2s ease;
+}
+.mss-admin-card:not(.is-collapsed) .mss-admin-chevron {
+  transform: rotate(270deg); /* expanded */
+}
+
+/* Collapsible body */
+.mss-admin-card-body {
+  padding: 14px 16px 18px;
+  animation: fadeIn 0.25s ease;
+}
+.mss-admin-card.is-collapsed .mss-admin-card-body {
+  display: none;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Right-side header actions */
+.mss-admin-right-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* Chip-style button for "API keys…" */
+.mss-admin-chip-btn {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: #1a5cff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.mss-admin-chip-btn:hover {
+  background: #1a5cff;
+  color: #fff;
+  border-color: #1a5cff;
+}
+
+/* Modal (API key gate) */
+.mss-admin-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+.mss-admin-modal[hidden] { display: none !important; }
+
+.mss-admin-modal-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  width: min(400px, 95vw);
+  overflow: hidden;
+  animation: fadeIn 0.25s ease;
+}
+.mss-admin-modal-head {
+  font-weight: 600;
+  padding: 14px 18px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+.mss-admin-modal-body {
+  padding: 18px;
+}
+.mss-admin-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Status text improvements */
+.mss-admin-status {
+  font-size: 13px;
+  color: #6b7280;
+  min-height: 1em;
+}
+.mss-admin-status.is-ok { color: green; }
+.mss-admin-status.is-error { color: #b91c1c; }
+.mss-admin-status.is-working { color: #1d4ed8; }
+
+/* Tabs polish */
+.mss-admin-tab {
+  border: none;
+  background: none;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #1a1a1a;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.mss-admin-tab:hover { color: #1a5cff; }
+.mss-admin-tab.is-active { color: #1a5cff; border-color: #1a5cff; }
+.mss-admin-tab--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Minor polish for primary/secondary buttons */
+.mss-admin-primary-btn {
+  background: #1a5cff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.mss-admin-primary-btn:hover { background: #174bcc; }
+
+.mss-admin-secondary-btn {
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.mss-admin-secondary-btn:hover {
+  background: #f9fafb;
+  border-color: #1a5cff;
+  color: #1a5cff;
+}
+
 .mss-admin-logo {
   width: 40px;
   height: 40px;
@@ -586,4 +773,43 @@
 .mss-branding-controls {
   flex: 1;
   min-width: 220px;
+}
+
+/* ────────────────────────────────────────────────
+   Expansion polish & focus glow
+──────────────────────────────────────────────────*/
+
+.mss-admin-card {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+
+.mss-admin-card:not(.is-collapsed) {
+  border-color: #c7d7ff;
+  box-shadow: 0 8px 20px rgba(26, 92, 255, 0.12);
+  transform: translateY(-2px);
+  animation: expandPulse 0.3s ease;
+}
+
+@keyframes expandPulse {
+  0%   { box-shadow: 0 0 0 rgba(26,92,255,0); }
+  50%  { box-shadow: 0 0 12px rgba(26,92,255,0.25); }
+  100% { box-shadow: 0 8px 20px rgba(26,92,255,0.12); }
+}
+
+/* Hover hint for expandables */
+.mss-admin-card-header:hover {
+  background: #f3f6ff;
+}
+
+/* Smooth chevron color shift */
+.mss-admin-chevron {
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+.mss-admin-card:not(.is-collapsed) .mss-admin-chevron {
+  color: #1a5cff;
+}
+
+/* Optional: make the first expanded card stand out slightly */
+.mss-admin-card:first-of-type:not(.is-collapsed) {
+  background: #f9fbff;
 }
