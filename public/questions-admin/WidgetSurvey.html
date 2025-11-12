@@ -361,6 +361,37 @@ function wireRowActions(){
   });
 }
 
+// --- Finish dialog helpers ---
+function showFinishDialog(){
+  return new Promise(resolve=>{
+    const ov = document.getElementById('finishOverlay');
+    ov.style.display = 'flex';
+    ov.setAttribute('aria-hidden','false');
+    const close = (result)=>{
+      ov.style.display = 'none';
+      ov.setAttribute('aria-hidden','true');
+      document.getElementById('finishSave').onclick   = null;
+      document.getElementById('finishNoSave').onclick = null;
+      document.getElementById('finishCancel').onclick = null;
+      resolve(result);
+    };
+    document.getElementById('finishSave').onclick   = ()=> close('save');
+    document.getElementById('finishNoSave').onclick = ()=> close('nosave');
+    document.getElementById('finishCancel').onclick = ()=> close('cancel');
+  });
+}
+
+async function finishedFlow(){
+  const choice = await showFinishDialog();
+  if (choice === 'save'){
+    const r = await saveToServer();
+    if (r === 'server')        setStatus('Saved to server');
+    else if (r === 'saved')    setStatus('Saved to file');
+    else if (r === 'download') setStatus('Downloaded');
+  }
+  // 'nosave' or 'cancel' → no-op
+}
+
 window.addEventListener('DOMContentLoaded', ()=>{
   console.log(`🧩 MSS Questions Admin for slug="${SLUG}"`);
   load();
@@ -368,19 +399,33 @@ window.addEventListener('DOMContentLoaded', ()=>{
   $('addBtnTop').addEventListener('click', openAddModal);
   $('addBtnBottom').addEventListener('click', openAddModal);
   wireAddEdit();
-  $('exportBtnTop').addEventListener('click', ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(getMerged(),null,2)],{type:'application/json'})); a.setAttribute('download','form.json'); document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(a.href),1000); setStatus('Exported'); });
+  $('exportBtnTop').addEventListener('click', ()=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([JSON.stringify(getMerged(),null,2)],{type:'application/json'}));
+    a.setAttribute('download','form.json');
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    setStatus('Exported');
+  });
   $('exportBtnBottom').addEventListener('click', ()=>$('exportBtnTop').click());
-  const saveMerged = async ()=>{ const r = await saveToFilePicker(getMerged(), 'form.json'); setStatus(r==='saved'?'Saved to file':r==='download'?'Downloaded':'Canceled', r!=='canceled'); };
+  const saveMerged = async ()=>{
+    const r = await saveToFilePicker(getMerged(), 'form.json');
+    setStatus(r==='saved'?'Saved to file':r==='download'?'Downloaded':'Canceled', r!=='canceled');
+  };
   $('saveToFileBtnTop').addEventListener('click', saveMerged);
   $('saveToFileBtnBottom').addEventListener('click', saveMerged);
   $('finishedBtnTop').addEventListener('click', finishedFlow);
   $('finishedBtnBottom').addEventListener('click', finishedFlow);
+
   // Imports
   (function wireImportJson(){
     const f=$('importJson'); f.addEventListener('change', async (e)=>{
       const file=e.target.files&&e.target.files[0]; e.target.value=''; if(!file) return;
-      try{ const parsed=JSON.parse(await file.text()); if(!parsed||typeof parsed!=='object') throw new Error('Invalid JSON object.');
-        schema=parsed; survey=Array.isArray(parsed.survey)?parsed.survey.slice():[]; setStatus('Imported JSON'); render();
+      try{
+        const parsed=JSON.parse(await file.text());
+        if(!parsed||typeof parsed!=='object') throw new Error('Invalid JSON object.');
+        schema=parsed; survey=Array.isArray(parsed.survey)?parsed.survey.slice():[];
+        setStatus('Imported JSON'); render();
         $('meta').textContent=(schema.headline||'My Speaking Score')+' • '+(new Date()).toLocaleString();
       }catch(err){ alert('Import failed: '+err.message); }
     });
@@ -394,17 +439,32 @@ window.addEventListener('DOMContentLoaded', ()=>{
       const start=hasHeader?1:0; const qs=rows.slice(start).map(r=>normalizeCell(r[col])).filter(Boolean);
       if(!qs.length){ setStatus('No questions parsed',false); return; }
       const choice=await triConfirm('Append to existing questions?','Replace','Cancel','Append'); if(choice==='cancel') return;
-      if(choice==='save') survey=survey.concat(qs); else if(choice==='nosave') survey=qs.slice(); render(); setStatus('CSV imported');
+      if(choice==='save') survey=survey.concat(qs); else if(choice==='nosave') survey=qs.slice();
+      render(); setStatus('CSV imported');
     });
   })();
 });
-/* CSV helpers */
+/* CSV helpers (unchanged) */
 function normalizeCell(s){ if(s==null) return ''; let t=String(s).replace(/\r\n/g,'\n').trim(); t=t.replace(/\n+/g,' // ').replace(/\s*\/\/\s*/g,' // '); return t; }
-function parseCSV(text){ const rows=[]; let field='',row=[],inQ=false; for(let i=0;i<text.length;i++){ const c=text[i],n=text[i+1];
-  if(inQ){ if(c==='"'&&n==='"'){ field+='"'; i++; } else if(c==='"'){ inQ=false; } else { field+=c; } }
-  else { if(c==='\"'){ inQ=true; } else if(c===','){ row.push(field); field=''; } else if(c==='\n'){ row.push(field); field=''; rows.push(row); row=[]; } else if(c!=='\r'){ field+=c; } }
-} row.push(field); rows.push(row); while(rows.length&&rows[rows.length-1].every(v=>String(v).trim()==='')) rows.pop(); return rows; }
-function findSingleDataColumn(rows){ const max=Math.max(...rows.map(r=>r.length)); let idx=-1; for(let c=0;c<max;c++){ let has=rows.some(r=>r[c]!=null&&String(r[c]).trim()!==''); if(has){ if(idx!==-1) return -1; idx=c; } } return idx; }
+function parseCSV(text){ const rows=[]; let field='',row=[],inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i],n=text[i+1];
+    if(inQ){ if(c==='"'&&n==='"'){ field+='"'; i++; } else if(c==='"'){ inQ=false; } else { field+=c; } }
+    else { if(c==='\"'){ inQ=true; } else if(c===','){ row.push(field); field=''; } else if(c==='\n'){ row.push(field); field=''; rows.push(row); row=[]; } else if(c!=='\r'){ field+=c; } }
+  }
+  row.push(field); rows.push(row);
+  while(rows.length&&rows[rows.length-1].every(v=>String(v).trim()==='')) rows.pop();
+  return rows;
+}
+function findSingleDataColumn(rows){
+  const max=Math.max(...rows.map(r=>r.length));
+  let idx=-1;
+  for(let c=0;c<max;c++){
+    const has=rows.some(r=>r[c]!=null&&String(r[c]).trim()!=='');
+    if(has){ if(idx!==-1) return -1; idx=c; }
+  }
+  return idx;
+}
 </script>
 </body>
 </html>
