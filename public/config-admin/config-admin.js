@@ -1,357 +1,324 @@
-// public/config-admin/config-admin.js
-console.log("✅ config-admin.js loaded");
-
+/* config-admin.js v3.1 */
 (function () {
-  const $ = (sel) => document.querySelector(sel);
+  const qs = (s, r = document) => r.querySelector(s);
+  const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const statusEl = qs('#mssAdminStatus');
 
-  // ---------- slug ----------
-  const params = new URLSearchParams(window.location.search);
-  const slug = (params.get("slug") || "mss-demo").trim();
-  const schoolSlugEl = $("#mssAdminSchoolSlug"); 
-  if (schoolSlugEl) schoolSlugEl.textContent = slug;
+  // ─── SLUG & ENDPOINT ────────────────────────────────────────────────────────
+  const slug = new URLSearchParams(location.search).get('slug')?.trim() || '';
+  const ADMIN_URL = `/api/admin/widget/${encodeURIComponent(slug)}`;
 
-  // ---------- nav buttons ----------
-  const btnQuestions = $("#mssAdminBtnQuestions");
-  const btnReports = $("#mssAdminBtnReports");
-  if (btnQuestions) {
-    btnQuestions.addEventListener("click", () => {
-      // This path should serve your WidgetSurvey Questions Admin
-      window.location.href = "/questions-admin/?slug=" + encodeURIComponent(slug);
-    });
+  // Hydrate slug badge so nav buttons work
+  const slugEl = qs('#mssAdminSchoolSlug');
+  if (slugEl) {
+    slugEl.textContent = slug || '(missing)';
+    slugEl.dataset.slug = slug;
   }
-  if (btnReports) btnReports.disabled = true; // future
 
-  // ---------- form + status ----------
-  const formEl = $("#mssConfigForm");
-  const statusEl = $("#mssAdminStatus");
-  const setStatus = (msg, cls) => {
+  // Warn if no slug and stop boot
+  if (!slug) {
+    setStatus('⚠️ Add ?slug= to the URL (e.g., ?slug=mss-demo)', true);
+    return;
+  }
+
+  // ─── HELPERS ────────────────────────────────────────────────────────────────
+  function setStatus(msg, warn = false) {
     if (!statusEl) return;
-    statusEl.textContent = msg || "";
-    statusEl.className = "mss-admin-status" + (cls ? " " + cls : "");
+    statusEl.textContent = msg || '';
+    statusEl.style.color = warn ? '#b45309' : '#0a7a0a';
+  }
+  const getBool = (el) => !!el?.checked;
+  const setBool = (el, v) => { if (el) el.checked = !!v; };
+  const getVal = (el) => (el ? el.value : '');
+  const setVal = (el, v) => { if (el) el.value = v ?? ''; };
+
+  // ─── ELEMENT MAP ────────────────────────────────────────────────────────────
+  const els = {
+    form: qs('#mssConfigForm'),
+
+    // Brand & text
+    headline: qs('#cfgHeadline'),
+    poweredBy: qs('#cfgPoweredBy'),
+    editableHeadline: qs('#cfgEditableHeadline'),
+
+    // Theme / timing / upload
+    theme: qs('#cfgTheme'),
+    allowUpload: qs('#cfgAllowUpload'),
+    minSec: qs('#cfgMinSec'),
+    maxSec: qs('#cfgMaxSec'),
+
+    // Visibility toggles
+    showHeadline: qs('#showHeadline'),
+    showRecordButton: qs('#showRecordButton'),
+    showPrevButton: qs('#showPrevButton'),
+    showNextButton: qs('#showNextButton'),
+    showStopButton: qs('#showStopButton'),
+    showUploadButton: qs('#showUploadButton'),
+    showPoweredByLabel: qs('#showPoweredByLabel'),
+    showNotRecordingLabel: qs('#showNotRecordingLabel'),
+    showSubmitButton: qs('#showSubmitButton'),
+
+    // API & logging
+    apiBaseUrl: qs('#cfgApiBaseUrl'),
+    apiKey: qs('#cfgApiKey'),
+    apiSecret: qs('#cfgApiSecret'),
+    loggerEnabled: qs('#cfgLoggerEnabled'),
+    loggerUrl: qs('#cfgLoggerUrl'),
+
+    // Usage & safety
+    dailyLimit: qs('#cfgDailyLimit'),
+    notifyOnLimit: qs('#cfgNotifyOnLimit'),
+    autoBlockOnLimit: qs('#cfgAutoBlockOnLimit'),
+
+    // Branding
+    logoFile: qs('#mssBrandLogoFile'),
+    logoImg: qs('#mssBrandLogoImg'),
+    logoStatus: qs('#mssBrandLogoStatus'),
+    // The following might not exist in your HTML; we’ll handle that gracefully:
+    logoProg: qs('#mssBrandLogoProg'),
+    logoUpload: qs('#mssBrandLogoUpload'),
+    logoRemove: qs('#mssBrandLogoRemove'),
   };
 
-  // ---------- logo controls ----------
-  const logoImgEl = $("#mssBrandLogoImg");
-  const logoStatusEl = $("#mssBrandLogoStatus");
-  const logoFileEl = $("#mssBrandLogoFile");
-  let pendingLogoDataUrl = null;
+  // Keep last-loaded config so we can merge unknown keys on save
+  let _loadedConfig = {};
 
-  async function loadLogo() {
-    if (!logoImgEl || !logoStatusEl) return;
-    logoStatusEl.textContent = "Checking for logo…";
-    logoImgEl.style.display = "none";
-    try {
-      const url = "/api/widget/" + encodeURIComponent(slug) + "/image/widget-logo";
-      const res = await fetch(url);
-      if (!res.ok) {
-        logoStatusEl.textContent = "No logo uploaded yet.";
-        return;
-      }
-      const blob = await res.blob();
-      const obj = URL.createObjectURL(blob);
-      logoImgEl.src = obj;
-      logoImgEl.style.display = "block";
-      logoStatusEl.textContent = "Current logo";
-    } catch (e) {
-      console.error("loadLogo:", e);
-      logoStatusEl.textContent = "Could not load logo.";
-    }
-  }
-
-  function initLogoUpload() {
-    if (!logoFileEl) return;
-    logoFileEl.addEventListener("change", () => {
-      const file = logoFileEl.files && logoFileEl.files[0];
-      if (!file) return;
-      if (!file.type.startsWith("image/")) {
-        logoStatusEl && (logoStatusEl.textContent = "Please choose an image file.");
-        logoFileEl.value = "";
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        pendingLogoDataUrl = String(reader.result || "");
-        if (logoImgEl) {
-          logoImgEl.src = pendingLogoDataUrl;
-          logoImgEl.style.display = "block";
-        }
-        logoStatusEl && (logoStatusEl.textContent = "Logo ready. It will upload on Save.");
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // ---------- collapsibles (default: collapsed with chevrons) ----------
-  function initCollapsibles() {
-    // Collapse all on init
-    document.querySelectorAll(".mss-admin-card").forEach((card) => {
-      card.classList.add("is-collapsed");
-    });
-    document.querySelectorAll(".mss-admin-toggle").forEach((btn) => {
-      btn.setAttribute("aria-expanded", "false");
-      btn.innerHTML = '<span class="mss-chevron" aria-hidden="true">▸</span> Expand';
-      btn.addEventListener("click", () => {
-        const card = btn.closest(".mss-admin-card");
-        if (!card) return;
-        const nowCollapsed = card.classList.toggle("is-collapsed");
-        const chev = btn.querySelector(".mss-chevron");
-        btn.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
-        if (nowCollapsed) {
-          btn.lastChild && (btn.lastChild.textContent = " Expand");
-          if (chev) chev.textContent = "▸";
-        } else {
-          btn.lastChild && (btn.lastChild.textContent = " Collapse");
-          if (chev) chev.textContent = "▾";
-        }
-      });
-    });
-  }
-
-  // ---------- open widget ----------
-  const openWidgetBtn = $("#mssOpenWidget");
-  function initOpenWidget() {
-    if (!openWidgetBtn) return;
-    openWidgetBtn.addEventListener("click", () => {
-      const url = "/Widget.html?slug=" + encodeURIComponent(slug) + "&from=admin";
-      window.open(url, "_blank", "noopener");
-    });
-  }
-
-  // ---------- state ----------
-  let currentSchoolId = null;
-  let currentConfig = {};
-  let currentForm = {};
-  let currentBilling = {};
-
-  // ---------- load config ----------
+  // ─── LOAD ───────────────────────────────────────────────────────────────────
   async function loadConfig() {
     try {
-      setStatus("Loading configuration…", "is-working");
-      const url = "/api/admin/widget/" + encodeURIComponent(slug);
-      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      const res = await fetch(ADMIN_URL, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
       const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
 
-      if (!res.ok || !body.ok) {
-        setStatus(body.message || body.error || "Could not load configuration.", "is-error");
-        console.error("loadConfig error:", body);
-        return;
-      }
-
-      currentSchoolId = body.schoolId;
-      currentConfig = body.config || {};
-      currentForm = body.form || {};
-      currentBilling = body.billing || {};
-
-      // --- Brand & text
-      $("#cfgHeadline") && ($("#cfgHeadline").value = currentForm.headline || "CEFR Assessment");
-      $("#cfgPoweredBy") &&
-        ($("#cfgPoweredBy").value = currentForm.poweredByLabel || "Powered by MSS Vox");
-      $("#cfgEditableHeadline") &&
-        ($("#cfgEditableHeadline").checked = !!(currentConfig.editable?.headline ?? true));
-
-      // --- Theme & timing / upload
-      $("#cfgTheme") && ($("#cfgTheme").value = currentConfig.theme || "default");
-      $("#cfgAllowUpload") &&
-        ($("#cfgAllowUpload").checked = !!(currentConfig.Permitupload ?? true));
-      $("#cfgMinSec") &&
-        ($("#cfgMinSec").value =
-          currentConfig.audioMinSeconds != null ? currentConfig.audioMinSeconds : 30);
-      $("#cfgMaxSec") &&
-        ($("#cfgMaxSec").value =
-          currentConfig.audioMaxSeconds != null ? currentConfig.audioMaxSeconds : 61);
-
-      // --- Buttons visibility
-      const show = currentConfig.show || {};
-      const vis = {
-        showHeadline: "headline",
-        showRecordButton: "recordButton",
-        showPrevButton: "prevButton",
-        showNextButton: "nextButton",
-        showStopButton: "stopButton",
-        showUploadButton: "uploadButton",
-        showPoweredByLabel: "poweredByLabel",
-        showNotRecordingLabel: "notRecordingLabel",
-        showSubmitButton: "submitButton",
-      };
-      Object.entries(vis).forEach(([id, key]) => {
-        const el = $("#" + id);
-        if (el) el.checked = show[key] ?? true;
-      });
-
-      // --- Labels
-      const labels = {
-        labelRecord: ["recordButton", "Record your response"],
-        labelPrev: ["previousButton", "Previous"],
-        labelNext: ["nextButton", "Next"],
-        labelStop: ["stopButton", "Stop"],
-        labelUpload: ["uploadButton", "Choose an audio file"],
-        labelSubmit: ["SubmitForScoringButton", "Submit for scoring"],
-        labelNotRecording: ["NotRecordingLabel", "Not recording"],
-      };
-      Object.entries(labels).forEach(([id, [key, defVal]]) => {
-        const el = $("#" + id);
-        if (el) el.value = currentForm[key] || defVal;
-      });
-
-      // --- API & logging
-      const api = currentConfig.api || {};
-      const logger = currentConfig.logger || {};
-      $("#cfgApiBaseUrl") && ($("#cfgApiBaseUrl").value = api.baseUrl || "");
-      $("#cfgApiKey") && ($("#cfgApiKey").value = api.key || "");
-      $("#cfgApiSecret") && ($("#cfgApiSecret").value = api.secret || "");
-      $("#cfgLoggerEnabled") && ($("#cfgLoggerEnabled").checked = !!logger.enabled);
-      $("#cfgLoggerUrl") && ($("#cfgLoggerUrl").value = logger.url || "");
-
-      // --- Billing
-      $("#cfgDailyLimit") &&
-        ($("#cfgDailyLimit").value =
-          currentBilling.dailyLimit != null ? currentBilling.dailyLimit : 50);
-      $("#cfgNotifyOnLimit") &&
-        ($("#cfgNotifyOnLimit").checked = currentBilling.notifyOnLimit ?? true);
-      $("#cfgAutoBlockOnLimit") &&
-        ($("#cfgAutoBlockOnLimit").checked = currentBilling.autoBlockOnLimit ?? true);
-
-      setStatus("Configuration loaded.", "is-ok");
-      loadLogo();
+      // Accept various shapes: {config}, {form}, or raw object
+      const cfg = body.config || body.form || body || {};
+      _loadedConfig = cfg && typeof cfg === 'object' ? cfg : {};
+      applyToUI(_loadedConfig);
+      setStatus('Loaded');
     } catch (e) {
-      console.error("loadConfig exception:", e);
-      setStatus("Network error while loading configuration.", "is-error");
+      console.error('loadConfig failed', e);
+      setStatus('Failed to load config', true);
     }
   }
 
-  // ---------- save config ----------
-  async function saveConfig(e) {
-    e.preventDefault();
+  function applyToUI(cfg) {
+    // Brand & text
+    setVal(els.headline, cfg.headline);
+    setVal(els.poweredBy, cfg.poweredBy);
+    setBool(els.editableHeadline, !!cfg.editableHeadline);
 
-    const cfgOut = { ...(currentConfig || {}) };
-    const formOut = { ...(currentForm || {}) };
-    const billOut = { ...(currentBilling || {}) };
-
-    // Brand / text
-    formOut.headline = ($("#cfgHeadline")?.value || "").trim();
-    formOut.poweredByLabel = ($("#cfgPoweredBy")?.value || "").trim();
-    cfgOut.editable = {
-      ...(cfgOut.editable || {}),
-      headline: !!$("#cfgEditableHeadline")?.checked,
-    };
-
-    // Theme / timings / upload
-    cfgOut.theme = $("#cfgTheme")?.value || "default";
-    cfgOut.Permitupload = !!$("#cfgAllowUpload")?.checked;
-    cfgOut.audioMinSeconds = Number($("#cfgMinSec")?.value || 0);
-    cfgOut.audioMaxSeconds = Number($("#cfgMaxSec")?.value || 0);
+    // Theme / timing / upload
+    setVal(els.theme, cfg.theme || 'default');
+    setBool(els.allowUpload, !!cfg.allowUpload);
+    setVal(els.minSec, cfg.minSec ?? '');
+    setVal(els.maxSec, cfg.maxSec ?? '');
 
     // Visibility
-    const visMap = {
-      showHeadline: "headline",
-      showRecordButton: "recordButton",
-      showPrevButton: "prevButton",
-      showNextButton: "nextButton",
-      showStopButton: "stopButton",
-      showUploadButton: "uploadButton",
-      showPoweredByLabel: "poweredByLabel",
-      showNotRecordingLabel: "notRecordingLabel",
-      showSubmitButton: "submitButton",
-    };
-    const showOut = { ...(cfgOut.show || {}) };
-    Object.entries(visMap).forEach(([id, key]) => {
-      const el = $("#" + id);
-      if (el) showOut[key] = !!el.checked;
-    });
-    cfgOut.show = showOut;
+    setBool(els.showHeadline, !!cfg.showHeadline);
+    setBool(els.showRecordButton, !!cfg.showRecordButton);
+    setBool(els.showPrevButton, !!cfg.showPrevButton);
+    setBool(els.showNextButton, !!cfg.showNextButton);
+    setBool(els.showStopButton, !!cfg.showStopButton);
+    setBool(els.showUploadButton, !!cfg.showUploadButton);
+    setBool(els.showPoweredByLabel, !!cfg.showPoweredByLabel);
+    setBool(els.showNotRecordingLabel, !!cfg.showNotRecordingLabel);
+    setBool(els.showSubmitButton, !!cfg.showSubmitButton);
 
-    // Labels
-    const labelMap = {
-      labelRecord: "recordButton",
-      labelPrev: "previousButton",
-      labelNext: "nextButton",
-      labelStop: "stopButton",
-      labelUpload: "uploadButton",
-      labelSubmit: "SubmitForScoringButton",
-      labelNotRecording: "NotRecordingLabel",
-    };
-    Object.entries(labelMap).forEach(([id, key]) => {
-      const el = $("#" + id);
-      if (el) formOut[key] = (el.value || "").trim();
-    });
+    // API & logging
+    setVal(els.apiBaseUrl, cfg.apiBaseUrl || '');
+    setVal(els.apiKey, cfg.apiKey || '');
+    setVal(els.apiSecret, cfg.apiSecret || '');
+    setBool(els.loggerEnabled, !!cfg.loggerEnabled);
+    setVal(els.loggerUrl, cfg.loggerUrl || '');
 
-    // API / logging
-    cfgOut.api = {
-      ...(cfgOut.api || {}),
-      baseUrl: ($("#cfgApiBaseUrl")?.value || "").trim(),
-      key: ($("#cfgApiKey")?.value || "").trim(),
-      secret: ($("#cfgApiSecret")?.value || "").trim(),
-    };
-    cfgOut.logger = {
-      ...(cfgOut.logger || {}),
-      enabled: !!$("#cfgLoggerEnabled")?.checked,
-      url: ($("#cfgLoggerUrl")?.value || "").trim(),
+    // Usage & safety
+    setVal(els.dailyLimit, cfg.dailyLimit ?? '');
+    setBool(els.notifyOnLimit, !!cfg.notifyOnLimit);
+    setBool(els.autoBlockOnLimit, !!cfg.autoBlockOnLimit);
+
+    // Branding
+    updateLogoUI(cfg.brandLogoUrl || '');
+  }
+
+  function collectFromUI() {
+    // Don’t coerce blanks to zero—send undefined for “not set”
+    const numOrUndef = (s) => {
+      const n = Number(String(s ?? '').trim());
+      return Number.isFinite(n) && String(s ?? '').trim() !== '' ? n : undefined;
     };
 
-    // Billing
-    billOut.dailyLimit = Number($("#cfgDailyLimit")?.value || 0);
-    billOut.notifyOnLimit = !!$("#cfgNotifyOnLimit")?.checked;
-    billOut.autoBlockOnLimit = !!$("#cfgAutoBlockOnLimit")?.checked;
+    const cfg = {
+      // Brand & text
+      headline: getVal(els.headline) || undefined,
+      poweredBy: getVal(els.poweredBy) || undefined,
+      editableHeadline: getBool(els.editableHeadline),
 
-    const payload = { config: cfgOut, form: formOut, billing: billOut };
+      // Theme / timing / upload
+      theme: getVal(els.theme) || 'default',
+      allowUpload: getBool(els.allowUpload),
+      minSec: numOrUndef(getVal(els.minSec)),
+      maxSec: numOrUndef(getVal(els.maxSec)),
 
+      // Visibility
+      showHeadline: getBool(els.showHeadline),
+      showRecordButton: getBool(els.showRecordButton),
+      showPrevButton: getBool(els.showPrevButton),
+      showNextButton: getBool(els.showNextButton),
+      showStopButton: getBool(els.showStopButton),
+      showUploadButton: getBool(els.showUploadButton),
+      showPoweredByLabel: getBool(els.showPoweredByLabel),
+      showNotRecordingLabel: getBool(els.showNotRecordingLabel),
+      showSubmitButton: getBool(els.showSubmitButton),
+
+      // API & logging
+      apiBaseUrl: getVal(els.apiBaseUrl) || undefined,
+      apiKey: getVal(els.apiKey) || undefined,
+      apiSecret: getVal(els.apiSecret) || undefined,
+      loggerEnabled: getBool(els.loggerEnabled),
+      loggerUrl: getVal(els.loggerUrl) || undefined,
+
+      // Usage & safety
+      dailyLimit: numOrUndef(getVal(els.dailyLimit)),
+      notifyOnLimit: getBool(els.notifyOnLimit),
+      autoBlockOnLimit: getBool(els.autoBlockOnLimit),
+
+      // Branding: keep whatever preview shows
+      brandLogoUrl: els.logoImg?.getAttribute('src') || undefined,
+    };
+
+    // Merge with last loaded so we don’t blow away unknown keys
+    return Object.assign({}, _loadedConfig, cfg);
+  }
+
+  // ─── SAVE ───────────────────────────────────────────────────────────────────
+  async function saveConfig() {
+    const cfg = collectFromUI();
     try {
-      setStatus("Saving…", "is-working");
-      const url = "/api/admin/widget/" + encodeURIComponent(slug);
-      const res = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const res = await fetch(ADMIN_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: cfg }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.ok) {
-        setStatus(body.message || body.error || "Failed to save configuration.", "is-error");
-        console.error("saveConfig error:", body);
-        return;
-      }
-
-      if (pendingLogoDataUrl) {
-        try {
-          const lres = await fetch(
-            "/api/admin/widget/" + encodeURIComponent(slug) + "/logo",
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ dataUrl: pendingLogoDataUrl }),
-            }
-          );
-          const lbody = await lres.json().catch(() => ({}));
-          if (!lres.ok || !lbody.ok) {
-            setStatus(
-              lbody.message || lbody.error || "Configuration saved, logo upload failed.",
-              "is-error"
-            );
-          } else {
-            pendingLogoDataUrl = null;
-            setStatus("Configuration and logo saved.", "is-ok");
-            loadLogo();
-          }
-        } catch (e) {
-          console.error("logo upload exception:", e);
-          setStatus("Configuration saved, logo upload failed.", "is-error");
-        }
-      } else {
-        setStatus("Configuration saved.", "is-ok");
-      }
-
-      currentConfig = cfgOut;
-      currentForm = formOut;
-      currentBilling = billOut;
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      _loadedConfig = cfg; // optimistic update
+      setStatus('Saved');
     } catch (e) {
-      console.error("saveConfig exception:", e);
-      setStatus("Network error while saving configuration.", "is-error");
+      console.error('saveConfig failed', e);
+      setStatus('Save failed', true);
     }
   }
 
-  // ---------- wire up ----------
-  if (formEl) formEl.addEventListener("submit", saveConfig);
-  initCollapsibles();
-  initLogoUpload();
-  initOpenWidget();
+  // ─── BRANDING (upload/remove) ───────────────────────────────────────────────
+  function updateLogoUI(url) {
+    if (url) {
+      if (els.logoImg) {
+        els.logoImg.src = url;
+        els.logoImg.style.display = '';
+      }
+      if (els.logoStatus) els.logoStatus.textContent = 'Logo uploaded.';
+    } else {
+      if (els.logoImg) {
+        els.logoImg.removeAttribute('src');
+        els.logoImg.style.display = 'none';
+      }
+      if (els.logoStatus) els.logoStatus.textContent = 'No logo uploaded yet.';
+    }
+  }
+
+  // Create a lightweight inline progress element if missing
+  function ensureLogoProg() {
+    if (els.logoProg) return els.logoProg;
+    const prog = document.createElement('progress');
+    prog.id = 'mssBrandLogoProg';
+    prog.max = 100;
+    prog.value = 0;
+    prog.style.display = 'none';
+    prog.style.marginTop = '8px';
+    // Place after file input, if possible
+    if (els.logoFile?.parentElement) {
+      els.logoFile.parentElement.appendChild(prog);
+    } else {
+      (els.logoStatus?.parentElement || document.body).appendChild(prog);
+    }
+    els.logoProg = prog;
+    return prog;
+  }
+
+  async function uploadLogoFromFile(file) {
+    if (!file) return;
+    setStatus('Uploading logo…');
+    const prog = ensureLogoProg();
+    prog.style.display = '';
+    prog.value = 5;
+
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${ADMIN_URL}/logo`, { method: 'POST', body: fd });
+      prog.value = 70;
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const url = body.url || body.brandLogoUrl;
+      updateLogoUI(url);
+      prog.value = 100;
+      setTimeout(() => { prog.style.display = 'none'; prog.value = 0; }, 350);
+      setStatus('Logo uploaded');
+    } catch (e) {
+      console.error('logo upload failed', e);
+      prog.style.display = 'none';
+      prog.value = 0;
+      setStatus('Logo upload failed', true);
+    }
+  }
+
+  async function removeLogo() {
+    if (!confirm('Remove current logo?')) return;
+    setStatus('Removing logo…');
+    try {
+      const res = await fetch(`${ADMIN_URL}/logo`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      updateLogoUI('');
+      setStatus('Logo removed');
+    } catch (e) {
+      console.error('logo remove failed', e);
+      // Fallback: clear locally and save config without a brand url
+      updateLogoUI('');
+      const cfg = collectFromUI();
+      await saveConfig(); // ignore errors here
+      setStatus('Logo removed (local only)', true);
+    }
+  }
+
+  // ─── WIRING ─────────────────────────────────────────────────────────────────
+  function wire() {
+    // Save
+    els.form?.addEventListener('submit', (e) => { e.preventDefault(); saveConfig(); });
+
+    // Logo upload: trigger upload when a file is chosen
+    els.logoFile?.addEventListener('change', (e) => {
+      const f = e.currentTarget?.files?.[0];
+      if (!f) return;
+      // Optional client preview before upload
+      if (els.logoImg) {
+        const url = URL.createObjectURL(f);
+        els.logoImg.src = url;
+        els.logoImg.style.display = '';
+        if (els.logoStatus) els.logoStatus.textContent = 'Uploading…';
+      }
+      uploadLogoFromFile(f);
+    });
+
+    // Optional explicit buttons if you add them later
+    els.logoUpload?.addEventListener('click', () => {
+      els.logoFile?.click();
+    });
+    els.logoRemove?.addEventListener('click', removeLogo);
+  }
+
+  // ─── BOOT ───────────────────────────────────────────────────────────────────
+  wire();
   loadConfig();
 })();
