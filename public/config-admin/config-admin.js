@@ -1,4 +1,4 @@
-/* config-admin.js v3.2 • Build 2025-11-12 14:27 ET */
+/* config-admin.js v3.2 • Build 2025-11-12 15:08 ET */
 (function(){
   const qs = (s,r=document)=>r.querySelector(s);
   const qsa = (s,r=document)=>Array.from(r.querySelectorAll(s));
@@ -6,6 +6,8 @@
 
   const slug = new URLSearchParams(location.search).get('slug')?.trim() || '';
   const ADMIN_URL = `/api/admin/widget/${encodeURIComponent(slug)}`;
+  const LOGO_URL  = `${ADMIN_URL}/logo`; // <— add this
+  
   console.log('[config-admin] slug:', slug, 'ADMIN_URL:', ADMIN_URL);
 
   // ---- helpers
@@ -120,11 +122,7 @@
       applyToUI(merged);
       setStatus('Loaded');
 
-      // Probe logo endpoint availability (HEAD)
-      try{
-        const head = await fetch(`${ADMIN_URL}/logo`, { method:'HEAD' });
-        disableBrandingActions(!(head.ok));
-      }catch{ disableBrandingActions(true); }
+      
 
     }catch(e){
       console.error('loadConfig failed', e);
@@ -234,43 +232,62 @@
   }
 
   // ---- branding upload/remove (guarded if endpoint missing)
-  function updateLogoUI(url){
-    if (url){
-      els.logoImg.src = url;
-      els.logoImg.style.display = '';
-      els.logoStatus.textContent = 'Logo uploaded.';
-    } else {
-      els.logoImg.removeAttribute('src');
-      els.logoImg.style.display = 'none';
-      els.logoStatus.textContent = 'No logo uploaded yet.';
-    }
+ function updateLogoUI(url){
+  if (url){
+    // Cache-bust preview so new uploads show immediately
+    const busted = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    els.logoImg.src = busted;
+    els.logoImg.style.display = '';
+    els.logoStatus.textContent = 'Logo uploaded.';
+  } else {
+    els.logoImg.removeAttribute('src');
+    els.logoImg.style.display = 'none';
+    els.logoStatus.textContent = 'No logo uploaded yet.';
   }
+}
 
-  async function uploadLogo(){
-    if (els.brandingActions?.getAttribute('aria-disabled') === 'true'){
-      return alert('Logo upload endpoint not available on this environment.');
-    }
-    const f = els.logoFile?.files?.[0];
-    if(!f){ alert('Choose a logo file first.'); return; }
-    setStatus('Uploading logo…');
-    els.logoProg.style.display = ''; els.logoProg.value = 5;
-    try{
-      const fd = new FormData(); fd.append('file', f);
-      const res = await fetch(`${ADMIN_URL}/logo`, { method:'POST', body: fd });
-      els.logoProg.value = 70;
-      const body = await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      const url = body.url || body.brandLogoUrl;
-      updateLogoUI(url);
+async function uploadLogo(){
+  const file = els.logoFile?.files?.[0];
+  if (!file){ alert('Choose a logo file first.'); return; }
+
+  setStatus('Uploading logo…');
+  if (els.logoProg){ els.logoProg.style.display=''; els.logoProg.value = 15; }
+
+  try{
+    const fd = new FormData();
+    fd.append('file', file);
+    const res  = await fetch(LOGO_URL, { method:'POST', body: fd });
+    const body = await res.json().catch(()=> ({}));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const url = body.url || body.brandLogoUrl || LOGO_URL; // be liberal in what we accept
+    updateLogoUI(url);
+
+    if (els.logoProg){
       els.logoProg.value = 100;
-      setTimeout(()=>{ els.logoProg.style.display='none'; els.logoProg.value=0; }, 350);
-      setStatus('Logo uploaded');
-    }catch(e){
-      console.error('logo upload failed', e);
-      els.logoProg.style.display='none'; els.logoProg.value=0;
-      setStatus('Logo upload failed', true);
+      setTimeout(()=>{ els.logoProg.style.display='none'; els.logoProg.value=0; }, 300);
     }
+    setStatus('Logo uploaded');
+  } catch (e){
+    console.error('logo upload failed', e);
+    if (els.logoProg){ els.logoProg.style.display='none'; els.logoProg.value=0; }
+    setStatus('Logo upload failed', true);
   }
+}
+
+async function removeLogo(){
+  if (!confirm('Remove current logo?')) return;
+  setStatus('Removing logo…');
+  try{
+    const res = await fetch(LOGO_URL, { method:'DELETE' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    updateLogoUI('');
+    setStatus('Logo removed');
+  } catch (e){
+    console.error('logo remove failed', e);
+    setStatus('Logo remove failed', true);
+  }
+}
 
   async function removeLogo(){
     if (els.brandingActions?.getAttribute('aria-disabled') === 'true'){
