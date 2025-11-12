@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Widget – Questions</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Main MSS theme -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <!-- Reuse admin styles for consistent chrome -->
+  <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
+</head>
+<body class="mss-admin-body">
+  <div class="mss-admin-shell">
+    <header class="mss-admin-header">
+      <div class="mss-admin-brand">
+        <div class="mss-admin-mark">MSS</div>
+        <div class="mss-admin-brand-text">
+          <div class="mss-admin-brand-main">Questions Admin</div>
+          <div class="mss-admin-brand-sub">Drag & drop to reorder. Add / edit / remove questions.</div>
+        </div>
+      </div>
+      <div class="mss-admin-school">
+        School: <span id="mssAdminSchoolSlug">(loading…)</span>
+      </div>
+    </header>
+
+    <nav class="mss-admin-tabs">
+      <a id="mssAdminTabConfig" class="mss-admin-tab" href="#">Configuration</a>
+      <button class="mss-admin-tab is-active" type="button" disabled>Questions</button>
+      <button class="mss-admin-tab mss-admin-tab--disabled" type="button" disabled>Reports</button>
+    </nav>
+
+    <main class="mss-admin-main">
+      <!-- Toolbar -->
+      <div class="mss-admin-toolbar" style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
+        <button id="qsAdd" class="mss-admin-secondary-btn">+ Add question</button>
+        <span id="qsStatus" class="mss-admin-status"></span>
+      </div>
+
+      <!-- Your existing WidgetSurvey UI goes right here -->
+      <section id="WidgetSurveyRoot" class="mss-admin-card" style="padding:0;">
+        <!-- Paste your current WidgetSurvey markup here (lists, rows, DnD handles, etc.) -->
+      </section>
+
+      <div class="mss-admin-footer" style="margin-top:14px;">
+        <button id="qsBack" class="mss-admin-secondary-btn">← Back to Configuration</button>
+        <div style="flex:1"></div>
+        <button id="qsSave" class="mss-admin-primary-btn">Save questions</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="/questions-admin/questions-admin.js?v=1"></script>
+</body>
+</html>
