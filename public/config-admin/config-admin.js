@@ -7,7 +7,7 @@ console.log("✅ config-admin.js loaded");
   // ---------- slug ----------
   const params = new URLSearchParams(window.location.search);
   const slug = (params.get("slug") || "mss-demo").trim();
-  const schoolSlugEl = $("#mssAdminSchoolSlug");
+  const schoolSlugEl = $("#mssAdminSchoolSlug"); 
   if (schoolSlugEl) schoolSlugEl.textContent = slug;
 
   // ---------- nav buttons ----------
