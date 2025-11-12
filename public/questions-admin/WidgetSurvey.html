@@ -1,3 +1,4 @@
+<!-- Build: 2025-11-12 15:55 ET -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,11 +6,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>My Speaking Score – All-in-One Question Editor</title>
 <link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css">
+
 <style>
   :root { --mss-blue:#1a5cff; --mss-text:#222; --mss-muted:#6b7280; --mss-edge:#e5e7eb; }
-  body{ font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-        background:#f7f7f8;margin:0;display:flex;flex-direction:column;align-items:center;
-        min-height:100vh;padding:24px;gap:18px; }
+  body{
+    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:#f7f7f8;margin:0;display:flex;flex-direction:column;align-items:center;
+    min-height:100vh;padding:24px;gap:18px;
+  }
   .card{ width:980px; max-width:95vw; background:#fff; border:1px solid var(--mss-edge);
          border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.06); overflow:hidden; }
   .head{display:flex;justify-content:space-between;align-items:center;
@@ -36,23 +40,40 @@
   .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .toolbar .spacer{flex:1}
   #status{font-size:13px;margin-left:auto}
-  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2100}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2100}
   .modal{width:min(700px,95vw);background:#fff;border:1px solid var(--mss-edge);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden}
   .modalHead{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--mss-edge)}
   .modalBody{padding:12px}
   .modalFoot{display:flex;gap:8px;justify-content:flex-end;padding:12px;border-top:1px solid var(--mss-edge)}
   .ta{width:100%;min-height:200px;border:1px solid var(--mss-edge);border-radius:12px;padding:12px;font:inherit}
-  .finishOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2100}
+
+  /* Finished dialog */
+  .finishOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2100}
   .finishDlg{width:min(420px,94vw);background:#fff;border:1px solid var(--mss-edge);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:18px}
   .finishDlg h3{margin:0 0 8px 0;font-size:16px}
   .finishDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
   .finishBtns{display:flex;gap:8px;justify-content:flex-end}
-  .confirmOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2200}
+
+  /* Confirm dialog */
+  .confirmOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:2200}
   .confirmDlg{width:min(420px,94vw);background:#fff;border:1px solid var(--mss-edge);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:18px}
   .confirmDlg h3{margin:0 0 8px 0;font-size:16px}
   .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
   .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
+
+  /* Hide Save-to-file buttons (we’ll show them only on fallback) */
+  #saveToFileBtnTop, #saveToFileBtnBottom { display:none !important; }
 </style>
+
+<script>
+  // Drop any stray save-to-file listeners just in case
+  window.addEventListener('DOMContentLoaded', () => {
+    for (const id of ['saveToFileBtnTop','saveToFileBtnBottom']) {
+      const el = document.getElementById(id);
+      if (el) el.replaceWith(el.cloneNode(true));
+    }
+  });
+</script>
 </head>
 <body>
   <div class="card">
@@ -92,13 +113,13 @@
     </div>
 
     <div class="footer" style="padding:12px 16px; border-top:1px solid var(--mss-edge); font-size:12px; color:#6b7280">
-      Tip: <b>Export</b> downloads <code>form.json</code>. <b>Save to file…</b> overwrites the chosen file without “form (3)”.
+      Tip: <b>Export</b> downloads <code>form.json</code>.
     </div>
   </div>
 
   <!-- Add/Edit modal -->
-  <div id="aeOverlay" class="overlay" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Add or Edit Question">
+  <div id="aeOverlay" class="overlay" role="dialog" aria-modal="true" hidden>
+    <div class="modal">
       <div class="modalHead"><div id="aeTitle" class="title">Add Question</div></div>
       <div class="modalBody">
         <textarea id="aeTextarea" class="ta" placeholder="Type the question here…"></textarea>
@@ -113,7 +134,7 @@
   </div>
 
   <!-- Finished dialog -->
-  <div id="finishOverlay" class="finishOverlay" aria-hidden="true">
+  <div id="finishOverlay" class="finishOverlay" role="dialog" aria-modal="true" hidden>
     <div class="finishDlg">
       <h3>Do you want to save your changes before leaving?</h3>
       <p><b>Save</b> writes to the database for this <code>slug</code>, or downloads if blocked.</p>
@@ -126,7 +147,7 @@
   </div>
 
   <!-- Confirm dialog -->
-  <div id="confirmOverlay" class="confirmOverlay" aria-hidden="true">
+  <div id="confirmOverlay" class="confirmOverlay" role="dialog" aria-modal="true" hidden>
     <div class="confirmDlg">
       <h3 id="confirmTitle">Confirm</h3>
       <p id="confirmMsg">Are you sure?</p>
@@ -138,19 +159,52 @@
   </div>
 
 <script>
+/* ========= Build: 2025-11-12 15:55 ET ========= */
+
 /* ------------------------------------------------------------------
-   SLUG + ENDPOINTS (relative paths => works on localhost & Render)
+   SLUG + MULTI-ENDPOINT STRATEGY
 ------------------------------------------------------------------ */
 const params = new URLSearchParams(location.search);
-const SLUG = (params.get("slug") || "mss-demo").trim();
+const SLUG = (params.get('slug') || 'mss-demo').trim();
 
-const ADMIN_READ_URL = `/api/admin/widget/${encodeURIComponent(SLUG)}`;
-const ADMIN_WRITE_URL = `/api/admin/widget/${encodeURIComponent(SLUG)}`;  // PUT with {form:{...}}
-const FALLBACK_FORM_URL = `/form.json?ts=${Date.now()}`;
+// Candidate API hosts (same-origin first)
+const HOSTS = [
+  window.location.origin,
+  'https://mss-widget-mt.onrender.com',
+  'https://msswidget-dev.onrender.com'
+];
+
+// Candidate READ urls (in order)
+function readCandidates(slug){
+  const s = encodeURIComponent(slug);
+  return [
+    `${HOSTS[0]}/api/admin/widget/${s}/form`,
+    `${HOSTS[1]}/api/admin/widget/${s}/form`,
+    `${HOSTS[2]}/api/admin/widget/${s}/form`,
+    `${HOSTS[0]}/config/forms?slug=${s}`,
+    `${HOSTS[1]}/config/forms?slug=${s}`,
+    `${HOSTS[2]}/config/forms?slug=${s}`,
+    // Final local fallback (no slug)
+    `./form.json?ts=${Date.now()}`
+  ];
+}
+
+// Candidate WRITE urls (in order)
+function writeCandidates(slug){
+  const s = encodeURIComponent(slug);
+  return [
+    { url: `${HOSTS[0]}/api/admin/widget/${s}/form`, method: 'PUT' },
+    { url: `${HOSTS[1]}/api/admin/widget/${s}/form`, method: 'PUT' },
+    { url: `${HOSTS[2]}/api/admin/widget/${s}/form`, method: 'PUT' },
+    { url: `${HOSTS[0]}/config/forms?slug=${s}`,       method: 'PUT' },
+    { url: `${HOSTS[1]}/config/forms?slug=${s}`,       method: 'PUT' },
+    { url: `${HOSTS[2]}/config/forms?slug=${s}`,       method: 'PUT' }
+  ];
+}
 
 /* ========= state ========= */
-let schema = null;          // latest server form object
-let survey = [];            // editable list
+let schema = null;
+let survey = [];
 let _fileHandle = null;
 let aeMode = 'add';
 let aeIndex = -1;
@@ -174,7 +228,7 @@ function summarize(q){
 }
 function getMerged(){ return { ...(schema||{}), survey: survey.slice() }; }
 
-/* ========= render list (unchanged) ========= */
+/* ========= render list ========= */
 function move(i, d){ const j=i+d; if(j<0||j>=survey.length) return; [survey[i],survey[j]]=[survey[j],survey[i]]; render(); }
 function moveTo(i, dest){ dest=Math.max(0,Math.min(dest,survey.length-1)); if(i===dest) return; const it=survey.splice(i,1)[0]; survey.splice(dest,0,it); render(); }
 function render(){
@@ -200,19 +254,24 @@ function render(){
   wireDnd(list);
 }
 
-/* ========= DnD (unchanged) ========= */
+/* ========= DnD ========= */
 function wireDnd(container){
   let ph=null, dragging=null, src=null;
   container.querySelectorAll('.row').forEach(row=>{
-    row.dataset.allow=""; row.addEventListener('dragstart',start); row.addEventListener('dragend',end);
+    row.dataset.allow="";
+    row.addEventListener('dragstart',start);
+    row.addEventListener('dragend',end);
     row.querySelector('.idx').addEventListener('pointerdown',()=>{ row.dataset.allow="1"; },{passive:true});
   });
-  container.addEventListener('dragover',over); container.addEventListener('drop',drop);
+  container.addEventListener('dragover',over);
+  container.addEventListener('drop',drop);
+
   function start(e){
     const row=e.currentTarget; if(row.dataset.allow!=="1"){ e.preventDefault(); return; } row.dataset.allow="";
     dragging=row; src=+row.dataset.idx; row.classList.add('dragging');
     ph=document.createElement('div'); ph.className='placeholder'; ph.style.height=row.getBoundingClientRect().height+'px'; row.after(ph);
-    e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain',String(src)); e.dataTransfer.setDragImage(row.querySelector('.idx')||row,16,16);}catch{}
+    e.dataTransfer.effectAllowed='move';
+    try{ e.dataTransfer.setData('text/plain',String(src)); e.dataTransfer.setDragImage(row.querySelector('.idx')||row,16,16);}catch{}
   }
   function over(e){ if(!dragging||!ph) return; e.preventDefault(); e.dataTransfer.dropEffect='move';
     const after=getAfter(container,e.clientY); if(after==null) container.appendChild(ph); else container.insertBefore(ph,after); }
@@ -229,10 +288,20 @@ function wireDnd(container){
   }
 }
 
-/* ========= Modals / confirms (unchanged) ========= */
+/* ========= Modals / confirms ========= */
 function openAddModal(){ aeMode='add'; aeIndex=-1; aeDirty=false; $('aeTitle').textContent='Add Question'; $('aeTextarea').value=''; showOverlay('aeOverlay',true); }
 function openEditModal(i){ aeMode='edit'; aeIndex=i; aeDirty=false; $('aeTitle').textContent='Edit Question'; $('aeTextarea').value=survey[i]||''; showOverlay('aeOverlay',true); }
-function showOverlay(id,show){ const el=$(id); el.style.display=show?'flex':'none'; el.setAttribute('aria-hidden', show?'false':'true'); }
+
+function showOverlay(id,show){
+  const el=$(id); if(!el) return;
+  if (show) {
+    el.hidden = false;
+  } else {
+    if (document.activeElement) document.activeElement.blur();
+    el.hidden = true;
+  }
+}
+
 function wireAddEdit(){
   const ta=$('aeTextarea'); ta.addEventListener('input',()=>aeDirty=true);
   $('aeCancel').addEventListener('click',()=>{ $('aeTextarea').value=''; aeDirty=false; showOverlay('aeOverlay',false); });
@@ -246,44 +315,50 @@ function wireAddEdit(){
       else if(choice==='nosave'){ aeDirty=false; showOverlay('aeOverlay',false); }
     } else { showOverlay('aeOverlay',false); } });
 }
+
 async function confirmRemove(i){ const ok=await twoBtnConfirm('Remove this question?','Cancel','Remove'); if(!ok) return; survey.splice(i,1); render(); setStatus('Question removed'); }
 function twoBtnConfirm(title,cancelLabel='Cancel',okLabel='OK'){ return new Promise(resolve=>{ const ov=$('confirmOverlay'); $('confirmTitle').textContent=title; $('confirmMsg').textContent='';
   const ok=$('confirmOk'), cancel=$('confirmCancel'); ok.textContent=okLabel; cancel.textContent=cancelLabel;
-  ov.style.display='flex'; ov.setAttribute('aria-hidden','false');
-  const done=v=>{ ov.style.display='none'; ov.setAttribute('aria-hidden','true'); ok.onclick=cancel.onclick=null; resolve(v); };
+  ov.hidden = false;
+  const done=v=>{ ov.hidden = true; ok.onclick=cancel.onclick=null; resolve(v); };
   ok.onclick=()=>done(true); cancel.onclick=()=>done(false);
 });}
 function triConfirm(title,left='No',mid='Cancel',right='Yes'){ return new Promise(resolve=>{ const ov=$('confirmOverlay'); $('confirmTitle').textContent=title; $('confirmMsg').textContent='';
   const ok=$('confirmOk'), cancel=$('confirmCancel'), wrap=ok.parentNode; wrap.innerHTML='';
   const L=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent:left});
-  const M=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent:mid});
-  const R=Object.assign(document.createElement('button'),{className:'btn primary',type:'button',textContent:right});
+  const M=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent=mid});
+  const R=Object.assign(document.createElement('button'),{className:'btn primary',type:'button',textContent=right});
   wrap.appendChild(L); wrap.appendChild(M); wrap.appendChild(R);
-  ov.style.display='flex'; ov.setAttribute('aria-hidden','false');
-  const cleanup=()=>{ ov.style.display='none'; ov.setAttribute('aria-hidden','true'); wrap.innerHTML=''; wrap.appendChild(cancel); wrap.appendChild(ok); };
+  ov.hidden = false;
+  const cleanup=()=>{ ov.hidden = true; wrap.innerHTML=''; wrap.appendChild(cancel); wrap.appendChild(ok); };
   L.onclick=()=>{ cleanup(); resolve('nosave'); };
   M.onclick=()=>{ cleanup(); resolve('cancel'); };
   R.onclick=()=>{ cleanup(); resolve('save'); };
 });}
 
-/* ========= Save to DB with file fallback ========= */
+/* ========= Save to DB (first working) with file fallback ========= */
 async function saveToServer(){
-  const formOut = { ...(schema||{}), survey: survey.slice() };
-  try{
-    const res = await fetch(ADMIN_WRITE_URL, {
-      method:'PUT',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ form: formOut })
-    });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    setStatus('Saved to server'); return 'server';
-  }catch(err){
-    console.error('Remote save failed, falling back to file:', err);
-    setStatus('Server save failed, saving to file instead', false);
-    const r = await saveToFilePicker(formOut, 'form.json');
-    return r; // 'saved' | 'download' | 'canceled'
+  const payload = { ...(schema||{}), survey: survey.slice(), slug: SLUG };
+  for (const cand of writeCandidates(SLUG)){
+    try{
+      const r = await fetch(cand.url, {
+        method: cand.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload, null, 2)
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      setStatus('Saved to server');
+      console.log('[WidgetSurvey] saved to', cand.url);
+      return 'server';
+    }catch(e){
+      console.warn('[WidgetSurvey] save failed @', cand.url, e);
+    }
   }
+  // Fallback to file
+  const res = await saveToFilePicker(payload, 'form.json');
+  return res; // 'saved' | 'download' | 'canceled'
 }
+
 async function saveToFilePicker(jsonObj, suggestedName='form.json'){
   const blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:'application/json'});
   if(!('showSaveFilePicker' in window)){
@@ -301,46 +376,70 @@ async function saveToFilePicker(jsonObj, suggestedName='form.json'){
   }catch(e){ console.warn('Save canceled/failed:', e); return 'canceled'; }
 }
 
-/* ========= Load (DB first → seed from /form.json if empty) ========= */
+/* ========= Load (try multiple endpoints → local fallback) ========= */
 async function load(){
-  try{
-    const r = await fetch(ADMIN_READ_URL, { headers:{Accept:'application/json'}, cache:'no-store' });
-    const body = await r.json().catch(()=>({}));
-    if(!r.ok || !body){ throw new Error('admin read failed'); }
+  const candidates = readCandidates(SLUG);
+  let lastErr = null;
 
-    schema = body.form || {};
-    let list = Array.isArray(schema.survey) ? schema.survey.slice() : [];
-
-    if(!list.length){
-      // seed from local form.json
-      const seedRes = await fetch(FALLBACK_FORM_URL, { cache:'no-store' });
-      const seed = await seedRes.json();
-      list = Array.isArray(seed.survey) ? seed.survey.slice() : [];
-      // persist seed back to DB (merge any existing non-survey fields)
-      const newForm = { ...(schema||{}), ...(seed||{}), survey: list };
-      await fetch(ADMIN_WRITE_URL, {
-        method:'PUT',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ form: newForm })
-      });
-      schema = newForm;
-    }
-
-    survey = list.slice();
-    $('meta').textContent = (schema.headline || `Questions for ${SLUG}`) + ' • ' + (new Date()).toLocaleString();
-    render();
-  }catch(err){
-    console.error('[WidgetSurvey] load failed (admin); trying /form.json', err);
+  for (const url of candidates){
     try{
-      const res = await fetch(FALLBACK_FORM_URL, { cache:'no-store' });
-      const local = await res.json();
-      schema = local || {};
-      survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
-      $('meta').textContent = (schema.headline || 'My Speaking Score') + ' • ' + (new Date()).toLocaleString();
-      render(); setStatus('Loaded local form.json fallback', false);
+      const r = await fetch(url, { cache:'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+
+      // Some endpoints return {form: {...}}, some the object directly
+      const raw = await r.json();
+      const body = raw && typeof raw === 'object' && (raw.form || raw) || {};
+      schema = body;
+      survey = Array.isArray(body.survey) ? body.survey.slice() : [];
+
+      $('meta').textContent =
+        `${body.headline || `Questions for ${SLUG}` } • ${new Date().toLocaleString()} • slug=${SLUG}`;
+      render();
+      console.log('[WidgetSurvey] loaded from', url);
+      return; // success
     }catch(e){
-      setStatus('Failed to load questions', false);
+      lastErr = e;
+      console.warn('[WidgetSurvey] load failed @', url, e);
     }
+  }
+
+  // If we’re here, everything failed
+  $('meta').textContent = `Could not load survey • slug=${SLUG}`;
+  setStatus('Load failed', false);
+  if (lastErr) console.error(lastErr);
+}
+
+/* ========= Finished dialog ========= */
+function showFinishDialog(){
+  return new Promise(resolve=>{
+    const ov = document.getElementById('finishOverlay');
+    const save   = document.getElementById('finishSave');
+    const noSave = document.getElementById('finishNoSave');
+    const cancel = document.getElementById('finishCancel');
+
+    ov.hidden = false;
+    queueMicrotask(()=> save?.focus());
+
+    const close = (result)=>{
+      if (document.activeElement) document.activeElement.blur();
+      ov.hidden = true;
+      save.onclick = noSave.onclick = cancel.onclick = null;
+      resolve(result);
+    };
+
+    save.onclick   = ()=> close('save');
+    noSave.onclick = ()=> close('nosave');
+    cancel.onclick = ()=> close('cancel');
+  });
+}
+
+async function finishedFlow(){
+  const choice = await showFinishDialog();
+  if (choice === 'save'){
+    const r = await saveToServer();
+    if (r === 'server')      setStatus('Saved to server');
+    else if (r === 'saved')  setStatus('Saved to file');
+    else if (r === 'download') setStatus('Downloaded');
   }
 }
 
@@ -361,37 +460,6 @@ function wireRowActions(){
   });
 }
 
-// --- Finish dialog helpers ---
-function showFinishDialog(){
-  return new Promise(resolve=>{
-    const ov = document.getElementById('finishOverlay');
-    ov.style.display = 'flex';
-    ov.setAttribute('aria-hidden','false');
-    const close = (result)=>{
-      ov.style.display = 'none';
-      ov.setAttribute('aria-hidden','true');
-      document.getElementById('finishSave').onclick   = null;
-      document.getElementById('finishNoSave').onclick = null;
-      document.getElementById('finishCancel').onclick = null;
-      resolve(result);
-    };
-    document.getElementById('finishSave').onclick   = ()=> close('save');
-    document.getElementById('finishNoSave').onclick = ()=> close('nosave');
-    document.getElementById('finishCancel').onclick = ()=> close('cancel');
-  });
-}
-
-async function finishedFlow(){
-  const choice = await showFinishDialog();
-  if (choice === 'save'){
-    const r = await saveToServer();
-    if (r === 'server')        setStatus('Saved to server');
-    else if (r === 'saved')    setStatus('Saved to file');
-    else if (r === 'download') setStatus('Downloaded');
-  }
-  // 'nosave' or 'cancel' → no-op
-}
-
 window.addEventListener('DOMContentLoaded', ()=>{
   console.log(`🧩 MSS Questions Admin for slug="${SLUG}"`);
   load();
@@ -399,6 +467,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
   $('addBtnTop').addEventListener('click', openAddModal);
   $('addBtnBottom').addEventListener('click', openAddModal);
   wireAddEdit();
+
+  // Export
   $('exportBtnTop').addEventListener('click', ()=>{
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob([JSON.stringify(getMerged(),null,2)],{type:'application/json'}));
@@ -408,12 +478,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
     setStatus('Exported');
   });
   $('exportBtnBottom').addEventListener('click', ()=>$('exportBtnTop').click());
-  const saveMerged = async ()=>{
-    const r = await saveToFilePicker(getMerged(), 'form.json');
-    setStatus(r==='saved'?'Saved to file':r==='download'?'Downloaded':'Canceled', r!=='canceled');
-  };
-  $('saveToFileBtnTop').addEventListener('click', saveMerged);
-  $('saveToFileBtnBottom').addEventListener('click', saveMerged);
+
+  // Finished
   $('finishedBtnTop').addEventListener('click', finishedFlow);
   $('finishedBtnBottom').addEventListener('click', finishedFlow);
 
@@ -444,7 +510,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
     });
   })();
 });
-/* CSV helpers (unchanged) */
+
+/* ========= CSV helpers ========= */
 function normalizeCell(s){ if(s==null) return ''; let t=String(s).replace(/\r\n/g,'\n').trim(); t=t.replace(/\n+/g,' // ').replace(/\s*\/\/\s*/g,' // '); return t; }
 function parseCSV(text){ const rows=[]; let field='',row=[],inQ=false;
   for(let i=0;i<text.length;i++){
