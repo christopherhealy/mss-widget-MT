@@ -1,11 +1,16 @@
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 13:05 EST
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 14:00 EST
 
 /* -------------------------------------------------------------
    Slug + endpoints (per-slug Postgres via /api/admin/widget/:slug)
 ------------------------------------------------------------- */
 
-const params = new URLSearchParams(window.location.search);
-const SLUG = (params.get("slug") || "mss-demo").trim();
+// Resolve slug the same way Widget.html does
+const urlParams = new URLSearchParams(window.location.search);
+const urlSlug = urlParams.get("slug");
+const rawSlug = urlSlug || window.mssWidgetSlug || "mss-demo";
+const SLUG = rawSlug.trim();
+
+// Admin API is hosted on the same origin as this page
 const ADMIN_URL = "/api/admin/widget/" + encodeURIComponent(SLUG);
 
 // Base path for this admin page (e.g. "/config-admin")
