@@ -354,6 +354,10 @@ function bindFields() {
 function handleLogoChange(evt) {
   const file = evt.target.files && evt.target.files[0];
   if (!file) return;
+  const nameEl = $("cfgBrandLogoName");
+if (nameEl && file) {
+  nameEl.textContent = file.name;
+}
   if (!/^image\//.test(file.type)) {
     setStatus("Logo must be an image (PNG/JPG)", false);
     return;
