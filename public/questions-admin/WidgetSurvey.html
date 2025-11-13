@@ -563,58 +563,60 @@ async function saveToFilePicker(jsonObj, suggestedName){
 }
 
 /* ========= Load (DB first → seed from /form.json if empty) ========= */
+/* ========= Load (DB first; only use form.json if admin fails) ========= */
 async function load(){
-  try{
+  // 1) Try the admin endpoint
+  try {
     console.log("[WidgetSurvey] loading for slug=", SLUG, "via", ADMIN_READ_URL);
-    var r = await fetch(ADMIN_READ_URL, { headers:{Accept:"application/json"}, cache:"no-store" });
-    var body = await r.json().catch(function(){ return {}; });
-    if(!r.ok || !body) throw new Error("admin read failed");
 
-    schema = body.form || {};
-    var list = Array.isArray(schema.survey) ? schema.survey.slice() : [];
+    const r = await fetch(ADMIN_READ_URL, {
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    });
+    if (!r.ok) throw new Error("admin read failed: " + r.status);
 
-    if(!list.length){
-      var seedRes = await fetch(FALLBACK_FORM_URL, { cache:"no-store" });
-      var seed = await seedRes.json().catch(function(){ return {}; });
-      list = Array.isArray(seed.survey) ? seed.survey.slice() : [];
-      var newForm = {};
-      if (schema && typeof schema === "object"){
-        for (var k in schema){ if (Object.prototype.hasOwnProperty.call(schema,k)) newForm[k]=schema[k]; }
-      }
-      if (seed && typeof seed === "object"){
-        for (var k2 in seed){ if (Object.prototype.hasOwnProperty.call(seed,k2)) newForm[k2]=seed[k2]; }
-      }
-      newForm.survey = list;
-      await fetch(ADMIN_WRITE_URL, {
-        method:"PUT",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ form: newForm })
-      });
-      schema = newForm;
-    }
+    const body = await r.json().catch(() => ({}));
 
-    survey = list.slice();
+    // Some endpoints return {form:{...}}, others just the form object
+    const formObj =
+      body && typeof body === "object" && (body.form || body) ? (body.form || body) : {};
+
+    schema = formObj;
+    survey = Array.isArray(formObj.survey) ? formObj.survey.slice() : [];
+
     $("meta").textContent =
-      (schema.headline || ("Questions for " + SLUG)) + " • " + (new Date()).toLocaleString();
+      (schema.headline || ("Questions for " + SLUG)) +
+      " • " +
+      new Date().toLocaleString();
+
     render();
-  }catch(err){
-    console.error("[WidgetSurvey] load failed (admin); trying /form.json", err);
-    try{
-      var res = await fetch(FALLBACK_FORM_URL, { cache:"no-store" });
-      var local = await res.json().catch(function(){ return {}; });
-      schema = local || {};
-      survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
-      $("meta").textContent =
-        (schema.headline || "My Speaking Score") + " • " + (new Date()).toLocaleString();
-      render();
-      setStatus("Loaded local form.json fallback", false);
-    }catch(e){
-      console.error("Fallback form.json load failed", e);
-      setStatus("Failed to load questions", false);
-    }
+    return;            // ✅ admin worked – do NOT touch form.json
+  } catch (err) {
+    console.error("[WidgetSurvey] admin load failed, trying local form.json", err);
+  }
+
+  // 2) Only if admin fails, try static form.json as a fallback
+  try {
+    const res = await fetch(FALLBACK_FORM_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error("fallback not found: " + res.status);
+
+    const local = await res.json().catch(() => ({}));
+
+    schema = local || {};
+    survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
+
+    $("meta").textContent =
+      (schema.headline || "My Speaking Score") +
+      " • " +
+      new Date().toLocaleString();
+
+    render();
+    setStatus("Loaded local form.json fallback", false);
+  } catch (e) {
+    console.error("[WidgetSurvey] fallback form.json load failed", e);
+    setStatus("Failed to load questions", false);
   }
 }
-
 /* ========= Row actions / boot ========= */
 function wireRowActions(){
   var listEl=$("list");
