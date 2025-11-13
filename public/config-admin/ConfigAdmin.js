@@ -1,18 +1,23 @@
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:20 EST
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:28 EST
 
 
 /* -------------------------------------------------------------
    Slug + endpoints (per-slug Postgres via /api/admin/widget/:slug)
 ------------------------------------------------------------- */
 
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:40 EST
+
 const params = new URLSearchParams(window.location.search);
 const SLUG = (params.get("slug") || "mss-demo").trim();
 const ADMIN_URL = "/api/admin/widget/" + encodeURIComponent(SLUG);
 
-// NOTE: use absolute root paths so they resolve from anywhere
-const FALLBACK_FORM_URL = "/form.json?ts=" + Date.now();
-const FALLBACK_CONFIG_URL = "/config.json?ts=" + Date.now();
-const FALLBACK_IMAGE_URL = "/image.json?ts=" + Date.now();
+// Base path for this admin page (e.g. "/config-admin")
+const BASE_PATH = window.location.pathname.replace(/\/[^/]*$/, "");
+
+// Local JSON fallbacks live alongside ConfigAdmin.html
+const FALLBACK_FORM_URL   = BASE_PATH + "/form.json?ts="   + Date.now();
+const FALLBACK_CONFIG_URL = BASE_PATH + "/config.json?ts=" + Date.now();
+const FALLBACK_IMAGE_URL  = BASE_PATH + "/image.json?ts="  + Date.now();
 
 /* ========= state ========= */
 
