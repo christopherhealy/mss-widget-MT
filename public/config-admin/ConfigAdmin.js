@@ -1,4 +1,4 @@
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:51 EST
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 13:05 EST
 
 /* -------------------------------------------------------------
    Slug + endpoints (per-slug Postgres via /api/admin/widget/:slug)
@@ -26,7 +26,7 @@ const state = {
   dirty: false
 };
 
-let fileHandle = null; // for optional JSON export re-saves
+let fileHandle = null; // for Export JSON
 
 /* ========= DOM helpers ========= */
 
@@ -78,11 +78,6 @@ function normalizeForm(raw) {
     raw || {}
   );
 
-  // Fix historical typo if present
-  if (typeof f.NotRecordingLabel !== "string" && raw && typeof raw.NotRecordingLabeßl === "string") {
-    f.NotRecordingLabel = raw.NotRecordingLabeßl;
-  }
-
   if (!Array.isArray(f.survey)) {
     f.survey = [];
   }
@@ -123,7 +118,6 @@ function normalizeConfig(raw) {
     raw || {}
   );
 
-  // Ensure nested objects exist
   c.api = Object.assign(
     {
       enabled: true,
@@ -134,6 +128,7 @@ function normalizeConfig(raw) {
     },
     c.api || {}
   );
+
   c.logger = Object.assign(
     {
       enabled: true,
@@ -141,8 +136,12 @@ function normalizeConfig(raw) {
     },
     c.logger || {}
   );
-  if (typeof c.audioMinSeconds !== "number") c.audioMinSeconds = Number(c.audioMinSeconds) || 0;
-  if (typeof c.audioMaxSeconds !== "number") c.audioMaxSeconds = Number(c.audioMaxSeconds) || 0;
+
+  if (typeof c.audioMinSeconds !== "number")
+    c.audioMinSeconds = Number(c.audioMinSeconds) || 0;
+  if (typeof c.audioMaxSeconds !== "number")
+    c.audioMaxSeconds = Number(c.audioMaxSeconds) || 0;
+
   return c;
 }
 
@@ -157,7 +156,8 @@ async function loadAll() {
       cache: "no-store"
     });
     if (!r.ok) throw new Error("admin read failed: " + r.status);
-    const body = (await r.json().catch(function () { return {}; })) || {};
+    const body = (await r.json().catch(() => ({}))) || {};
+
     const formObj =
       body && typeof body === "object" && (body.form || body) ? body.form || body : {};
     const configObj =
@@ -169,14 +169,7 @@ async function loadAll() {
         ? body.image
         : {};
 
-    applyLoaded(
-      {
-        form: formObj,
-        config: configObj,
-        image: imageObj
-      },
-      "server"
-    );
+    applyLoaded({ form: formObj, config: configObj, image: imageObj }, "server");
     console.log("[ConfigAdmin] loaded from server", ADMIN_URL);
     setStatus("Loaded from server (Postgres)");
     return;
@@ -197,13 +190,13 @@ async function loadAll() {
     let image = {};
 
     if (formRes.status === "fulfilled" && formRes.value.ok) {
-      form = (await formRes.value.json().catch(function () { return {}; })) || {};
+      form = (await formRes.value.json().catch(() => ({}))) || {};
     }
     if (configRes.status === "fulfilled" && configRes.value.ok) {
-      config = (await configRes.value.json().catch(function () { return {}; })) || {};
+      config = (await configRes.value.json().catch(() => ({}))) || {};
     }
     if (imageRes.status === "fulfilled" && imageRes.value.ok) {
-      image = (await imageRes.value.json().catch(function () { return {}; })) || {};
+      image = (await imageRes.value.json().catch(() => ({}))) || {};
     }
 
     applyLoaded({ form, config, image }, "fallback");
@@ -233,7 +226,6 @@ function applyLoaded(payload, source) {
   populateFields();
   updatePreview();
   updateMeta();
-  
 }
 
 /* ========= populate/read form ========= */
@@ -299,7 +291,7 @@ function bindFields() {
     { id: "cfgSubmitLabel", path: ["form", "SubmitForScoringButton"], type: "text" }
   ];
 
-  bindings.forEach(function (b) {
+  bindings.forEach((b) => {
     const el = $(b.id);
     if (!el) return;
 
@@ -325,7 +317,6 @@ function bindFields() {
       target[b.path[b.path.length - 1]] = value;
       markDirty();
       updatePreview();
-      
     };
 
     const eventType = b.type === "bool" ? "change" : "input";
@@ -364,7 +355,7 @@ function handleLogoChange(evt) {
   reader.readAsDataURL(file);
 }
 
-/* ========= preview + summary ========= */
+/* ========= preview ========= */
 
 function updatePreview() {
   const f = state.form;
@@ -407,9 +398,7 @@ function updatePreview() {
   }
 }
 
-
-
-/* ========= export helper (optional) ========= */
+/* ========= Export JSON helper ========= */
 
 async function saveToFilePicker(jsonObj, suggestedName = "widget-config.json") {
   const blob = new Blob([JSON.stringify(jsonObj, null, 2)], {
@@ -423,9 +412,7 @@ async function saveToFilePicker(jsonObj, suggestedName = "widget-config.json") {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(function () {
-      URL.revokeObjectURL(a.href);
-    }, 1000);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     return "download";
   }
 
@@ -440,7 +427,7 @@ async function saveToFilePicker(jsonObj, suggestedName = "widget-config.json") {
       }
     }
     fileHandle = await window.showSaveFilePicker({
-      suggestedName: suggestedName,
+      suggestedName,
       types: [{ description: "JSON", accept: { "application/json": [".json"] } }]
     });
     const w2 = await fileHandle.createWritable();
@@ -455,14 +442,12 @@ async function saveToFilePicker(jsonObj, suggestedName = "widget-config.json") {
 
 /* ========= save logic ========= */
 
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:45 EST
 async function saveToServer() {
   const payload = {
     form: state.form,
     config: state.config
   };
 
-  // Include image block if we have logo data
   const logo =
     (state.config && state.config.brandLogo) ||
     (state.image && state.image.brandDataUrl) ||
@@ -495,7 +480,6 @@ async function saveToServer() {
   } catch (err) {
     console.error("[ConfigAdmin] Remote save failed:", err);
     setStatus("Server save failed (" + err.message + ")", false);
-    // No file download here – Export JSON button handles that use case.
     return "error";
   }
 }
@@ -519,6 +503,32 @@ async function exportJsonBundle() {
   }
 }
 
+/* ========= chevrons for sections ========= */
+
+function initChevrons() {
+  document.querySelectorAll(".mss-section").forEach((details) => {
+    const summary = details.querySelector("summary");
+    if (!summary) return;
+
+    let icon = summary.querySelector(".mss-chevron");
+    if (!icon) {
+      icon = document.createElement("span");
+      icon.className = "mss-chevron";
+      icon.textContent = details.open ? "▾" : "▸";
+      icon.style.marginLeft = "0.5rem";
+      icon.setAttribute("aria-hidden", "true");
+      summary.appendChild(icon);
+    }
+
+    const update = () => {
+      icon.textContent = details.open ? "▾" : "▸";
+    };
+
+    details.addEventListener("toggle", update);
+    update();
+  });
+}
+
 /* ========= wiring ========= */
 
 function wireButtons() {
@@ -528,23 +538,23 @@ function wireButtons() {
   const exportBtn = $("exportBtn");
 
   if (saveBtn) {
-    saveBtn.addEventListener("click", function () {
+    saveBtn.addEventListener("click", () => {
       saveToServer();
     });
   }
   if (reloadBtn) {
-    reloadBtn.addEventListener("click", function () {
+    reloadBtn.addEventListener("click", () => {
       loadAll();
     });
   }
   if (openWidgetBtn) {
-    openWidgetBtn.addEventListener("click", function () {
-      const url = "Widget.html?slug=" + encodeURIComponent(SLUG);
+    openWidgetBtn.addEventListener("click", () => {
+      const url = "/Widget.html?slug=" + encodeURIComponent(SLUG);
       window.open(url, "_blank", "noopener");
     });
   }
   if (exportBtn) {
-    exportBtn.addEventListener("click", function () {
+    exportBtn.addEventListener("click", () => {
       exportJsonBundle();
     });
   }
@@ -555,6 +565,7 @@ function wireButtons() {
 function init() {
   wireButtons();
   bindFields();
+  initChevrons();
   updateMeta();
   loadAll();
 }
