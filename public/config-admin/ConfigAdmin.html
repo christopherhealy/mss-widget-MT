@@ -1,4 +1,4 @@
-<!-- Build: 2025-11-13 09:40 ET (ConfigAdmin – Advanced global config) -->
+<!-- Build: 2025-11-13 07:40 ET (ConfigAdmin – Advanced global config) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -206,12 +206,12 @@
   <div style="display:flex;flex-direction:column;gap:2px;">
     <div class="title">Widget Config – Advanced</div>
     <div class="admin-nav">
-      <a href="WidgetAdmin.html">Widget setup</a>
-      <span>·</span>
-      <a href="ConfigAdmin.html"><strong>Advanced config</strong></a>
-      <span>·</span>
-      <a href="WidgetSurvey.html">Question editor</a>
-    </div>
+  <a href="../WidgetAdmin.html">Widget setup</a>
+  <span>·</span>
+  <a href="ConfigAdmin.html"><strong>Advanced config</strong></a>
+  <span>·</span>
+  <a href="../questions-admin/WidgetSurvey.html">Question editor</a>
+</div>
   </div>
   <div class="toolbar">
     <button id="saveAll" type="button" class="btn primary">Save config…</button>
@@ -223,6 +223,23 @@
   <!-- LEFT: advanced controls -->
   <div class="card">
     <details open>
+<div class="card" style="margin-bottom:16px;">
+  <details open>
+    <summary><span class="chev">▸</span> Branding</summary>
+    <div class="secInner">
+      <div class="sectionPad">
+        <div class="row">
+          <div class="label">Brand headline</div>
+          <input id="brandHeadline" type="text" placeholder="e.g. CEFR Assessment">
+        </div>
+        <div class="row">
+          <div class="label">“Powered by” label</div>
+          <input id="brandPoweredBy" type="text" placeholder="e.g. Powered by MSS Vox">
+        </div>
+      </div>
+    </div>
+  </details>
+</div>
       <summary><span class="chev">▸</span> API &amp; Authentication</summary>
       <div class="secInner">
         <div class="sectionPad">
@@ -314,11 +331,18 @@
     </details>
 
     <details>
-      <summary><span class="chev">▸</span> Label visibility</summary>
-      <div class="secInner">
-        <div class="sectionPad" id="labelsAdvanced"></div>
+  <summary><span class="chev">▸</span> Labels &amp; text</summary>
+  <div class="secInner">
+    <div class="sectionPad">
+      <div class="muted" style="margin-bottom:8px;">
+        Toggle which labels appear in the widget and customise the wording below.
       </div>
-    </details>
+      <div id="labelsAdvanced"></div>
+      <hr style="border:none;border-top:1px solid var(--edge);margin:12px 0;">
+      <div id="labelsText"></div>
+    </div>
+  </div>
+</details>
 
     <div class="sectionPad" style="display:flex;gap:8px;justify-content:flex-end;">
       <button id="saveAllBottom" type="button" class="btn">Save config…</button>
@@ -429,7 +453,7 @@ async function loadAll(){
     }
   }catch{
     CONFIG = {
-      editable:{
+            editable:{
         headline:true,
         recordButton:true,
         previousButton:true,
@@ -437,7 +461,8 @@ async function loadAll(){
         poweredByLabel:true,
         uploadButton:true,
         stopButton:true,
-        NotRecordingLabel:true
+        NotRecordingLabel:true,
+        SubmitForScoringButton:true
       },
       theme:'apple',
       api:{ enabled:true, baseUrl:'', key:'', secret:'' },
@@ -467,6 +492,19 @@ async function loadAll(){
 /* ========= wire advanced form controls ========= */
 function bindAdvancedControls(){
   // --- API ---
+// --- branding ---
+  FORM = FORM || {};
+  $('brandHeadline').value = FORM.headline || '';
+  $('brandHeadline').addEventListener('input', e => {
+    FORM.headline = e.target.value;
+    renderPreview();
+  });
+
+  $('brandPoweredBy').value = FORM.poweredByLabel || '';
+  $('brandPoweredBy').addEventListener('input', e => {
+    FORM.poweredByLabel = e.target.value;
+    renderPreview();
+  });
   const api = CONFIG.api || (CONFIG.api = {});
   $('apiEnabled').checked = !!api.enabled;
   $('apiEnabled').addEventListener('change', e => {
@@ -539,10 +577,15 @@ function bindAdvancedControls(){
 
 /* ========= label visibility checkboxes ========= */
 function buildLabelVisibilityControls(){
-  const container = $('labelsAdvanced');
-  container.innerHTML = '';
+  const visContainer = $('labelsAdvanced');
+  const textContainer = $('labelsText');
+  if (!visContainer) return;
+  visContainer.innerHTML = '';
+  if (textContainer) textContainer.innerHTML = '';
 
   CONFIG.editable = CONFIG.editable || {};
+  FORM = FORM || {};
+
   const defs = [
     ['headline','Headline text'],
     ['recordButton','Record button text'],
@@ -555,6 +598,7 @@ function buildLabelVisibilityControls(){
     ['NotRecordingLabel','“Not recording” label']
   ];
 
+  // Visibility checkboxes
   defs.forEach(([key,label]) => {
     if (!(key in CONFIG.editable)) CONFIG.editable[key] = true;
     const row = document.createElement('div');
@@ -565,18 +609,45 @@ function buildLabelVisibilityControls(){
         Show ${esc(label)}
       </label>
     `;
-    container.appendChild(row);
+    visContainer.appendChild(row);
   });
 
-  container.addEventListener('change', (e) => {
+  visContainer.addEventListener('change', (e) => {
     const cb = e.target.closest('input[type="checkbox"][data-key]');
     if (!cb) return;
     const k = cb.getAttribute('data-key');
     CONFIG.editable[k] = cb.checked;
     renderPreview();
   });
-}
 
+  // Text editors
+  if (!textContainer) return;
+
+  const pretty = (k) => {
+    if (k === 'SubmitForScoringButton') return 'Submit for scoring button';
+    if (k === 'NotRecordingLabel') return '“Not recording” label';
+    return k.replace(/([A-Z])/g,' $1').replace(/^./, c => c.toUpperCase());
+  };
+
+  defs.forEach(([field, label]) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <div class="label">${esc(pretty(field))}</div>
+      <input type="text" data-field="${field}" placeholder="${esc(label)}"
+             value="${esc(FORM[field] || '')}">
+    `;
+    textContainer.appendChild(row);
+  });
+
+  textContainer.addEventListener('input', (e) => {
+    const input = e.target.closest('input[data-field]');
+    if (!input) return;
+    const field = input.getAttribute('data-field');
+    FORM[field] = input.value;
+    renderPreview();
+  });
+}
 /* ========= preview ========= */
 function renderPreview(){
   const logoUrl = getLogo(IMAGE);
@@ -649,6 +720,17 @@ function adminHeaders(){
   return h;
 }
 
+async function saveFormRemote(){
+  const base = SERVICE_BASE.replace(/\/+$/,'');
+  const res = await fetch(`${base}/config/forms`, {
+    method:'PUT',
+    headers: adminHeaders(),
+    body: JSON.stringify(FORM ?? {}, null, 2)
+  });
+  if (!res.ok) throw new Error(`PUT /config/forms → ${res.status}`);
+  await res.json().catch(() => ({}));
+}
+
 async function saveRemote(){
   const base = SERVICE_BASE.replace(/\/+$/,'');
   const res = await fetch(`${base}/config/widget`, {
@@ -692,9 +774,12 @@ async function saveLocal(){
 
 async function handleSave(){
   try{
-    if (SAVE_MODE === 'remote'){
-      await saveRemote();
-      toast('Config saved to server');
+        if (SAVE_MODE === 'remote'){
+      await Promise.all([
+        saveRemote(),
+        saveFormRemote()
+      ]);
+      toast('Config & labels saved to server');
     }else{
       await saveLocal();
       toast('Config downloaded to file');
@@ -712,7 +797,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('saveAll')?.addEventListener('click', handleSave);
   $('saveAllBottom')?.addEventListener('click', handleSave);
   $('openWidget')?.addEventListener('click', () => {
-    window.open('Widget.html','_blank','noopener');
+    window.open('../Widget.html','_blank','noopener');
   });
 });
 </script>
