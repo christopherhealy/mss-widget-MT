@@ -11,21 +11,7 @@
   <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
 </head>
 <body class="mssVoxAurora">
-  <!-- Top header: title + slug/meta -->
-  <header class="mss-top">
-    <div class="mss-top-inner">
-      <div class="mss-row mss-top-row">
-        <div class="mss-stack-tight">
-          <div class="mss-pill">MSS WIDGET MT</div>
-          <div class="mss-titlesm">Advanced Configuration</div>
-        </div>
-        <div class="mss-stack-tight mss-top-meta">
-          <div id="slugDisplay" class="mss-muted">slug=…</div>
-          <div id="meta" class="mss-meta"></div>
-        </div>
-      </div>
-    </div>
-  </header>
+  
 
   <!-- Main layout -->
   <main class="mss-main">
@@ -226,60 +212,65 @@
         </div>
 
         <!-- RIGHT COLUMN: Live preview only -->
-        <div class="mss-preview-column">
-          <section class="mss-card mss-widget-preview-card">
-            <h2 class="mss-card-title">Live Preview</h2>
-            <p class="mss-help-text">Approximate widget look</p>
+        <section class="mss-card mss-widget-preview-card">
+  <h2 class="mss-card-title">Live Preview</h2>
+  <p class="mss-help-text">Approximate widget look</p>
 
-            <div class="mss-widget-header">
-              <img
-                id="previewLogo"
-                class="mss-widget-logo"
-                alt="Brand logo"
-                style="visibility:hidden;"
-              />
-              <div>
-                <div id="previewHeadline" class="mss-widget-title">
-                  CEFR Assessment
-                </div>
-                <div id="previewPowered" class="mss-widget-powered">
-                  Powered by MSS Vox
-                </div>
-              </div>
-            </div>
+  <!-- Header (logo + headline + powered-by) -->
+  <div class="mss-widget-header">
+    <img
+      id="previewLogo"
+      class="mss-widget-logo"
+      alt="Brand logo"
+      style="visibility:hidden;"
+    />
+    <div>
+      <div id="previewHeadline" class="mss-widget-title">CEFR Assessment</div>
+      <div id="previewPowered" class="mss-widget-powered">
+        Powered by MSS Vox
+      </div>
+    </div>
+  </div>
 
-            <div class="mss-widget-body">
-              <p id="previewQuestion" class="mss-widget-question">
-                Question preview will appear here.
-              </p>
+  <!-- Question text -->
+  <div id="previewQuestion" class="mss-widget-question">
+    Question preview will appear here.
+  </div>
 
-              <div class="mss-widget-controls-row">
-                <button id="previewRecordBtn" class="mss-btn-primary">
-                  Record
-                </button>
-                <button id="previewStopBtn" class="mss-btn-secondary">
-                  Stop
-                </button>
-                <button id="previewNextBtn" class="mss-btn-secondary">
-                  Next
-                </button>
-                <button id="previewUploadBtn" class="mss-btn-secondary">
-                  Upload
-                </button>
-              </div>
+  <!-- Prev / Next row (non-functional; visual only) -->
+  <div class="mss-nav-row">
+    <button class="mss-btn mss-btn-outline" disabled>Previous</button>
+    <button id="previewNextBtn" class="mss-btn mss-btn-outline">
+      Next
+    </button>
+  </div>
 
-              <p id="previewNotRecording" class="mss-help-text">
-                Not recording
-              </p>
+  <!-- Recording / upload controls -->
+  <div class="mss-toolbar-row">
+    <button id="previewRecordBtn" class="mss-btn mss-btn-primary">
+      Record your response
+    </button>
+    <button id="previewStopBtn" class="mss-btn" disabled>Stop</button>
+    <button id="previewUploadBtn" class="mss-btn mss-btn-outline">
+      Choose an audio file
+    </button>
+  </div>
 
-              <button
-                id="previewSubmitBtn"
-                class="mss-btn-primary mss-widget-submit"
-              >
-                Submit for scoring
-              </button>
-            </div>
-          </section>
+  <!-- Recording status -->
+  <div class="mss-preview-recbar">
+    <span class="mss-preview-dot"></span>
+    <span id="previewNotRecording" class="mss-muted">
+      Not recording
+    </span>
+  </div>
+
+  <!-- Submit row -->
+  <div class="mss-submit-row">
+    <button id="previewSubmitBtn" class="mss-btn mss-btn-primary">
+      Submit for scoring
+    </button>
+  </div>
+</section>
         </div>
       </div>
     </div>
