@@ -537,7 +537,8 @@ function initChevrons() {
       icon.textContent = details.open ? "▾" : "▸";
       icon.style.marginLeft = "0.5rem";
       icon.setAttribute("aria-hidden", "true");
-      summary.appendChild(icon);
+      // Put chevron at the start of the summary text
+      summary.insertBefore(icon, summary.firstChild);
     }
 
     const update = () => {
