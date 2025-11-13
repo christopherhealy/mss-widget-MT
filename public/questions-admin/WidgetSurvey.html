@@ -1,4 +1,4 @@
-<!-- Build: 2025-11-12 18:10 ET (WS per-slug, Postgres-backed) -->
+<!-- Build: 2025-11-12 21:14 ET (WS per-slug, Postgres-backed) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,12 +159,12 @@
 /* ------------------------------------------------------------------
    SLUG + ENDPOINTS (per-slug Postgres via /config/forms?slug=…)
 ------------------------------------------------------------------ */
+
 const params = new URLSearchParams(location.search);
 const SLUG = (params.get("slug") || "mss-demo").trim();
 
-// Same endpoint config-admin uses
-const ADMIN_READ_URL  = `/config/forms?slug=${encodeURIComponent(SLUG)}`;
-const ADMIN_WRITE_URL = `/config/forms?slug=${encodeURIComponent(SLUG)}`;
+const ADMIN_READ_URL  = `/api/admin/widget/${encodeURIComponent(SLUG)}`;
+const ADMIN_WRITE_URL = `/api/admin/widget/${encodeURIComponent(SLUG)}`;  
 
 // Optional local fallback (only if admin fails)
 const FALLBACK_FORM_URL = `./form.json?ts=${Date.now()}`;
