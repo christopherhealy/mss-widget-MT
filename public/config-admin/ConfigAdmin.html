@@ -1,238 +1,268 @@
+<!-- MSS Widget MT – ConfigAdmin.html – 2025-11-13 10:20 EST -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>ConfigAdmin – Build 2025-11-13 09:45 ET</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MSS Widget – Advanced Config</title>
 
-<link rel="stylesheet" href="/themes/mss-config-admin.css" />
-
-<style>
-  body {
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    margin: 0;
-    padding: 24px;
-    background: #f4f6f8;
-    color: #111;
-  }
-  h1 {
-    font-size: 22px;
-    font-weight: 600;
-    margin-bottom: 16px;
-  }
-  #status {
-    padding: 8px 12px;
-    background: #eef6ff;
-    border-left: 4px solid #0a66c2;
-    margin-bottom: 20px;
-    font-size: 14px;
-  }
-
-  .card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 0;
-    margin-bottom: 18px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-  }
-
-  details summary {
-    cursor: pointer;
-    padding: 14px 18px;
-    font-weight: 600;
-    font-size: 15px;
-    display: flex;
-    align-items: center;
-  }
-  summary .chev {
-    font-size: 16px;
-    margin-right: 8px;
-    transition: transform 0.15s ease;
-  }
-  details[open] summary .chev {
-    transform: rotate(90deg);
-  }
-
-  .sectionPad {
-    padding: 0 18px 18px;
-  }
-
-  .row {
-    margin-bottom: 14px;
-    display: flex;
-    flex-direction: column;
-  }
-  .label {
-    font-size: 14px;
-    margin-bottom: 4px;
-  }
-  .muted {
-    font-size: 13px;
-    opacity: 0.7;
-    margin-top: 4px;
-  }
-  input[type="text"],
-  input[type="url"],
-  input[type="number"],
-  input[type="password"],
-  select {
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid #ccc;
-    font-size: 14px;
-  }
-
-  button.saveBtn {
-    background: #0a66c2;
-    color: #fff;
-    border: none;
-    padding: 12px 20px;
-    border-radius: 8px;
-    font-size: 15px;
-    cursor: pointer;
-    margin-top: 8px;
-  }
-  button.saveBtn:hover {
-    background: #004a94;
-  }
-
-  img#brandPreview {
-    max-width: 160px;
-    margin-top: 8px;
-    display: none;
-    border-radius: 6px;
-    border: 1px solid #ddd;
-  }
-</style>
+  <!-- Shared MSS design system -->
+  <link id="themeCss" rel="stylesheet" href="themes/MSSStylesheet.css?v=1" />
 </head>
-
-<body>
-
-<h1>Advanced Widget Admin</h1>
-
-<div id="status">Loading…</div>
-
-<form id="configForm">
-
-<!-- ▸ Branding -->
-<div class="card">
-  <details>
-    <summary><span class="chev">▸</span> Branding</summary>
-    <div class="sectionPad">
-
-      <div class="row">
-        <div class="label">Brand Headline</div>
-        <input id="headline" type="text" placeholder="e.g., CEFR Assessment" />
+<body class="mssVoxAurora">
+  <header class="mss-top">
+    <div class="mss-top-inner">
+      <div class="mss-row">
+        <div class="mss-stack-tight">
+          <div class="mss-pill">MSS Widget MT</div>
+          <div class="mss-titlesm">Advanced Configuration</div>
+        </div>
       </div>
-
-      <div class="row">
-        <div class="label">“Powered by” Label</div>
-        <input id="poweredBy" type="text" placeholder="Powered by MSS Vox" />
+      <div class="mss-row">
+        <div class="mss-stack-tight" style="text-align:right;">
+          <div id="slugDisplay" class="mss-muted">slug=…</div>
+          <div id="meta" class="mss-meta"></div>
+        </div>
       </div>
-
-      <div class="row">
-        <div class="label">Brand Logo</div>
-        <input id="logoFile" type="file" accept="image/*" />
-        <button type="button" id="uploadLogoBtn" class="saveBtn" style="margin-top:6px;">Upload Logo</button>
-        <button type="button" id="removeLogoBtn" class="saveBtn" style="margin-top:6px;background:#b00020;">Remove Logo</button>
-
-        <img id="brandPreview" />
-        <div id="logoStatus" class="muted"></div>
-      </div>
-
     </div>
-  </details>
-</div>
+  </header>
 
-<!-- ▸ Labels -->
-<div class="card">
-  <details>
-    <summary><span class="chev">▸</span> Labels</summary>
-    <div class="sectionPad">
+  <main class="mss-shell">
+    <div class="mss-layout">
+      <!-- Left: configuration form -->
+      <section aria-label="Widget configuration">
 
-      <div class="row">
-        <div class="label">Record Button Label</div>
-        <input id="lblRecord" type="text" placeholder="Record" />
-      </div>
+        <!-- BRANDING -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">Branding</span>
+            <span class="mss-muted">Headline, powered-by, logo</span>
+          </summary>
+          <div class="mss-section-body">
+            <div class="mss-field">
+              <label class="mss-label" for="cfgHeadline">Headline</label>
+              <input id="cfgHeadline" class="mss-input" type="text" placeholder="e.g., CEFR Assessment" />
+            </div>
 
-      <div class="row">
-        <div class="label">Stop Button Label</div>
-        <input id="lblStop" type="text" placeholder="Stop" />
-      </div>
+            <div class="mss-field">
+              <label class="mss-label" for="cfgPoweredBy">Powered-by text</label>
+              <input id="cfgPoweredBy" class="mss-input" type="text" placeholder="Powered by MSS Vox" />
+            </div>
 
-      <div class="row">
-        <div class="label">Submit Button Label</div>
-        <input id="lblSubmit" type="text" placeholder="Submit" />
-      </div>
+            <div class="mss-field">
+              <label class="mss-label" for="cfgBrandLogoInput">Brand logo (PNG/JPG)</label>
+              <input id="cfgBrandLogoInput" class="mss-input" type="file" accept="image/png,image/jpeg" />
+              <div class="mss-help">Base64 is stored in <code>config.brandLogo</code>.</div>
+            </div>
+          </div>
+        </details>
 
+        <!-- API & AUTH -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">API &amp; Auth</span>
+            <span class="mss-muted">Scoring endpoint + keys</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field-row">
+              <div class="mss-field mss-field-half">
+                <label class="mss-label">
+                  <input id="cfgApiEnabled" type="checkbox" /> Enable API
+                </label>
+                <div class="mss-help">If disabled, widget records but won't submit.</div>
+              </div>
+
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgAdminKey">X-ADMIN-KEY</label>
+                <input id="cfgAdminKey" class="mss-input" type="text" placeholder="Admin Key" />
+              </div>
+            </div>
+
+            <div class="mss-field">
+              <label class="mss-label" for="cfgApiBaseUrl">API base URL</label>
+              <input id="cfgApiBaseUrl" class="mss-input" type="text" />
+            </div>
+
+            <div class="mss-field-row">
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgApiKey">API key</label>
+                <input id="cfgApiKey" class="mss-input" type="text" />
+              </div>
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgApiSecret">API secret</label>
+                <input id="cfgApiSecret" class="mss-input" type="text" />
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- LOGGING -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">Logging & Uploads</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field-row">
+              <div class="mss-field mss-field-half">
+                <label class="mss-label">
+                  <input id="cfgLoggerEnabled" type="checkbox" /> Enable logging
+                </label>
+              </div>
+
+              <div class="mss-field mss-field-half">
+                <label class="mss-label">
+                  <input id="cfgPermitUpload" type="checkbox" /> Allow file upload
+                </label>
+              </div>
+            </div>
+
+            <div class="mss-field">
+              <label class="mss-label" for="cfgLoggerUrl">Logger endpoint</label>
+              <input id="cfgLoggerUrl" class="mss-input" type="text" placeholder="https://…" />
+            </div>
+          </div>
+        </details>
+
+        <!-- AUDIO & THEME -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">Audio & Theme</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field-row">
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgAudioMin">Min seconds</label>
+                <input id="cfgAudioMin" class="mss-input" type="number" min="0" />
+              </div>
+
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgAudioMax">Max seconds</label>
+                <input id="cfgAudioMax" class="mss-input" type="number" min="0" />
+              </div>
+            </div>
+
+            <div class="mss-field">
+              <label class="mss-label" for="cfgTheme">Theme</label>
+              <select id="cfgTheme" class="mss-select">
+                <option value="apple">Apple</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="system">System</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <!-- LABELS -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">Labels & Text</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field">
+              <label class="mss-label" for="cfgRecordLabel">Record Button</label>
+              <input id="cfgRecordLabel" class="mss-input" type="text" />
+            </div>
+
+            <div class="mss-field-row">
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgPrevLabel">Previous</label>
+                <input id="cfgPrevLabel" class="mss-input" type="text" />
+              </div>
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgNextLabel">Next</label>
+                <input id="cfgNextLabel" class="mss-input" type="text" />
+              </div>
+            </div>
+
+            <div class="mss-field-row">
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgUploadLabel">Upload</label>
+                <input id="cfgUploadLabel" class="mss-input" type="text" />
+              </div>
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgStopLabel">Stop</label>
+                <input id="cfgStopLabel" class="mss-input" type="text" />
+              </div>
+            </div>
+
+            <div class="mss-field-row">
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgNotRecordingLabel">Not Recording</label>
+                <input id="cfgNotRecordingLabel" class="mss-input" type="text" />
+              </div>
+              <div class="mss-field mss-field-half">
+                <label class="mss-label" for="cfgSubmitLabel">Submit</label>
+                <input id="cfgSubmitLabel" class="mss-input" type="text" />
+              </div>
+            </div>
+
+            <div class="mss-field">
+              <div class="mss-label">Questions (read-only)</div>
+              <div id="questionSummary" class="mss-help">Loading…</div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- RIGHT: PREVIEW -->
+      <aside>
+        <div class="mss-card">
+          <div class="mss-card-header">
+            <div class="mss-card-title">Live Preview</div>
+            <div class="mss-muted">Approximate widget look</div>
+          </div>
+
+          <div class="mss-card">
+            <div class="mss-head">
+              <img id="previewLogo" class="mss-logo" />
+              <div>
+                <div id="previewHeadline" class="mss-card-title"></div>
+                <div id="previewPowered" class="mss-muted"></div>
+              </div>
+            </div>
+
+            <div id="previewQuestion" class="mss-stack-tight mss-question-preview mss-muted" style="margin-top:10px;">
+              Question preview will appear here.
+            </div>
+
+            <div class="mss-toolbar" style="margin-top:12px;">
+              <button id="previewRecordBtn" class="mss-btn mss-btn-primary">Record</button>
+              <button id="previewStopBtn" class="mss-btn mss-btn-outline">Stop</button>
+              <button id="previewNextBtn" class="mss-btn mss-btn-outline">Next</button>
+
+              <button id="previewUploadBtn" class="mss-btn mss-btn-ghost" style="margin-top:8px;">Upload</button>
+              <button id="previewSubmitBtn" class="mss-btn mss-btn-primary" style="margin-top:8px;">Submit</button>
+
+              <div id="previewNotRecording" class="mss-muted" style="margin-top:6px;font-size:0.78rem;">
+                Not recording
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mss-card">
+          <div class="mss-card-header">
+            <div class="mss-card-title">Actions</div>
+          </div>
+
+          <div class="mss-stack">
+            <button id="saveBtn" class="mss-btn mss-btn-primary">Save config</button>
+            <button id="reloadBtn" class="mss-btn mss-btn-outline">Reload from server</button>
+            <button id="openWidgetBtn" class="mss-btn mss-btn-ghost">Open Widget</button>
+            <button id="exportBtn" class="mss-btn mss-btn-ghost">Export JSON</button>
+
+            <div id="status" class="mss-help"></div>
+          </div>
+        </div>
+      </aside>
     </div>
-  </details>
-</div>
+  </main>
 
-<!-- ▸ API -->
-<div class="card">
-  <details>
-    <summary><span class="chev">▸</span> API & Authentication</summary>
-    <div class="sectionPad">
-
-      <div class="row">
-        <label class="label">API Base URL</label>
-        <input id="apiBase" type="url" placeholder="https://app.myspeakingscore.com" />
-      </div>
-
-      <div class="row">
-        <label class="label">API Key</label>
-        <input id="apiKey" type="text" />
-      </div>
-
-      <div class="row">
-        <label class="label">API Secret</label>
-        <input id="apiSecret" type="password" />
-      </div>
-
-      <div class="row">
-        <label class="label">Admin Write Key</label>
-        <input id="adminWriteKey" type="password" />
-        <div class="muted">Used by ConfigAdmin/WidgetAdmin for PUT calls.</div>
-      </div>
-
-    </div>
-  </details>
-</div>
-
-<!-- ▸ Widget Options -->
-<div class="card">
-  <details>
-    <summary><span class="chev">▸</span> Widget Options</summary>
-    <div class="sectionPad">
-
-      <div class="row">
-        <label><input id="allowUpload" type="checkbox" /> Allow Upload Button</label>
-      </div>
-      <div class="row">
-        <label><input id="editableHeadline" type="checkbox" /> Allow Editing Headline</label>
-      </div>
-
-      <div class="row">
-        <div class="label">Min Seconds</div>
-        <input id="minSec" type="number" />
-      </div>
-
-      <div class="row">
-        <div class="label">Max Seconds</div>
-        <input id="maxSec" type="number" />
-      </div>
-
-    </div>
-  </details>
-</div>
-
-<!-- SAVE -->
-<button type="submit" class="saveBtn">Save Config</button>
-
-</form>
-
-<script src="ConfigAdmin.js?v=2025-11-13-0945"></script>
-
+  <script type="module" src="ConfigAdmin.js?v=1"></script>
 </body>
 </html>
