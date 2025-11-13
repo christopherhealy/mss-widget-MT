@@ -29,6 +29,64 @@
   gap: 12px;
 }
 
+/* Two-column layout for Advanced Config */
+.mss-main-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 2rem;
+}
+
+.mss-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.6fr);
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.mss-config-column,
+.mss-preview-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Hide native <details> marker, use our own chevron */
+.mss-section summary::-webkit-details-marker,
+.mss-section summary::marker {
+  display: none;
+}
+
+/* Make summaries look like section headers */
+.mss-section summary {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+}
+
+/* Chevron icon itself */
+.mss-chevron {
+  font-size: 1.2rem;
+  margin-right: 0.5rem;
+  line-height: 1;
+  user-select: none;
+}
+.mss-input-file-hidden {
+  display: none;
+}
+
+.mss-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.mss-file-name {
+  font-size: 0.8rem;
+}
+
+
 /* ────────────────────────────────────────────────
    MSS Config-Admin: Enhanced section styling
    Chevrons, collapse animation, modal polish
