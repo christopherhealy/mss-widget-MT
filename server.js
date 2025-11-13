@@ -1,3 +1,4 @@
+// Updated Nov 13 2:47Pm //
 // server.js (ESM, works with "type": "module")
 import express from "express";
 import pkg from "pg";
@@ -325,6 +326,7 @@ app.get("/api/widget/:slug/image/:kind", async (req, res) => {
 /* ---------- CONFIG ADMIN: PER-SCHOOL WIDGET SETTINGS ---------- */
 
 // GET current widget config/form/billing for a school (by slug)
+// GET current widget config/form/billing for a school (by slug)
 app.get("/api/admin/widget/:slug", async (req, res) => {
   const { slug } = req.params;
 
@@ -335,15 +337,30 @@ app.get("/api/admin/widget/:slug", async (req, res) => {
     );
 
     if (!rowCount) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "school_not_found" });
+      // no row yet – serve defaults so admin can still work
+      const { config: defaultCfg, form: defaultFrm } =
+        await loadDefaultWidgetConfigAndForm();
+
+      return res.json({
+        ok: false,
+        source: "defaults_no_school",
+        schoolId: null,
+        slug,
+        config: defaultCfg,
+        form: defaultFrm,
+        billing: {
+          dailyLimit: 50,
+          notifyOnLimit: true,
+          emailOnLimit: "",
+          autoBlockOnLimit: true,
+        },
+      });
     }
 
     const school = rows[0];
     const settings = school.settings || {};
 
-    // fall back to JSON defaults for brand new schools
+    // Fallback to JSON defaults for any missing parts
     const { config: defaultCfg, form: defaultFrm } =
       await loadDefaultWidgetConfigAndForm();
 
@@ -357,8 +374,9 @@ app.get("/api/admin/widget/:slug", async (req, res) => {
         autoBlockOnLimit: true,
       };
 
-    res.json({
+    return res.json({
       ok: true,
+      source: "db",
       schoolId: school.id,
       slug,
       config,
@@ -367,7 +385,34 @@ app.get("/api/admin/widget/:slug", async (req, res) => {
     });
   } catch (err) {
     console.error("GET /api/admin/widget/:slug error:", err);
-    res.status(500).json({ ok: false, error: "server_error" });
+
+    // As a last resort, still serve defaults instead of a hard 500
+    try {
+      const { config: defaultCfg, form: defaultFrm } =
+        await loadDefaultWidgetConfigAndForm();
+
+      return res.json({
+        ok: false,
+        source: "defaults_db_error",
+        slug,
+        config: defaultCfg,
+        form: defaultFrm,
+        billing: {
+          dailyLimit: 50,
+          notifyOnLimit: true,
+          emailOnLimit: "",
+          autoBlockOnLimit: true,
+        },
+      });
+    } catch (err2) {
+      console.error(
+        "GET /api/admin/widget/:slug fallback error:",
+        err2
+      );
+      return res
+        .status(500)
+        .json({ ok: false, error: "server_error" });
+    }
   }
 });
 
@@ -447,6 +492,7 @@ app.put("/api/admin/widget/:slug/logo", async (req, res) => {
 });
 
 // UPDATE widget config/form/billing for a school (by slug)
+// UPDATE widget config/form/billing for a school (by slug)
 app.put("/api/admin/widget/:slug", async (req, res) => {
   const { slug } = req.params;
   const body = req.body || {};
@@ -480,10 +526,12 @@ app.put("/api/admin/widget/:slug", async (req, res) => {
         .json({ ok: false, error: "school_not_found" });
     }
 
-    res.json({ ok: true });
+    return res.json({ ok: true, source: "db" });
   } catch (err) {
     console.error("PUT /api/admin/widget/:slug error:", err);
-    res.status(500).json({ ok: false, error: "server_error" });
+    return res
+      .status(500)
+      .json({ ok: false, error: "server_error" });
   }
 });
 
