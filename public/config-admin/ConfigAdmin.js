@@ -1,8 +1,11 @@
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 14:00 EST
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 14:48 EST
 
 /* -------------------------------------------------------------
    Slug + endpoints (per-slug Postgres via /api/admin/widget/:slug)
 ------------------------------------------------------------- */
+
+// Resolve slug the same way Widget.html does
+// MSS Widget MT – ConfigAdmin.js – slug + admin base
 
 // Resolve slug the same way Widget.html does
 const urlParams = new URLSearchParams(window.location.search);
@@ -10,11 +13,17 @@ const urlSlug = urlParams.get("slug");
 const rawSlug = urlSlug || window.mssWidgetSlug || "mss-demo";
 const SLUG = rawSlug.trim();
 
-// Admin API is hosted on the same origin as this page
-const ADMIN_URL = "/api/admin/widget/" + encodeURIComponent(SLUG);
+// Admin API host: localhost in dev, Render in prod
+let ADMIN_BASE;
+if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+  ADMIN_BASE = "http://localhost:3000";        // your local server.js
+} else {
+  ADMIN_BASE = "https://mss-widget-mt.onrender.com";  // Render service
+}
 
-// Base path for this admin page (e.g. "/config-admin")
-const BASE_PATH = window.location.pathname.replace(/\/[^/]*$/, "");
+// Final admin URL (used by GET + PUT)
+const ADMIN_URL =
+  ADMIN_BASE + "/api/admin/widget/" + encodeURIComponent(SLUG);
 
 // Local JSON fallbacks live alongside ConfigAdmin.html
 const FALLBACK_FORM_URL   = BASE_PATH + "/form.json?ts="   + Date.now();
