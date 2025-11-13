@@ -1,0 +1,720 @@
+<!-- Build: 2025-11-13 09:40 ET (ConfigAdmin – Advanced global config) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>MSS Widget – Advanced Config</title>
+  <style>
+    :root{ --edge:#e5e7eb; --muted:#6b7280; --blue:#1a5cff; --card:#fff; --bg:#f6f7fb; }
+    html,body{
+      margin:0;
+      background:var(--bg);
+      font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      color:#111827;
+    }
+
+    .topRow{
+      position:sticky;
+      top:0;
+      z-index:40;
+      background:var(--bg);
+      padding:8px 12px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      border-bottom:1px solid var(--edge);
+    }
+    .title{font-weight:800}
+    .admin-nav{
+      margin-top:2px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .admin-nav a{
+      color:#2563eb;
+      text-decoration:none;
+    }
+    .admin-nav a:hover{text-decoration:underline;}
+    .admin-nav span{margin:0 4px;}
+
+    .toolbar{
+      margin-left:auto;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .btn{
+      border-radius:999px;
+      border:1px solid var(--edge);
+      background:#fff;
+      padding:10px 14px;
+      font-weight:700;
+      cursor:pointer;
+      font-size:13px;
+    }
+    .btn.primary{background:var(--blue); color:#fff; border-color:transparent;}
+    .btn.small{padding:7px 10px;border-radius:10px;}
+
+    .wrap{
+      max-width:1200px;
+      margin:10px auto 18px auto;
+      padding:0 12px;
+      display:grid;
+      grid-template-columns: minmax(0,1.2fr) minmax(0,0.9fr);
+      gap:16px;
+      align-items:start;
+    }
+    @media (max-width:1020px){
+      .wrap{grid-template-columns:1fr;}
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--edge);
+      border-radius:16px;
+      box-shadow:0 10px 28px rgba(0,0,0,.05);
+      overflow:hidden;
+    }
+    .sectionPad{padding:14px;}
+    .muted{color:var(--muted); font-size:12px;}
+    .label{font-size:12px; color:#374151;}
+    input[type="text"],
+    input[type="number"],
+    input[type="url"],
+    input[type="password"],
+    select{
+      width:100%;
+      border:1px solid var(--edge);
+      border-radius:12px;
+      padding:9px 11px;
+      font:inherit;
+      background:#fff;
+    }
+    .row{display:grid; gap:6px; margin-bottom:12px;}
+
+    details{border-top:1px solid var(--edge);}
+    details:first-of-type{border-top:0;}
+    summary{
+      cursor:pointer;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:12px 14px;
+      font-weight:700;
+      user-select:none;
+    }
+    summary::-webkit-details-marker{display:none;}
+    .chev{transition:transform .2s ease;}
+    details[open] .chev{transform:rotate(90deg);}
+    .secInner{padding:0 14px 14px 14px;}
+
+    /* Preview (copied from WidgetAdmin with tiny tweaks) */
+    .pvShell{padding:18px;}
+    .preview{
+      background:#fff;
+      border:1px solid var(--edge);
+      border-radius:16px;
+      overflow:hidden;
+    }
+    .pvHead{
+      padding:24px 18px 8px;
+      display:grid;
+      justify-items:center;
+      background:linear-gradient(180deg,#fff,#f4f7ff);
+    }
+    .pvLogo{
+      width:180px;
+      height:120px;
+      object-fit:contain;
+      border-radius:12px;
+      background:#fff;
+      border:1px dashed #d1d5db;
+    }
+    .pvBrand{margin-top:10px; font-weight:800; text-align:center;}
+    .pvBody{padding:18px; background:#fff;}
+    .pvCounter{color:var(--muted); font-size:12px; margin-bottom:6px; text-align:center;}
+    .pvQ{font-size:16px; line-height:1.5; text-align:center;}
+    .pvNav{display:flex; gap:12px; justify-content:center; margin-top:12px;}
+    .pill{
+      padding:10px 18px;
+      border-radius:999px;
+      border:1px solid var(--edge);
+      background:#fff;
+      cursor:pointer;
+    }
+    .pvToolbar{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:center;
+      margin-top:14px;
+    }
+    .pvBtn{
+      border-radius:999px;
+      border:1px solid var(--edge);
+      background:#fff;
+      padding:10px 14px;
+      font-weight:700;
+      opacity:.55;
+      cursor:not-allowed;
+      font-size:13px;
+    }
+    .pvRecbar{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      justify-content:center;
+      margin-top:8px;
+    }
+    .pvDot{
+      width:8px;
+      height:8px;
+      border-radius:999px;
+      background:#ef4444;
+      opacity:.35;
+    }
+    .pvMuted{color:var(--muted); font-size:12px; text-align:center;}
+    .pvAudio{margin-top:8px; text-align:center;}
+    .pvPowered{margin-top:12px; text-align:center; color:var(--muted); font-size:12px;}
+
+    #toast{
+      position:fixed;
+      right:14px;
+      bottom:14px;
+      background:#111827;
+      color:#fff;
+      font-size:13px;
+      padding:10px 12px;
+      border-radius:12px;
+      opacity:0;
+      transform:translateY(10px);
+      transition:all .2s;
+      z-index:2200;
+    }
+    #toast.show{opacity:1; transform:translateY(0);}
+  </style>
+</head>
+<body>
+
+<!-- Top header -->
+<div class="topRow">
+  <div style="display:flex;flex-direction:column;gap:2px;">
+    <div class="title">Widget Config – Advanced</div>
+    <div class="admin-nav">
+      <a href="WidgetAdmin.html">Widget setup</a>
+      <span>·</span>
+      <a href="ConfigAdmin.html"><strong>Advanced config</strong></a>
+      <span>·</span>
+      <a href="WidgetSurvey.html">Question editor</a>
+    </div>
+  </div>
+  <div class="toolbar">
+    <button id="saveAll" type="button" class="btn primary">Save config…</button>
+    <button id="openWidget" type="button" class="btn">Open Widget</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- LEFT: advanced controls -->
+  <div class="card">
+    <details open>
+      <summary><span class="chev">▸</span> API &amp; Authentication</summary>
+      <div class="secInner">
+        <div class="sectionPad">
+          <div class="row">
+            <label class="label">
+              <input id="apiEnabled" type="checkbox" style="margin-right:6px;">
+              Enable MSS API integration
+            </label>
+            <div class="muted">
+              Controls whether the widget calls the MSS scoring API. When off, the widget can still
+              record audio but won’t send it for scoring.
+            </div>
+          </div>
+          <div class="row">
+            <div class="label">API Base URL</div>
+            <input id="apiBase" type="url" placeholder="https://app.myspeakingscore.com">
+          </div>
+          <div class="row">
+            <div class="label">API Key</div>
+            <input id="apiKey" type="text" placeholder="Paste your MSS API key">
+          </div>
+          <div class="row">
+            <div class="label">API Secret</div>
+            <input id="apiSecret" type="password" placeholder="Paste your X-API-SECRET">
+          </div>
+          <div class="row">
+            <div class="label">Admin write key (X-ADMIN-KEY)</div>
+            <input id="adminWriteKey" type="password" placeholder="Used by Admin tools for PUT calls">
+            <div class="muted">Stored in <code>CONFIG.admin.writeKey</code> and reused by WidgetAdmin / ConfigAdmin.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary><span class="chev">▸</span> Logging &amp; Uploads</summary>
+      <div class="secInner">
+        <div class="sectionPad">
+          <div class="row">
+            <label class="label">
+              <input id="logEnabled" type="checkbox" style="margin-right:6px;">
+              Enable submission logging
+            </label>
+            <div class="muted">
+              When enabled, the widget will POST a JSON log of each submission to the logger URL.
+            </div>
+          </div>
+          <div class="row">
+            <div class="label">Logger URL</div>
+            <input id="logUrl" type="url" placeholder="https://msswidget-dev.onrender.com/log/submission">
+          </div>
+          <div class="row">
+            <label class="label">
+              <input id="permitUpload" type="checkbox" style="margin-right:6px;">
+              Permit file uploads instead of recording
+            </label>
+            <div class="muted">
+              Controls the “Choose an audio file” button. Stored in <code>CONFIG.upload.allowed</code>.
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary><span class="chev">▸</span> Audio limits &amp; Theme</summary>
+      <div class="secInner">
+        <div class="sectionPad">
+          <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <div class="label">Audio min seconds</div>
+              <input id="minSeconds" type="number" min="1" step="1" placeholder="30">
+            </div>
+            <div>
+              <div class="label">Audio max seconds</div>
+              <input id="maxSeconds" type="number" min="1" step="1" placeholder="61">
+            </div>
+          </div>
+          <div class="row">
+            <div class="label">Widget theme</div>
+            <select id="themeSelect">
+              <option value="apple">Apple</option>
+              <option value="default">Default</option>
+            </select>
+            <div class="muted">Same theme field used by <code>Widget.html</code> and <code>WidgetAdmin.html</code>.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary><span class="chev">▸</span> Label visibility</summary>
+      <div class="secInner">
+        <div class="sectionPad" id="labelsAdvanced"></div>
+      </div>
+    </details>
+
+    <div class="sectionPad" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="saveAllBottom" type="button" class="btn">Save config…</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: live preview -->
+  <div class="card pvShell">
+    <h3 style="margin:0 0 8px 0; font-size:14px; padding:0 4px;">Preview</h3>
+    <div class="muted" style="padding:0 4px 8px 4px;">
+      Uses current <code>form</code>, <code>config</code> and <code>image</code> from the server (or local JSON fallback).
+    </div>
+    <div class="preview">
+      <div class="pvHead">
+        <img id="pvLogo" class="pvLogo" alt="Logo preview">
+        <div id="pvBrand" class="pvBrand">Brand headline</div>
+      </div>
+      <div class="pvBody">
+        <div id="pvCounter" class="pvCounter"></div>
+        <div id="pvQ" class="pvQ"></div>
+        <div class="pvNav">
+          <button id="pvPrev" type="button" class="pill">Previous</button>
+          <button id="pvNext" type="button" class="pill">Next</button>
+        </div>
+        <div class="pvToolbar">
+          <button type="button" class="pvBtn" disabled id="pvRecordBtn">Record your response</button>
+          <button type="button" class="pvBtn" disabled id="pvStopBtn">Stop</button>
+          <button type="button" class="pvBtn" disabled id="pvUploadBtn">Choose an audio file</button>
+          <button type="button" class="pvBtn" disabled id="pvSubmitBtn">Submit for scoring</button>
+        </div>
+        <div class="pvRecbar">
+          <span class="pvDot"></span>
+          <span id="pvRecState" class="pvMuted">Not recording</span>
+        </div>
+        <div class="pvAudio"><div id="pvLength" class="pvMuted"></div></div>
+        <div id="pvPowered" class="pvPowered">Powered by MSS Vox</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ========= shared constants (match WidgetAdmin) ========= */
+const SAVE_MODE = 'remote'; // 'remote' | 'local'
+
+const SERVICE_BASE = window.location.hostname.includes('localhost')
+  ? 'http://localhost:3000'
+  : 'https://msswidget-dev.onrender.com';
+
+const mode = SERVICE_BASE.includes('localhost') ? 'LOCAL DEV' : 'RENDER PROD';
+console.log(`🧩 ConfigAdmin running in ${mode} mode via`, SERVICE_BASE);
+
+/* ========= state ========= */
+let FORM = null;
+let CONFIG = null;
+let IMAGE = null;
+let idx = 0;
+
+let _fhConfig = null; // local fallback for config only
+
+/* ========= helpers ========= */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c] || c));
+function toast(msg, ok = true){
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.background = ok ? '#111827' : '#7c2d12';
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+function getLogo(o){
+  if (!o) return '';
+  for (const k of ['logoDataUrl','dataUrl','logo','src','url','path']){
+    if (o[k]) return String(o[k]);
+  }
+  return '';
+}
+
+/* ========= load from server (with local JSON fallback) ========= */
+async function loadAll(){
+  const ts = Date.now();
+  const [f,c,i] = await Promise.allSettled([
+    fetch(`${SERVICE_BASE}/config/forms?ts=${ts}`,   { cache:'no-store' }),
+    fetch(`${SERVICE_BASE}/config/widget?ts=${ts}`,  { cache:'no-store' }),
+    fetch(`${SERVICE_BASE}/config/images?ts=${ts}`,  { cache:'no-store' })
+  ]);
+
+  // FORM
+  try{
+    if (f.status === 'fulfilled' && f.value.ok){
+      FORM = await f.value.json();
+    } else {
+      FORM = await (await fetch('form.json?ts='+ts,{cache:'no-store'})).json();
+    }
+  }catch{
+    FORM = { headline:'Practice TOEFL Speaking Test', survey:[] };
+  }
+
+  // CONFIG
+  try{
+    if (c.status === 'fulfilled' && c.value.ok){
+      CONFIG = await c.value.json();
+    } else {
+      CONFIG = await (await fetch('config.json?ts='+ts,{cache:'no-store'})).json();
+    }
+  }catch{
+    CONFIG = {
+      editable:{
+        headline:true,
+        recordButton:true,
+        previousButton:true,
+        nextButton:true,
+        poweredByLabel:true,
+        uploadButton:true,
+        stopButton:true,
+        NotRecordingLabel:true
+      },
+      theme:'apple',
+      api:{ enabled:true, baseUrl:'', key:'', secret:'' },
+      logger:{ enabled:false, url:'' },
+      upload:{ allowed:true },
+      audioMinSeconds:30,
+      audioMaxSeconds:61,
+      admin:{ writeKey:'' }
+    };
+  }
+
+  // IMAGE
+  try{
+    if (i.status === 'fulfilled' && i.value.ok){
+      IMAGE = await i.value.json();
+    } else {
+      IMAGE = await (await fetch('image.json?ts='+ts,{cache:'no-store'})).json();
+    }
+  }catch{
+    IMAGE = { logoDataUrl:'' };
+  }
+
+  bindAdvancedControls();
+  renderPreview();
+}
+
+/* ========= wire advanced form controls ========= */
+function bindAdvancedControls(){
+  // --- API ---
+  const api = CONFIG.api || (CONFIG.api = {});
+  $('apiEnabled').checked = !!api.enabled;
+  $('apiEnabled').addEventListener('change', e => {
+    api.enabled = e.target.checked;
+  });
+
+  $('apiBase').value = api.baseUrl || '';
+  $('apiBase').addEventListener('input', e => {
+    api.baseUrl = e.target.value.trim();
+  });
+
+  $('apiKey').value = api.key || '';
+  $('apiKey').addEventListener('input', e => {
+    api.key = e.target.value;
+  });
+
+  $('apiSecret').value = api.secret || '';
+  $('apiSecret').addEventListener('input', e => {
+    api.secret = e.target.value;
+  });
+
+  CONFIG.admin = CONFIG.admin || {};
+  $('adminWriteKey').value = CONFIG.admin.writeKey || '';
+  $('adminWriteKey').addEventListener('input', e => {
+    CONFIG.admin.writeKey = e.target.value;
+  });
+
+  // --- logging & uploads ---
+  CONFIG.logger = CONFIG.logger || {};
+  $('logEnabled').checked = !!CONFIG.logger.enabled;
+  $('logEnabled').addEventListener('change', e => {
+    CONFIG.logger.enabled = e.target.checked;
+  });
+
+  $('logUrl').value = CONFIG.logger.url || '';
+  $('logUrl').addEventListener('input', e => {
+    CONFIG.logger.url = e.target.value.trim();
+  });
+
+  CONFIG.upload = CONFIG.upload || {};
+  $('permitUpload').checked = CONFIG.upload.allowed !== false; // default true
+  $('permitUpload').addEventListener('change', e => {
+    CONFIG.upload.allowed = e.target.checked;
+    renderPreview();
+  });
+
+  // --- audio + theme ---
+  $('minSeconds').value = Number(CONFIG.audioMinSeconds ?? 30);
+  $('maxSeconds').value = Number(CONFIG.audioMaxSeconds ?? 61);
+
+  $('minSeconds').addEventListener('input', e => {
+    const v = Math.max(1, Number(e.target.value || 30));
+    CONFIG.audioMinSeconds = v;
+    renderPreview();
+  });
+  $('maxSeconds').addEventListener('input', e => {
+    const v = Math.max(1, Number(e.target.value || 61));
+    CONFIG.audioMaxSeconds = v;
+    renderPreview();
+  });
+
+  $('themeSelect').value = (CONFIG.theme || 'apple').toLowerCase();
+  $('themeSelect').addEventListener('change', e => {
+    CONFIG.theme = e.target.value;
+  });
+
+  // --- label visibility ---
+  buildLabelVisibilityControls();
+}
+
+/* ========= label visibility checkboxes ========= */
+function buildLabelVisibilityControls(){
+  const container = $('labelsAdvanced');
+  container.innerHTML = '';
+
+  CONFIG.editable = CONFIG.editable || {};
+  const defs = [
+    ['headline','Headline text'],
+    ['recordButton','Record button text'],
+    ['stopButton','Stop button text'],
+    ['uploadButton','Upload button text'],
+    ['SubmitForScoringButton','Submit button text'],
+    ['previousButton','Previous button text'],
+    ['nextButton','Next button text'],
+    ['poweredByLabel','“Powered by” label'],
+    ['NotRecordingLabel','“Not recording” label']
+  ];
+
+  defs.forEach(([key,label]) => {
+    if (!(key in CONFIG.editable)) CONFIG.editable[key] = true;
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <label class="label">
+        <input type="checkbox" data-key="${key}" ${CONFIG.editable[key] ? 'checked' : ''} style="margin-right:6px;">
+        Show ${esc(label)}
+      </label>
+    `;
+    container.appendChild(row);
+  });
+
+  container.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"][data-key]');
+    if (!cb) return;
+    const k = cb.getAttribute('data-key');
+    CONFIG.editable[k] = cb.checked;
+    renderPreview();
+  });
+}
+
+/* ========= preview ========= */
+function renderPreview(){
+  const logoUrl = getLogo(IMAGE);
+  if ($('pvLogo')) $('pvLogo').src = logoUrl || '';
+  if ($('pvBrand')) $('pvBrand').textContent = FORM.headline || '';
+
+  const survey = Array.isArray(FORM.survey) ? FORM.survey : [];
+  if (!survey.length){
+    $('pvCounter').textContent = '';
+    $('pvQ').innerHTML = '<i>(No questions)</i>';
+  }else{
+    if (idx < 0) idx = 0;
+    if (idx > survey.length - 1) idx = survey.length - 1;
+    $('pvCounter').textContent = `Question ${idx+1} of ${survey.length}`;
+    $('pvQ').innerHTML = esc(survey[idx]).replace(/\n+/g,'<br>');
+  }
+
+  // Label-driven preview text
+  const editable = CONFIG.editable || {};
+  const getLabel = (field, fallback) =>
+    editable[field] === false ? '' : (FORM[field] || fallback);
+
+  const canUpload = CONFIG.upload && CONFIG.upload.allowed !== false;
+
+  $('pvRecordBtn').textContent = getLabel('recordButton','Record your response') || 'Record';
+  $('pvStopBtn').textContent   = getLabel('stopButton','Stop') || 'Stop';
+  $('pvUploadBtn').textContent = canUpload
+    ? (getLabel('uploadButton','Choose an audio file') || 'Choose file')
+    : 'Uploads disabled';
+  $('pvUploadBtn').style.opacity = canUpload ? 0.55 : 0.25;
+
+  $('pvSubmitBtn').textContent = getLabel('SubmitForScoringButton','Submit for scoring') || 'Submit';
+  $('pvRecState').textContent  = getLabel('NotRecordingLabel','Not recording') || 'Not recording';
+
+  const showPowered = editable.poweredByLabel !== false;
+  $('pvPowered').style.display = showPowered ? '' : 'none';
+  if (showPowered){
+    $('pvPowered').textContent = FORM.poweredByLabel || 'Powered by MSS Vox';
+  }
+
+  const minS = Number(CONFIG.audioMinSeconds ?? 30);
+  const maxS = Number(CONFIG.audioMaxSeconds ?? 61);
+  const mins = String(Math.floor(minS/60)).padStart(2,'0');
+  const secs = String(minS % 60).padStart(2,'0');
+  const maxm = String(Math.floor(maxS/60)).padStart(2,'0');
+  const maxs = String(maxS % 60).padStart(2,'0');
+  $('pvLength').textContent = `Allowed length: ${mins}:${secs}–${maxm}:${maxs}`;
+}
+
+/* ========= preview nav ========= */
+$('pvPrev')?.addEventListener('click', () => {
+  const s = Array.isArray(FORM?.survey) ? FORM.survey : [];
+  if (!s.length) return;
+  idx = (idx - 1 + s.length) % s.length;
+  renderPreview();
+});
+$('pvNext')?.addEventListener('click', () => {
+  const s = Array.isArray(FORM?.survey) ? FORM.survey : [];
+  if (!s.length) return;
+  idx = (idx + 1) % s.length;
+  renderPreview();
+});
+
+/* ========= saving ========= */
+function adminHeaders(){
+  const h = { 'Content-Type': 'application/json' };
+  if (CONFIG && CONFIG.admin && CONFIG.admin.writeKey){
+    h['X-ADMIN-KEY'] = String(CONFIG.admin.writeKey);
+  }
+  return h;
+}
+
+async function saveRemote(){
+  const base = SERVICE_BASE.replace(/\/+$/,'');
+  const res = await fetch(`${base}/config/widget`, {
+    method:'PUT',
+    headers: adminHeaders(),
+    body: JSON.stringify(CONFIG ?? {}, null, 2)
+  });
+  if (!res.ok) throw new Error(`PUT /config/widget → ${res.status}`);
+  await res.json().catch(() => ({}));
+}
+
+async function saveLocal(){
+  const blob = new Blob([JSON.stringify(CONFIG ?? {},null,2)], { type:'application/json' });
+  if (window.showSaveFilePicker){
+    try{
+      if (_fhConfig){
+        const perm = await _fhConfig.requestPermission({mode:'readwrite'});
+        if (perm === 'granted'){
+          const w = await _fhConfig.createWritable();
+          await w.write(blob); await w.close();
+          return;
+        }
+      }
+      _fhConfig = await window.showSaveFilePicker({
+        suggestedName:'config.json',
+        types:[{description:'JSON',accept:{'application/json':['.json']}}]
+      });
+      const w = await _fhConfig.createWritable();
+      await w.write(blob); await w.close();
+      return;
+    }catch(e){
+      // canceled → fallback to download link
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'config.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function handleSave(){
+  try{
+    if (SAVE_MODE === 'remote'){
+      await saveRemote();
+      toast('Config saved to server');
+    }else{
+      await saveLocal();
+      toast('Config downloaded to file');
+    }
+  }catch(err){
+    console.warn('Remote save failed; falling back to local file', err);
+    toast('Server save failed. Downloading config.json…', false);
+    await saveLocal();
+  }
+}
+
+/* ========= wire buttons & boot ========= */
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadAll();
+  $('saveAll')?.addEventListener('click', handleSave);
+  $('saveAllBottom')?.addEventListener('click', handleSave);
+  $('openWidget')?.addEventListener('click', () => {
+    window.open('Widget.html','_blank','noopener');
+  });
+});
+</script>
+</body>
+</html>
