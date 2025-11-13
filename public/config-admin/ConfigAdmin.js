@@ -1,11 +1,8 @@
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:28 EST
-
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:51 EST
 
 /* -------------------------------------------------------------
    Slug + endpoints (per-slug Postgres via /api/admin/widget/:slug)
 ------------------------------------------------------------- */
-
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:40 EST
 
 const params = new URLSearchParams(window.location.search);
 const SLUG = (params.get("slug") || "mss-demo").trim();
@@ -236,7 +233,7 @@ function applyLoaded(payload, source) {
   populateFields();
   updatePreview();
   updateMeta();
-  updateQuestionSummary();
+  
 }
 
 /* ========= populate/read form ========= */
@@ -328,7 +325,7 @@ function bindFields() {
       target[b.path[b.path.length - 1]] = value;
       markDirty();
       updatePreview();
-      updateQuestionSummary();
+      
     };
 
     const eventType = b.type === "bool" ? "change" : "input";
@@ -410,23 +407,7 @@ function updatePreview() {
   }
 }
 
-function updateQuestionSummary() {
-  const el = $("questionSummary");
-  if (!el) return;
-  const f = state.form;
-  const count = Array.isArray(f.survey) ? f.survey.length : 0;
-  if (!count) {
-    el.textContent = "No questions found in this widget’s survey.";
-    return;
-  }
-  const sample = f.survey[0];
-  el.textContent =
-    count +
-    " question" +
-    (count === 1 ? "" : "s") +
-    ". First question: " +
-    (typeof sample === "string" ? sample.slice(0, 160) + (sample.length > 160 ? "…" : "") : "");
-}
+
 
 /* ========= export helper (optional) ========= */
 
@@ -474,6 +455,7 @@ async function saveToFilePicker(jsonObj, suggestedName = "widget-config.json") {
 
 /* ========= save logic ========= */
 
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 11:45 EST
 async function saveToServer() {
   const payload = {
     form: state.form,
@@ -504,21 +486,17 @@ async function saveToServer() {
       body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
+
     console.log("[ConfigAdmin] saved to", ADMIN_URL, "for slug", SLUG);
     setStatus("Saved to server (Postgres)");
     state.dirty = false;
     updateMeta();
     return "server";
   } catch (err) {
-    console.error("[ConfigAdmin] Remote save failed, falling back to file:", err);
-    setStatus("Server save failed, exporting JSON instead", false);
-    const r = await saveToFilePicker(payload, "widget-config-" + SLUG + ".json");
-    if (r === "saved" || r === "download") {
-      setStatus("Exported JSON locally (" + r + ")", false);
-    } else {
-      setStatus("Export canceled", false);
-    }
-    return r;
+    console.error("[ConfigAdmin] Remote save failed:", err);
+    setStatus("Server save failed (" + err.message + ")", false);
+    // No file download here – Export JSON button handles that use case.
+    return "error";
   }
 }
 
