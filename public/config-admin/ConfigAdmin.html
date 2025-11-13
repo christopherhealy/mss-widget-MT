@@ -1,4 +1,4 @@
-<!-- MSS Widget MT – ConfigAdmin.html – 2025-11-13 11:51 EST -->
+<!-- MSS Widget MT – ConfigAdmin.html – 2025-11-13 12:40 EST -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,16 +7,16 @@
   <title>MSS Widget – Advanced Config</title>
 
   <!-- Shared MSS design system -->
-  <!-- NOTE: now absolute from site root, not relative to /config-admin/ -->
- <link id="themeCss" rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
- <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
+  <link id="themeCss" rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <!-- Optional admin-specific tweaks -->
+  <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
 </head>
 <body class="mssVoxAurora">
   <header class="mss-top">
     <div class="mss-top-inner">
       <div class="mss-row">
         <div class="mss-stack-tight">
-          <div class="mss-pill">MSS Widget MT</div>
+          <div class="mss-pill">MSS WIDGET MT</div>
           <div class="mss-titlesm">Advanced Configuration</div>
         </div>
       </div>
@@ -31,7 +31,7 @@
 
   <main class="mss-shell">
     <div class="mss-layout">
-      <!-- Left: configuration form -->
+      <!-- LEFT: configuration form -->
       <section aria-label="Widget configuration">
 
         <!-- BRANDING -->
@@ -43,18 +43,23 @@
           <div class="mss-section-body">
             <div class="mss-field">
               <label class="mss-label" for="cfgHeadline">Headline</label>
-              <input id="cfgHeadline" class="mss-input" type="text" placeholder="e.g., CEFR Assessment" />
+              <input id="cfgHeadline" class="mss-input" type="text"
+                     placeholder="e.g., CEFR Assessment" />
             </div>
 
             <div class="mss-field">
               <label class="mss-label" for="cfgPoweredBy">Powered-by text</label>
-              <input id="cfgPoweredBy" class="mss-input" type="text" placeholder="Powered by MSS Vox" />
+              <input id="cfgPoweredBy" class="mss-input" type="text"
+                     placeholder="Powered by MSS Vox" />
             </div>
 
             <div class="mss-field">
               <label class="mss-label" for="cfgBrandLogoInput">Brand logo (PNG/JPG)</label>
-              <input id="cfgBrandLogoInput" class="mss-input" type="file" accept="image/png,image/jpeg" />
-              <div class="mss-help">Base64 is stored in <code>config.brandLogo</code>.</div>
+              <input id="cfgBrandLogoInput" class="mss-input" type="file"
+                     accept="image/png,image/jpeg" />
+              <div class="mss-help">
+                Base64 is stored in <code>config.brandLogo</code>.
+              </div>
             </div>
           </div>
         </details>
@@ -70,14 +75,18 @@
             <div class="mss-field-row">
               <div class="mss-field mss-field-half">
                 <label class="mss-label">
-                  <input id="cfgApiEnabled" type="checkbox" /> Enable API
+                  <input id="cfgApiEnabled" type="checkbox" />
+                  Enable API
                 </label>
-                <div class="mss-help">If disabled, widget records but won't submit.</div>
+                <div class="mss-help">
+                  If disabled, widget records but won't submit.
+                </div>
               </div>
 
               <div class="mss-field mss-field-half">
                 <label class="mss-label" for="cfgAdminKey">X-ADMIN-KEY</label>
-                <input id="cfgAdminKey" class="mss-input" type="text" placeholder="Admin Key" />
+                <input id="cfgAdminKey" class="mss-input" type="text"
+                       placeholder="Admin Key" />
               </div>
             </div>
 
@@ -102,27 +111,30 @@
         <!-- LOGGING -->
         <details class="mss-section" open>
           <summary class="mss-section-header">
-            <span class="mss-pill">Logging & Uploads</span>
+            <span class="mss-pill">Logging &amp; Uploads</span>
           </summary>
 
           <div class="mss-section-body">
             <div class="mss-field-row">
               <div class="mss-field mss-field-half">
                 <label class="mss-label">
-                  <input id="cfgLoggerEnabled" type="checkbox" /> Enable logging
+                  <input id="cfgLoggerEnabled" type="checkbox" />
+                  Enable logging
                 </label>
               </div>
 
               <div class="mss-field mss-field-half">
                 <label class="mss-label">
-                  <input id="cfgPermitUpload" type="checkbox" /> Allow file upload
+                  <input id="cfgPermitUpload" type="checkbox" />
+                  Allow file upload
                 </label>
               </div>
             </div>
 
             <div class="mss-field">
               <label class="mss-label" for="cfgLoggerUrl">Logger endpoint</label>
-              <input id="cfgLoggerUrl" class="mss-input" type="text" placeholder="https://…" />
+              <input id="cfgLoggerUrl" class="mss-input" type="text"
+                     placeholder="https://…" />
             </div>
           </div>
         </details>
@@ -130,7 +142,7 @@
         <!-- AUDIO & THEME -->
         <details class="mss-section" open>
           <summary class="mss-section-header">
-            <span class="mss-pill">Audio & Theme</span>
+            <span class="mss-pill">Audio &amp; Theme</span>
           </summary>
 
           <div class="mss-section-body">
@@ -161,7 +173,7 @@
         <!-- LABELS -->
         <details class="mss-section" open>
           <summary class="mss-section-header">
-            <span class="mss-pill">Labels & Text</span>
+            <span class="mss-pill">Labels &amp; Text</span>
           </summary>
 
           <div class="mss-section-body">
@@ -201,13 +213,14 @@
                 <label class="mss-label" for="cfgSubmitLabel">Submit</label>
                 <input id="cfgSubmitLabel" class="mss-input" type="text" />
               </div>
-           
+            </div>
           </div>
         </details>
       </section>
 
-      <!-- RIGHT: PREVIEW -->
+      <!-- RIGHT: PREVIEW + ACTIONS -->
       <aside>
+        <!-- Preview -->
         <div class="mss-card">
           <div class="mss-card-header">
             <div class="mss-card-title">Live Preview</div>
@@ -223,35 +236,59 @@
               </div>
             </div>
 
-            <div id="previewQuestion" class="mss-stack-tight mss-question-preview mss-muted" style="margin-top:10px;">
+            <div id="previewQuestion"
+                 class="mss-stack-tight mss-question-preview mss-muted"
+                 style="margin-top:10px;">
               Question preview will appear here.
             </div>
 
             <div class="mss-toolbar" style="margin-top:12px;">
-              <button id="previewRecordBtn" class="mss-btn mss-btn-primary">Record</button>
-              <button id="previewStopBtn" class="mss-btn mss-btn-outline">Stop</button>
-              <button id="previewNextBtn" class="mss-btn mss-btn-outline">Next</button>
+              <button id="previewRecordBtn" class="mss-btn mss-btn-primary">
+                Record
+              </button>
+              <button id="previewStopBtn" class="mss-btn mss-btn-outline">
+                Stop
+              </button>
+              <button id="previewNextBtn" class="mss-btn mss-btn-outline">
+                Next
+              </button>
 
-              <button id="previewUploadBtn" class="mss-btn mss-btn-ghost" style="margin-top:8px;">Upload</button>
-              <button id="previewSubmitBtn" class="mss-btn mss-btn-primary" style="margin-top:8px;">Submit</button>
+              <button id="previewUploadBtn" class="mss-btn mss-btn-ghost"
+                      style="margin-top:8px;">
+                Upload
+              </button>
+              <button id="previewSubmitBtn" class="mss-btn mss-btn-primary"
+                      style="margin-top:8px;">
+                Submit
+              </button>
 
-              <div id="previewNotRecording" class="mss-muted" style="margin-top:6px;font-size:0.78rem;">
+              <div id="previewNotRecording" class="mss-muted"
+                   style="margin-top:6px;font-size:0.78rem;">
                 Not recording
               </div>
             </div>
           </div>
         </div>
 
+        <!-- Actions -->
         <div class="mss-card">
           <div class="mss-card-header">
             <div class="mss-card-title">Actions</div>
           </div>
 
           <div class="mss-stack">
-            <button id="saveBtn" class="mss-btn mss-btn-primary">Save config</button>
-            <button id="reloadBtn" class="mss-btn mss-btn-outline">Reload from server</button>
-            <button id="openWidgetBtn" class="mss-btn mss-btn-ghost">Open Widget</button>
-            <button id="exportBtn" class="mss-btn mss-btn-ghost">Export JSON</button>
+            <button id="saveBtn" class="mss-btn mss-btn-primary">
+              Save config
+            </button>
+            <button id="reloadBtn" class="mss-btn mss-btn-outline">
+              Reload from server
+            </button>
+            <button id="openWidgetBtn" class="mss-btn mss-btn-ghost">
+              Open Widget
+            </button>
+            <button id="exportBtn" class="mss-btn mss-btn-ghost">
+              Export JSON
+            </button>
 
             <div id="status" class="mss-help"></div>
           </div>
@@ -260,6 +297,7 @@
     </div>
   </main>
 
-  <script type="module" src="ConfigAdmin.js?v=2"></script>
+  <!-- ES module controller -->
+  <script type="module" src="ConfigAdmin.js?v=4"></script>
 </body>
 </html>
