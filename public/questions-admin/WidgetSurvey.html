@@ -1,99 +1,73 @@
-<!-- Build: 2025-11-12 23:10 ET (WS v3.4 clean) -->
+<!-- Build: 2025-11-12 18:10 ET (WS per-slug, Postgres-backed) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>My Speaking Score – All-in-One Question Editor</title>
-<link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css">
-<style>
-  :root { --mss-blue:#1a5cff; --mss-text:#222; --mss-muted:#6b7280; --mss-edge:#e5e7eb; }
-  body{
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:#f7f7f8;margin:0;display:flex;flex-direction:column;align-items:center;
-    min-height:100vh;padding:24px;gap:18px;
-  }
-  .card{
-    width:980px; max-width:95vw; background:#fff; border:1px solid var(--mss-edge);
-    border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.06); overflow:hidden;
-  }
-  .head{
-    display:flex;justify-content:space-between;align-items:center;
-    padding:14px 16px;border-bottom:1px solid var(--mss-edge)
-  }
-  .title{font-weight:700}
-  .muted{color:#6b7280; font-size:12px}
-  .body{padding:14px}
-  .row{
-    display:grid; grid-template-columns: 48px 1fr auto; align-items:start; gap:12px;
-    padding:10px 12px; border:1px solid var(--mss-edge); border-radius:12px;
-    margin-bottom:10px; background:#fff; transition:border-color .15s, box-shadow .15s, opacity .15s;
-  }
-  .row.dragging{
-    opacity:.7; border-color:#93c5fd; box-shadow:0 6px 20px rgba(2,132,199,.15);
-  }
-  .placeholder{
-    height:64px; border:2px dashed #93c5fd; border-radius:12px;
-    background:#eff6ff; margin-bottom:10px;
-  }
-  .idx{
-    width:40px;height:40px;border-radius:10px;border:1px solid var(--mss-edge);
-    display:flex;align-items:center;justify-content:center;font-weight:600;background:#f9fafb;
-    user-select:none; cursor:grab; transition:background .15s, border-color .15s, color .15s;
-  }
-  .idx:active{ cursor:grabbing; background:#eef2ff; border-color:#c7d2fe; color:#374151; }
-  .qtext{white-space:pre-line}
-  .qfirst{font-weight:600}
-  .ctrls{display:flex;gap:6px;flex-wrap:wrap}
-  .btn{
-    border-radius:999px; padding:8px 10px; border:1px solid var(--mss-edge);
-    background:#fff; cursor:pointer; font-weight:600; font-size:13px;
-  }
-  .btn.primary{background:var(--mss-blue); color:#fff; border-color:transparent}
-  .btn.ghost{background:#fff}
-  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .toolbar .spacer{flex:1}
-  #status{font-size:13px;margin-left:auto}
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Speaking Score – All-in-One Question Editor</title>
+  <link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css">
+  <style>
+    :root { --mss-blue:#1a5cff; --mss-text:#222; --mss-muted:#6b7280; --mss-edge:#e5e7eb; }
+    body{
+      font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:#f7f7f8;margin:0;display:flex;flex-direction:column;align-items:center;
+      min-height:100vh;padding:24px;gap:18px;
+    }
+    .card{ width:980px; max-width:95vw; background:#fff; border:1px solid var(--mss-edge);
+           border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.06); overflow:hidden; }
+    .head{display:flex;justify-content:space-between;align-items:center;
+          padding:14px 16px;border-bottom:1px solid var(--mss-edge)}
+    .title{font-weight:700}
+    .muted{color:#6b7280; font-size:12px}
+    .body{padding:14px}
+    .row{ display:grid; grid-template-columns: 48px 1fr auto; align-items:start; gap:12px;
+          padding:10px 12px; border:1px solid var(--mss-edge); border-radius:12px;
+          margin-bottom:10px; background:#fff; transition:border-color .15s, box-shadow .15s, opacity .15s; }
+    .row.dragging{ opacity:.7; border-color:#93c5fd; box-shadow:0 6px 20px rgba(2,132,199,.15); }
+    .placeholder{ height:64px; border:2px dashed #93c5fd; border-radius:12px; background:#eff6ff; margin-bottom:10px; }
+    .idx{ width:40px;height:40px;border-radius:10px;border:1px solid var(--mss-edge);
+          display:flex;align-items:center;justify-content:center;font-weight:600;background:#f9fafb;
+          user-select:none; cursor:grab; transition:background .15s, border-color .15s, color .15s; }
+    .idx:active{ cursor:grabbing; background:#eef2ff; border-color:#c7d2fe; color:#374151; }
+    .qtext{white-space:pre-line}
+    .qfirst{font-weight:600}
+    .ctrls{display:flex;gap:6px;flex-wrap:wrap}
+    .btn{ border-radius:999px; padding:8px 10px; border:1px solid var(--mss-edge);
+          background:#fff; cursor:pointer; font-weight:600; font-size:13px; }
+    .btn.primary{background:var(--mss-blue); color:#fff; border-color:transparent}
+    .btn.ghost{background:#fff}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .toolbar .spacer{flex:1}
+    #status{font-size:13px;margin-left:auto}
 
-  .overlay,
-  .finishOverlay,
-  .confirmOverlay{
-    position:fixed;inset:0;display:none;align-items:center;justify-content:center;
-    background:rgba(0,0,0,.45);z-index:2100;
-  }
-  .finishOverlay{z-index:2100}
-  .confirmOverlay{z-index:2200}
-
-  .modal,
-  .finishDlg,
-  .confirmDlg{
-    width:min(700px,95vw);background:#fff;border:1px solid var(--mss-edge);
-    border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden;
-  }
-  .finishDlg,
-  .confirmDlg{
-    width:min(420px,94vw);padding:18px;
-  }
-  .modalHead{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:12px 14px;border-bottom:1px solid var(--mss-edge)
-  }
-  .modalBody{padding:12px}
-  .modalFoot{
-    display:flex;gap:8px;justify-content:flex-end;
-    padding:12px;border-top:1px solid var(--mss-edge)
-  }
-  .ta{
-    width:100%;min-height:200px;border:1px solid var(--mss-edge);
-    border-radius:12px;padding:12px;font:inherit
-  }
-  .finishDlg h3,
-  .confirmDlg h3{margin:0 0 8px 0;font-size:16px}
-  .finishDlg p,
-  .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
-  .finishBtns,
-  .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
-</style>
+    .overlay,
+    .finishOverlay,
+    .confirmOverlay{
+      position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+      background:rgba(0,0,0,.45);z-index:2100;
+    }
+    .modal,
+    .finishDlg,
+    .confirmDlg{
+      width:min(700px,95vw);background:#fff;border:1px solid var(--mss-edge);
+      border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden;padding:0;
+    }
+    .finishDlg,
+    .confirmDlg{width:min(420px,94vw);padding:18px;}
+    .modalHead{display:flex;align-items:center;justify-content:space-between;
+               padding:12px 14px;border-bottom:1px solid var(--mss-edge)}
+    .modalBody{padding:12px}
+    .modalFoot{display:flex;gap:8px;justify-content:flex-end;
+               padding:12px;border-top:1px solid var(--mss-edge)}
+    .ta{width:100%;min-height:200px;border:1px solid var(--mss-edge);
+        border-radius:12px;padding:12px;font:inherit}
+    .finishDlg h3,
+    .confirmDlg h3{margin:0 0 8px 0;font-size:16px}
+    .finishDlg p,
+    .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
+    .finishBtns,
+    .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
+  </style>
 </head>
 <body>
   <div class="card">
@@ -183,530 +157,524 @@
 
 <script>
 /* ------------------------------------------------------------------
-   SLUG + ENDPOINTS (relative paths => works on localhost & Render)
+   SLUG + ENDPOINTS (per-slug Postgres via /config/forms?slug=…)
 ------------------------------------------------------------------ */
 const params = new URLSearchParams(location.search);
 const SLUG = (params.get("slug") || "mss-demo").trim();
 
-const ADMIN_READ_URL  = "/api/admin/widget/" + encodeURIComponent(SLUG);
-const ADMIN_WRITE_URL = "/api/admin/widget/" + encodeURIComponent(SLUG); // PUT {form:{...}}
-const FALLBACK_FORM_URL = "./form.json?ts=" + Date.now();
+// Same endpoint config-admin uses
+const ADMIN_READ_URL  = `/config/forms?slug=${encodeURIComponent(SLUG)}`;
+const ADMIN_WRITE_URL = `/config/forms?slug=${encodeURIComponent(SLUG)}`;
+
+// Optional local fallback (only if admin fails)
+const FALLBACK_FORM_URL = `./form.json?ts=${Date.now()}`;
 
 /* ========= state ========= */
 let schema = null;          // latest server form object
 let survey = [];            // editable list
 let _fileHandle = null;
-let aeMode = "add";
+let aeMode = 'add';
 let aeIndex = -1;
 let aeDirty = false;
 
 /* ========= helpers ========= */
-function $(id){ return document.getElementById(id); }
+const $ = (id)=>document.getElementById(id);
 
-function setStatus(msg, ok){
-  if (ok === undefined) ok = true;
-  const el = $("status"); if(!el) return;
-  el.textContent = (ok ? "✅ " : "⚠️ ") + msg;
-  el.style.color = ok ? "green" : "#b45309";
+function setStatus(msg, ok=true){
+  const el = $('status'); if(!el) return;
+  el.textContent = (ok ? '✅ ' : '⚠️ ') + msg;
+  el.style.color = ok ? 'green' : '#b45309';
   clearTimeout(setStatus._t);
-  setStatus._t = setTimeout(function(){ el.textContent=""; }, 1800);
+  setStatus._t = setTimeout(()=>{ el.textContent=''; }, 1800);
 }
 
 function escapeHtml(s){
-  const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
-  return String(s).replace(/[&<>]/g, function(c){ return map[c] || c; });
+  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 }
 
 function summarize(q){
   const parts = String(q).split(/\n+/);
-  const head = escapeHtml(parts[0] || "");
-  const rest = escapeHtml(parts.slice(1).join("\n"));
-  var html = '<div class="qtext"><div class="qfirst">' + head + "</div>";
-  if (rest){
-    html += '<div class="muted" style="margin-top:4px;white-space:pre-line">' + rest + "</div>";
-  }
-  html += "</div>";
-  return html;
+  const head = escapeHtml(parts[0] || '');
+  const rest = escapeHtml(parts.slice(1).join('\n'));
+  return `<div class="qtext"><div class="qfirst">${head}</div>${
+    rest ? `<div class="muted" style="margin-top:4px;white-space:pre-line">${rest}</div>` : ''
+  }</div>`;
 }
 
 function getMerged(){
-  var merged = {};
-  if (schema && typeof schema === "object"){
-    for (var k in schema){ if (Object.prototype.hasOwnProperty.call(schema,k)) merged[k] = schema[k]; }
-  }
-  merged.survey = survey.slice();
-  return merged;
+  return { ...(schema||{}), survey: survey.slice() };
 }
 
 /* ========= render list ========= */
 function move(i, d){
-  var j = i + d;
-  if (j < 0 || j >= survey.length) return;
-  var tmp = survey[i];
-  survey[i] = survey[j];
-  survey[j] = tmp;
+  const j=i+d; if(j<0||j>=survey.length) return;
+  [survey[i],survey[j]]=[survey[j],survey[i]];
   render();
 }
-
 function moveTo(i, dest){
-  dest = Math.max(0, Math.min(dest, survey.length - 1));
-  if (i === dest) return;
-  var it = survey.splice(i, 1)[0];
-  survey.splice(dest, 0, it);
+  dest=Math.max(0,Math.min(dest,survey.length-1));
+  if(i===dest) return;
+  const it=survey.splice(i,1)[0];
+  survey.splice(dest,0,it);
   render();
 }
-
 function render(){
-  var list = $("list");
+  const list = $('list');
   if (!survey.length){
-    list.innerHTML = '<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>';
+    list.innerHTML =
+      `<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>`;
     return;
   }
-  var html = "";
-  for (var i=0;i<survey.length;i++){
-    html +=
-      '<div class="row" data-idx="' + i + '" draggable="true">' +
-        '<div class="idx" title="Drag to reorder">' + (i+1) + "</div>" +
-        "<div>" + summarize(survey[i]) + "</div>" +
-        '<div class="ctrls">' +
-          '<button type="button" class="btn" data-act="edit">Edit</button>' +
-          '<button type="button" class="btn" data-act="top">Top</button>' +
-          '<button type="button" class="btn" data-act="up">Up</button>' +
-          '<button type="button" class="btn" data-act="down">Down</button>' +
-          '<button type="button" class="btn" data-act="bottom">Bottom</button>' +
-          '<button type="button" class="btn" data-act="remove">✕</button>' +
-        "</div>" +
-      "</div>";
-  }
-  list.innerHTML = html;
+  list.innerHTML = survey.map((q,i)=>`
+    <div class="row" data-idx="${i}" draggable="true">
+      <div class="idx" title="Drag to reorder">${i+1}</div>
+      <div>${summarize(q)}</div>
+      <div class="ctrls">
+        <button type="button" class="btn" data-act="edit">Edit</button>
+        <button type="button" class="btn" data-act="top">Top</button>
+        <button type="button" class="btn" data-act="up">Up</button>
+        <button type="button" class="btn" data-act="down">Down</button>
+        <button type="button" class="btn" data-act="bottom">Bottom</button>
+        <button type="button" class="btn" data-act="remove">✕</button>
+      </div>
+    </div>
+  `).join('');
   wireDnd(list);
 }
 
 /* ========= DnD ========= */
 function wireDnd(container){
-  var ph=null, dragging=null, src=null;
+  let ph=null, dragging=null, src=null;
+  container.querySelectorAll('.row').forEach(row=>{
+    row.dataset.allow="";
+    row.addEventListener('dragstart',start);
+    row.addEventListener('dragend',end);
+    row.querySelector('.idx').addEventListener('pointerdown',()=>{
+      row.dataset.allow="1";
+    },{passive:true});
+  });
+  container.addEventListener('dragover',over);
+  container.addEventListener('drop',drop);
 
   function start(e){
-    var row=e.currentTarget;
-    if(row.getAttribute("data-allow")!=="1"){ e.preventDefault(); return; }
-    row.setAttribute("data-allow","");
-    dragging=row; src=+row.getAttribute("data-idx");
-    row.classList.add("dragging");
-    ph=document.createElement("div");
-    ph.className="placeholder";
-    ph.style.height=row.getBoundingClientRect().height+"px";
-    row.parentNode.insertBefore(ph, row.nextSibling);
-    e.dataTransfer.effectAllowed="move";
+    const row=e.currentTarget;
+    if(row.dataset.allow!=="1"){ e.preventDefault(); return; }
+    row.dataset.allow="";
+    dragging=row; src=+row.dataset.idx;
+    row.classList.add('dragging');
+    ph=document.createElement('div');
+    ph.className='placeholder';
+    ph.style.height=row.getBoundingClientRect().height+'px';
+    row.after(ph);
+    e.dataTransfer.effectAllowed='move';
     try{
-      e.dataTransfer.setData("text/plain",String(src));
-      e.dataTransfer.setDragImage(row.querySelector(".idx")||row,16,16);
-    }catch(_){}
+      e.dataTransfer.setData('text/plain',String(src));
+      e.dataTransfer.setDragImage(row.querySelector('.idx')||row,16,16);
+    }catch{}
   }
-
   function over(e){
     if(!dragging||!ph) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect="move";
-    var after=getAfter(container,e.clientY);
+    e.dataTransfer.dropEffect='move';
+    const after=getAfter(container,e.clientY);
     if(after==null) container.appendChild(ph);
     else container.insertBefore(ph,after);
   }
-
   function drop(e){
     if(!dragging||!ph) return;
     e.preventDefault();
-    var children = container.children;
-    var target=0;
-    for(var i=0;i<children.length;i++){
-      var c = children[i];
+    let target=0;
+    for(const c of container.children){
       if(c===ph) break;
-      if(c.classList && c.classList.contains("row")) target++;
+      if(c.classList.contains('row')) target++;
     }
-    var from=src;
+    const from=src;
     if(from<target) target--;
     cleanup();
     if(from==null||from===target) return;
-    var m = survey.splice(from,1)[0];
+    const [m]=survey.splice(from,1);
     survey.splice(target,0,m);
     render();
   }
-
   function end(){ cleanup(); }
-
   function cleanup(){
-    var rows = container.querySelectorAll(".row");
-    for(var i=0;i<rows.length;i++) rows[i].setAttribute("data-allow","");
-    if(dragging) dragging.classList.remove("dragging");
+    container.querySelectorAll('.row').forEach(r=>r.dataset.allow="");
+    if(dragging) dragging.classList.remove('dragging');
     dragging=null; src=null;
-    if(ph && ph.parentNode) ph.parentNode.removeChild(ph);
+    if(ph) ph.remove();
     ph=null;
   }
-
   function getAfter(container,y){
-    var rows = container.querySelectorAll(".row:not(.dragging)");
-    var bestOffset = -Infinity;
-    var bestElem = null;
-    for(var i=0;i<rows.length;i++){
-      var ch = rows[i];
-      var box=ch.getBoundingClientRect();
-      var off=y-box.top-box.height/2;
-      if(off<0 && off>bestOffset){
-        bestOffset = off;
-        bestElem = ch;
-      }
-    }
-    return bestElem;
+    const rows=[...container.querySelectorAll('.row:not(.dragging)')];
+    return rows.reduce((c,ch)=>{
+      const box=ch.getBoundingClientRect();
+      const off=y-box.top-box.height/2;
+      return (off<0 && off>c.offset) ? {offset:off,element:ch} : c;
+    }, {offset:-Infinity,element:null}).element;
   }
-
-  var rowEls = container.querySelectorAll(".row");
-  for(var i=0;i<rowEls.length;i++){
-    var row = rowEls[i];
-    row.setAttribute("data-allow","");
-    row.addEventListener("dragstart",start);
-    row.addEventListener("dragend",end);
-    var idxBtn = row.querySelector(".idx");
-    idxBtn.addEventListener("pointerdown", (function(r){
-      return function(){ r.setAttribute("data-allow","1"); };
-    })(row), {passive:true});
-  }
-  container.addEventListener("dragover",over);
-  container.addEventListener("drop",drop);
 }
 
 /* ========= Modals / confirms ========= */
-function showOverlay(id,show){
-  var el=$(id);
-  if(!el) return;
-  el.style.display = show ? "flex" : "none";
-  el.setAttribute("aria-hidden", show ? "false" : "true");
-}
-
 function openAddModal(){
-  aeMode="add"; aeIndex=-1; aeDirty=false;
-  $("aeTitle").textContent="Add Question";
-  $("aeTextarea").value="";
-  showOverlay("aeOverlay",true);
+  aeMode='add'; aeIndex=-1; aeDirty=false;
+  $('aeTitle').textContent='Add Question';
+  $('aeTextarea').value='';
+  showOverlay('aeOverlay',true);
 }
-
 function openEditModal(i){
-  aeMode="edit"; aeIndex=i; aeDirty=false;
-  $("aeTitle").textContent="Edit Question";
-  $("aeTextarea").value = survey[i] || "";
-  showOverlay("aeOverlay",true);
+  aeMode='edit'; aeIndex=i; aeDirty=false;
+  $('aeTitle').textContent='Edit Question';
+  $('aeTextarea').value=survey[i]||'';
+  showOverlay('aeOverlay',true);
 }
-
+function showOverlay(id,show){
+  const el=$(id); if(!el) return;
+  el.style.display = show ? 'flex' : 'none';
+  el.setAttribute('aria-hidden', show ? 'false' : 'true');
+}
 function wireAddEdit(){
-  var ta=$("aeTextarea");
-  ta.addEventListener("input",function(){ aeDirty=true; });
-
-  $("aeCancel").addEventListener("click",function(){
-    $("aeTextarea").value=""; aeDirty=false; showOverlay("aeOverlay",false);
+  const ta=$('aeTextarea');
+  ta.addEventListener('input',()=>aeDirty=true);
+  $('aeCancel').addEventListener('click',()=>{
+    $('aeTextarea').value=''; aeDirty=false; showOverlay('aeOverlay',false);
   });
-
-  $("aeSave").addEventListener("click",function(){
-    var v=ta.value.trim();
-    if(!v){ setStatus("Nothing to save",false); return; }
-    if(aeMode==="add") survey.push(v);
-    else if(aeMode==="edit"&&aeIndex>-1) survey[aeIndex]=v;
-    aeDirty=false; render(); setStatus("Saved");
+  $('aeSave').addEventListener('click',()=>{
+    const v=ta.value.trim(); if(!v){ setStatus('Nothing to save',false); return; }
+    if(aeMode==='add') survey.push(v);
+    else if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v;
+    aeDirty=false; render(); setStatus('Saved');
   });
-
-  $("aeSaveNew").addEventListener("click",function(){
-    var v=ta.value.trim();
-    if(!v){ setStatus("Nothing to save",false); return; }
-    if(aeMode==="edit"&&aeIndex>-1) survey[aeIndex]=v;
+  $('aeSaveNew').addEventListener('click',()=>{
+    const v=ta.value.trim(); if(!v){ setStatus('Nothing to save',false); return; }
+    if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v;
     else survey.push(v);
     render();
-    ta.value="";
-    aeMode="add"; aeIndex=-1; aeDirty=false;
-    setStatus("Saved. Ready for next.");
+    ta.value=''; aeMode='add'; aeIndex=-1; aeDirty=false;
+    setStatus('Saved. Ready for next.');
   });
-
-  $("aeClose").addEventListener("click", function(){
-    if(aeDirty && $("aeTextarea").value.trim()){
-      triConfirm("Save your question?","No","Cancel","Save").then(function(choice){
-        if(choice==="save"){
-          var v=$("aeTextarea").value.trim();
-          if(aeMode==="add") survey.push(v);
-          else if(aeMode==="edit"&&aeIndex>-1) survey[aeIndex]=v;
-          render(); aeDirty=false; showOverlay("aeOverlay",false); setStatus("Saved");
-        }else if(choice==="nosave"){
-          aeDirty=false; showOverlay("aeOverlay",false);
-        }
-      });
+  $('aeClose').addEventListener('click', async ()=>{
+    if(aeDirty && $('aeTextarea').value.trim()){
+      const choice=await triConfirm('Save your question?','No','Cancel','Save');
+      if(choice==='save'){
+        const v=$('aeTextarea').value.trim();
+        if(aeMode==='add') survey.push(v);
+        else if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v;
+        render(); aeDirty=false; showOverlay('aeOverlay',false); setStatus('Saved');
+      }else if(choice==='nosave'){
+        aeDirty=false; showOverlay('aeOverlay',false);
+      }
     }else{
-      showOverlay("aeOverlay",false);
+      showOverlay('aeOverlay',false);
     }
   });
 }
 
-function confirmRemove(i){
-  twoBtnConfirm("Remove this question?","Cancel","Remove").then(function(ok){
-    if(!ok) return;
-    survey.splice(i,1);
-    render();
-    setStatus("Question removed");
-  });
+async function confirmRemove(i){
+  const ok=await twoBtnConfirm('Remove this question?','Cancel','Remove');
+  if(!ok) return;
+  survey.splice(i,1);
+  render();
+  setStatus('Question removed');
 }
 
-function twoBtnConfirm(title,cancelLabel,okLabel){
-  if(cancelLabel === undefined) cancelLabel = "Cancel";
-  if(okLabel === undefined) okLabel = "OK";
-  return new Promise(function(resolve){
-    var ov=$("confirmOverlay");
-    $("confirmTitle").textContent=title;
-    $("confirmMsg").textContent="";
-    var ok=$("confirmOk"), cancel=$("confirmCancel");
-    ok.textContent=okLabel;
-    cancel.textContent=cancelLabel;
-    ov.style.display="flex";
-    ov.setAttribute("aria-hidden","false");
-    var done=function(v){
-      ov.style.display="none";
-      ov.setAttribute("aria-hidden","true");
-      ok.onclick=null;
-      cancel.onclick=null;
-      resolve(v);
+function twoBtnConfirm(title,cancelLabel='Cancel',okLabel='OK'){
+  return new Promise(resolve=>{
+    const ov=$('confirmOverlay');
+    $('confirmTitle').textContent=title;
+    $('confirmMsg').textContent='';
+    const ok=$('confirmOk'), cancel=$('confirmCancel');
+    ok.textContent=okLabel; cancel.textContent=cancelLabel;
+    ov.style.display='flex'; ov.setAttribute('aria-hidden','false');
+    const done=v=>{
+      ov.style.display='none'; ov.setAttribute('aria-hidden','true');
+      ok.onclick=cancel.onclick=null; resolve(v);
     };
-    ok.onclick = function(){ done(true); };
-    cancel.onclick = function(){ done(false); };
+    ok.onclick=()=>done(true);
+    cancel.onclick=()=>done(false);
   });
 }
 
-function triConfirm(title,left,mid,right){
-  if(left === undefined) left="No";
-  if(mid === undefined) mid="Cancel";
-  if(right === undefined) right="Yes";
-  return new Promise(function(resolve){
-    var ov=$("confirmOverlay");
-    $("confirmTitle").textContent=title;
-    $("confirmMsg").textContent="";
-    var ok=$("confirmOk"), cancel=$("confirmCancel"), wrap=ok.parentNode;
-    wrap.innerHTML="";
-    function make(label, primary){
-      var b=document.createElement("button");
-      b.className=primary?"btn primary":"btn";
-      b.type="button";
-      b.textContent=label;
-      return b;
-    }
-    var L = make(left,false);
-    var M = make(mid,false);
-    var R = make(right,true);
+function triConfirm(title,left='No',mid='Cancel',right='Yes'){
+  return new Promise(resolve=>{
+    const ov=$('confirmOverlay');
+    $('confirmTitle').textContent=title;
+    $('confirmMsg').textContent='';
+    const ok=$('confirmOk'), cancel=$('confirmCancel'), wrap=ok.parentNode;
+    wrap.innerHTML='';
+    const L=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent:left});
+    const M=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent=mid});
+    const R=Object.assign(document.createElement('button'),{className:'btn primary',type:'button',textContent:right});
     wrap.appendChild(L); wrap.appendChild(M); wrap.appendChild(R);
-    ov.style.display="flex";
-    ov.setAttribute("aria-hidden","false");
-    function cleanup(){
-      ov.style.display="none";
-      ov.setAttribute("aria-hidden","true");
-      wrap.innerHTML="";
-      wrap.appendChild(cancel);
-      wrap.appendChild(ok);
-    }
-    L.onclick=function(){ cleanup(); resolve("nosave"); };
-    M.onclick=function(){ cleanup(); resolve("cancel"); };
-    R.onclick=function(){ cleanup(); resolve("save"); };
+    ov.style.display='flex'; ov.setAttribute('aria-hidden','false');
+    const cleanup=()=>{
+      ov.style.display='none'; ov.setAttribute('aria-hidden','true');
+      wrap.innerHTML=''; wrap.appendChild(cancel); wrap.appendChild(ok);
+    };
+    L.onclick=()=>{ cleanup(); resolve('nosave'); };
+    M.onclick=()=>{ cleanup(); resolve('cancel'); };
+    R.onclick=()=>{ cleanup(); resolve('save'); };
   });
 }
 
 /* ========= Save to DB with file fallback ========= */
 async function saveToServer(){
-  var formOut = getMerged();
+  const formOut = { ...(schema||{}), survey: survey.slice() };
   try{
-    var res = await fetch(ADMIN_WRITE_URL, {
-      method:"PUT",
-      headers:{ "Content-Type":"application/json" },
+    const res = await fetch(ADMIN_WRITE_URL, {
+      method:'PUT',
+      headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ form: formOut })
     });
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    setStatus("Saved to server");
-    return "server";
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    console.log('[WidgetSurvey] saved to', ADMIN_WRITE_URL, 'for slug', SLUG);
+    setStatus('Saved to server');
+    return 'server';
   }catch(err){
-    console.error("Remote save failed, falling back to file:", err);
-    setStatus("Server save failed, saving to file instead", false);
-    var r = await saveToFilePicker(formOut, "form.json");
-    return r; // "saved" | "download" | "canceled"
+    console.error('Remote save failed, falling back to file:', err);
+    setStatus('Server save failed, saving to file instead', false);
+    const r = await saveToFilePicker(formOut, 'form.json');
+    return r; // 'saved' | 'download' | 'canceled'
   }
 }
 
-async function saveToFilePicker(jsonObj, suggestedName){
-  if (suggestedName === undefined) suggestedName = "form.json";
-  var blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:"application/json"});
-  if(!("showSaveFilePicker" in window)){
-    var a=document.createElement("a");
+async function saveToFilePicker(jsonObj, suggestedName='form.json'){
+  const blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:'application/json'});
+  if(!('showSaveFilePicker' in window)){
+    const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
-    a.setAttribute("download",suggestedName);
+    a.setAttribute('download',suggestedName);
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(a.href); },1000);
-    return "download";
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    return 'download';
   }
   try{
     if(_fileHandle){
-      var perm=await _fileHandle.requestPermission({mode:"readwrite"});
-      if(perm==="granted"){
-        var w=await _fileHandle.createWritable();
-        await w.write(blob); await w.close();
-        return "saved";
+      const perm=await _fileHandle.requestPermission({mode:'readwrite'});
+      if(perm==='granted'){
+        const w=await _fileHandle.createWritable();
+        await w.write(blob); await w.close(); return 'saved';
       }
     }
     _fileHandle=await window.showSaveFilePicker({
-      suggestedName:suggestedName,
-      types:[{description:"JSON", accept:{"application/json":[".json"]}}]
+      suggestedName,
+      types:[{description:'JSON', accept:{'application/json':['.json']}}]
     });
-    var w2=await _fileHandle.createWritable();
-    await w2.write(blob); await w2.close();
-    return "saved";
+    const w=await _fileHandle.createWritable();
+    await w.write(blob); await w.close(); return 'saved';
   }catch(e){
-    console.warn("Save canceled/failed:", e);
-    return "canceled";
+    console.warn('Save canceled/failed:', e);
+    return 'canceled';
   }
 }
 
-/* ========= Load (DB first → seed from /form.json if empty) ========= */
-/* ========= Load (DB first; only use form.json if admin fails) ========= */
+/* ========= Load (DB first; fallback to form.json ONLY if admin fails) ========= */
 async function load(){
-  // 1) Try the admin endpoint
-  try {
-    console.log("[WidgetSurvey] loading for slug=", SLUG, "via", ADMIN_READ_URL);
-
+  // 1) Try the Postgres-backed admin endpoint
+  try{
+    console.log('[WidgetSurvey] loading for slug=', SLUG, 'via', ADMIN_READ_URL);
     const r = await fetch(ADMIN_READ_URL, {
-      headers: { Accept: "application/json" },
-      cache: "no-store"
+      headers:{Accept:'application/json'},
+      cache:'no-store'
     });
-    if (!r.ok) throw new Error("admin read failed: " + r.status);
+    if(!r.ok) throw new Error('admin read failed: '+r.status);
+    const body = await r.json().catch(()=> ({}));
 
-    const body = await r.json().catch(() => ({}));
-
-    // Some endpoints return {form:{...}}, others just the form object
     const formObj =
-      body && typeof body === "object" && (body.form || body) ? (body.form || body) : {};
+      body && typeof body === 'object' && (body.form || body) ? (body.form || body) : {};
 
     schema = formObj;
     survey = Array.isArray(formObj.survey) ? formObj.survey.slice() : [];
 
-    $("meta").textContent =
-      (schema.headline || ("Questions for " + SLUG)) +
-      " • " +
-      new Date().toLocaleString();
+    $('meta').textContent =
+      (schema.headline || ('Questions for ' + SLUG)) +
+      ' • ' + (new Date()).toLocaleString() +
+      ` • slug=${SLUG}`;
 
     render();
-    return;            // ✅ admin worked – do NOT touch form.json
-  } catch (err) {
-    console.error("[WidgetSurvey] admin load failed, trying local form.json", err);
+    console.log('[WidgetSurvey] loaded from server', ADMIN_READ_URL);
+    return; // ✅ success – do not touch form.json
+  }catch(err){
+    console.error('[WidgetSurvey] admin load failed; trying local form.json', err);
   }
 
   // 2) Only if admin fails, try static form.json as a fallback
-  try {
-    const res = await fetch(FALLBACK_FORM_URL, { cache: "no-store" });
-    if (!res.ok) throw new Error("fallback not found: " + res.status);
-
-    const local = await res.json().catch(() => ({}));
-
+  try{
+    const res = await fetch(FALLBACK_FORM_URL, { cache:'no-store' });
+    if(!res.ok) throw new Error('fallback not found: '+res.status);
+    const local = await res.json().catch(()=> ({}));
     schema = local || {};
     survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
-
-    $("meta").textContent =
-      (schema.headline || "My Speaking Score") +
-      " • " +
-      new Date().toLocaleString();
-
+    $('meta').textContent =
+      (schema.headline || 'My Speaking Score') +
+      ' • ' + (new Date()).toLocaleString() +
+      ` • slug=${SLUG} (local)`;
     render();
-    setStatus("Loaded local form.json fallback", false);
-  } catch (e) {
-    console.error("[WidgetSurvey] fallback form.json load failed", e);
-    setStatus("Failed to load questions", false);
+    setStatus('Loaded local form.json fallback', false);
+  }catch(e){
+    console.error('[WidgetSurvey] fallback form.json load failed', e);
+    setStatus('Failed to load questions', false);
   }
 }
-/* ========= Row actions / boot ========= */
-function wireRowActions(){
-  var listEl=$("list");
-  listEl.addEventListener("click",function(e){
-    var btn=e.target.closest("button[data-act]");
-    if(!btn) return;
-    var row=btn.closest(".row");
-    if(!row) return;
-    var i=+row.getAttribute("data-idx");
-    var act=btn.getAttribute("data-act");
-    if(act==="edit")      openEditModal(i);
-    else if(act==="top")  moveTo(i,0);
-    else if(act==="up")   move(i,-1);
-    else if(act==="down") move(i,1);
-    else if(act==="bottom") moveTo(i,survey.length-1);
-    else if(act==="remove") confirmRemove(i);
-  });
-}
 
-/* ========= Finish dialog helpers ========= */
+/* ========= Finished dialog ========= */
 function showFinishDialog(){
-  return new Promise(function(resolve){
-    var ov = document.getElementById("finishOverlay");
-    ov.style.display = "flex";
-    ov.setAttribute("aria-hidden","false");
-    function close(result){
-      ov.style.display = "none";
-      ov.setAttribute("aria-hidden","true");
-      document.getElementById("finishSave").onclick   = null;
-      document.getElementById("finishNoSave").onclick = null;
-      document.getElementById("finishCancel").onclick = null;
+  return new Promise(resolve=>{
+    const ov = document.getElementById('finishOverlay');
+    ov.style.display = 'flex';
+    ov.setAttribute('aria-hidden','false');
+    const save   = document.getElementById('finishSave');
+    const noSave = document.getElementById('finishNoSave');
+    const cancel = document.getElementById('finishCancel');
+
+    const close = (result)=>{
+      ov.style.display = 'none';
+      ov.setAttribute('aria-hidden','true');
+      save.onclick = noSave.onclick = cancel.onclick = null;
       resolve(result);
-    }
-    document.getElementById("finishSave").onclick   = function(){ close("save"); };
-    document.getElementById("finishNoSave").onclick = function(){ close("nosave"); };
-    document.getElementById("finishCancel").onclick = function(){ close("cancel"); };
+    };
+
+    save.onclick   = ()=> close('save');
+    noSave.onclick = ()=> close('nosave');
+    cancel.onclick = ()=> close('cancel');
   });
 }
 
 async function finishedFlow(){
-  var choice = await showFinishDialog();
-  if (choice === "save"){
-    var r = await saveToServer();
-    if (r === "server")        setStatus("Saved to server");
-    else if (r === "saved")    setStatus("Saved to file");
-    else if (r === "download") setStatus("Downloaded");
+  const choice = await showFinishDialog();
+  if (choice === 'save'){
+    const r = await saveToServer();
+    if (r === 'server')      setStatus('Saved to server');
+    else if (r === 'saved')  setStatus('Saved to file');
+    else if (r === 'download') setStatus('Downloaded');
   }
+  // nosave / cancel => stay on page
 }
+
+/* ========= Row actions / boot ========= */
+function wireRowActions(){
+  const listEl=$('list');
+  listEl.addEventListener('click',(e)=>{
+    const btn=e.target.closest('button[data-act]'); if(!btn) return;
+    const row=btn.closest('.row'); if(!row) return;
+    const i=+row.dataset.idx;
+    switch(btn.dataset.act){
+      case 'edit':   openEditModal(i); break;
+      case 'top':    moveTo(i,0); break;
+      case 'up':     move(i,-1); break;
+      case 'down':   move(i,1); break;
+      case 'bottom': moveTo(i,survey.length-1); break;
+      case 'remove': confirmRemove(i); break;
+    }
+  });
+}
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  console.log(`🧩 MSS Questions Admin for slug="${SLUG}"`);
+  load();
+  wireRowActions();
+  $('addBtnTop').addEventListener('click', openAddModal);
+  $('addBtnBottom').addEventListener('click', openAddModal);
+  wireAddEdit();
+
+  // Export
+  $('exportBtnTop').addEventListener('click', ()=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(
+      new Blob([JSON.stringify(getMerged(),null,2)],{type:'application/json'})
+    );
+    a.setAttribute('download','form.json');
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    setStatus('Exported');
+  });
+  $('exportBtnBottom').addEventListener('click', ()=>$('exportBtnTop').click());
+
+  // Save to file (manual)
+  const saveMerged = async ()=>{
+    const r = await saveToFilePicker(getMerged(), 'form.json');
+    setStatus(
+      r==='saved' ? 'Saved to file' :
+      r==='download' ? 'Downloaded' : 'Canceled',
+      r!=='canceled'
+    );
+  };
+  $('saveToFileBtnTop').addEventListener('click', saveMerged);
+  $('saveToFileBtnBottom').addEventListener('click', saveMerged);
+
+  // Finished (Save dialog)
+  $('finishedBtnTop').addEventListener('click', finishedFlow);
+  $('finishedBtnBottom').addEventListener('click', finishedFlow);
+
+  // Imports
+  (function wireImportJson(){
+    const f=$('importJson');
+    f.addEventListener('change', async (e)=>{
+      const file=e.target.files&&e.target.files[0]; e.target.value=''; if(!file) return;
+      try{
+        const parsed=JSON.parse(await file.text());
+        if(!parsed||typeof parsed!=='object') throw new Error('Invalid JSON object.');
+        schema=parsed;
+        survey=Array.isArray(parsed.survey)?parsed.survey.slice():[];
+        setStatus('Imported JSON'); render();
+        $('meta').textContent=(schema.headline||'My Speaking Score')+
+          ' • '+(new Date()).toLocaleString();
+      }catch(err){ alert('Import failed: '+err.message); }
+    });
+  })();
+
+  (function wireImportCsv(){
+    const f=$('importCsv');
+    f.addEventListener('change', async (e)=>{
+      const file=e.target.files&&e.target.files[0]; e.target.value=''; if(!file) return;
+      const rows=parseCSV(await file.text());
+      if(!rows.length){ setStatus('CSV is empty',false); return; }
+      const col=findSingleDataColumn(rows);
+      if(col===-1){ alert('CSV must contain exactly one column with data.'); return; }
+      const first=String(rows[0][col]??'').trim().toLowerCase();
+      const hasHeader=(first==='name'||first==='title');
+      const start=hasHeader?1:0;
+      const qs=rows.slice(start).map(r=>normalizeCell(r[col])).filter(Boolean);
+      if(!qs.length){ setStatus('No questions parsed',false); return; }
+      const choice=await triConfirm('Append to existing questions?','Replace','Cancel','Append');
+      if(choice==='cancel') return;
+      if(choice==='save') survey=survey.concat(qs);
+      else if(choice==='nosave') survey=qs.slice();
+      render(); setStatus('CSV imported');
+    });
+  })();
+});
 
 /* ========= CSV helpers ========= */
 function normalizeCell(s){
-  if(s==null) return "";
-  var t=String(s).replace(/\r\n/g,"\n").trim();
-  t=t.replace(/\n+/g," // ").replace(/\s*\/\/\s*/g," // ");
+  if(s==null) return '';
+  let t=String(s).replace(/\r\n/g,'\n').trim();
+  t=t.replace(/\n+/g,' // ').replace(/\s*\/\/\s*/g,' // ');
   return t;
 }
-
 function parseCSV(text){
-  var rows=[];
-  var field="",row=[],inQ=false;
-  for(var i=0;i<text.length;i++){
-    var c=text[i],n=text[i+1];
+  const rows=[]; let field='',row=[],inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i],n=text[i+1];
     if(inQ){
       if(c==='"'&&n==='"'){ field+='"'; i++; }
       else if(c==='"'){ inQ=false; }
       else { field+=c; }
     }else{
-      if(c==='"'){ inQ=true; }
-      else if(c===","){ row.push(field); field=""; }
-      else if(c==="\n"){ row.push(field); field=""; rows.push(row); row=[]; }
-      else if(c!=="\r"){ field+=c; }
+      if(c==='\"'){ inQ=true; }
+      else if(c===','){ row.push(field); field=''; }
+      else if(c==='\n'){ row.push(field); field=''; rows.push(row); row=[]; }
+      else if(c!=='\r'){ field+=c; }
     }
   }
   row.push(field); rows.push(row);
-  while(rows.length && rows[rows.length-1].every(function(v){ return String(v).trim()===""; })) rows.pop();
+  while(rows.length && rows[rows.length-1].every(v=>String(v).trim()==='')) rows.pop();
   return rows;
 }
-
 function findSingleDataColumn(rows){
-  var max=0;
-  for(var i=0;i<rows.length;i++){
-    if(rows[i].length>max) max=rows[i].length;
-  }
-  var idx=-1;
-  for(var c=0;c<max;c++){
-    var has=false;
-    for(var r=0;r<rows.length;r++){
-      var v=rows[r][c];
-      if(v!=null && String(v).trim()!==""){ has=true; break; }
-    }
+  const max=Math.max(...rows.map(r=>r.length));
+  let idx=-1;
+  for(let c=0;c<max;c++){
+    const has=rows.some(r=>r[c]!=null&&String(r[c]).trim()!=='');
     if(has){
       if(idx!==-1) return -1;
       idx=c;
@@ -714,92 +682,6 @@ function findSingleDataColumn(rows){
   }
   return idx;
 }
-
-/* ========= boot ========= */
-window.addEventListener("DOMContentLoaded", function(){
-  console.log("[WidgetSurvey] MSS Questions Admin for slug=", SLUG);
-  load();
-  wireRowActions();
-  $("addBtnTop").addEventListener("click", openAddModal);
-  $("addBtnBottom").addEventListener("click", openAddModal);
-  wireAddEdit();
-
-  // Export
-  $("exportBtnTop").addEventListener("click", function(){
-    var a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob([JSON.stringify(getMerged(),null,2)],{type:"application/json"}));
-    a.setAttribute("download","form.json");
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(a.href); },1000);
-    setStatus("Exported");
-  });
-  $("exportBtnBottom").addEventListener("click", function(){ $("exportBtnTop").click(); });
-
-  // Save to file (explicit)
-  async function saveMerged(){
-    var r = await saveToFilePicker(getMerged(), "form.json");
-    setStatus(
-      r==="saved" ? "Saved to file" :
-      r==="download" ? "Downloaded" : "Canceled",
-      r!=="canceled"
-    );
-  }
-  $("saveToFileBtnTop").addEventListener("click", saveMerged);
-  $("saveToFileBtnBottom").addEventListener("click", saveMerged);
-
-  // Finished
-  $("finishedBtnTop").addEventListener("click", finishedFlow);
-  $("finishedBtnBottom").addEventListener("click", finishedFlow);
-
-  // Imports
-  (function wireImportJson(){
-    var f=$("importJson");
-    f.addEventListener("change", async function(e){
-      var file=e.target.files&&e.target.files[0];
-      e.target.value="";
-      if(!file) return;
-      try{
-        var parsed=JSON.parse(await file.text());
-        if(!parsed || typeof parsed!=="object") throw new Error("Invalid JSON object.");
-        schema=parsed;
-        survey=Array.isArray(parsed.survey)?parsed.survey.slice():[];
-        setStatus("Imported JSON");
-        render();
-        $("meta").textContent=(schema.headline||"My Speaking Score")+" • "+(new Date()).toLocaleString();
-      }catch(err){
-        alert("Import failed: "+err.message);
-      }
-    });
-  })();
-
-  (function wireImportCsv(){
-    var f=$("importCsv");
-    f.addEventListener("change", async function(e){
-      var file=e.target.files&&e.target.files[0];
-      e.target.value="";
-      if(!file) return;
-      var rows=parseCSV(await file.text());
-      if(!rows.length){ setStatus("CSV is empty",false); return; }
-      var col=findSingleDataColumn(rows);
-      if(col===-1){ alert("CSV must contain exactly one column with data."); return; }
-      var first=String(rows[0][col]||"").trim().toLowerCase();
-      var hasHeader=(first==="name"||first==="title");
-      var start=hasHeader?1:0;
-      var qs=[];
-      for(var i=0;i<rows.length-start;i++){
-        var v = normalizeCell(rows[start+i][col]);
-        if(v) qs.push(v);
-      }
-      if(!qs.length){ setStatus("No questions parsed",false); return; }
-      var choice=await triConfirm("Append to existing questions?","Replace","Cancel","Append");
-      if(choice==="cancel") return;
-      if(choice==="save") survey=survey.concat(qs);
-      else if(choice==="nosave") survey=qs.slice();
-      render();
-      setStatus("CSV imported");
-    });
-  })();
-});
 </script>
 </body>
 </html>
