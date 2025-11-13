@@ -1,4 +1,4 @@
-<!-- Build: 2025-11-13 07:40 ET (ConfigAdmin – Advanced global config) -->
+<!-- Build: 2025-11-13 11:05 ET (ConfigAdmin – Advanced per-slug config) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,6 +38,14 @@
     }
     .admin-nav a:hover{text-decoration:underline;}
     .admin-nav span{margin:0 4px;}
+    #slugTag{
+      font-size:11px;
+      padding:2px 6px;
+      border-radius:999px;
+      border:1px solid var(--edge);
+      background:#f9fafb;
+      color:#4b5563;
+    }
 
     .toolbar{
       margin-left:auto;
@@ -57,6 +65,7 @@
     }
     .btn.primary{background:var(--blue); color:#fff; border-color:transparent;}
     .btn.small{padding:7px 10px;border-radius:10px;}
+    .btn.ghost{background:#fff;}
 
     .wrap{
       max-width:1200px;
@@ -95,8 +104,7 @@
     }
     .row{display:grid; gap:6px; margin-bottom:12px;}
 
-    details{border-top:1px solid var(--edge);}
-    details:first-of-type{border-top:0;}
+    details{border-top:1px solid var(--edge);}    
     summary{
       cursor:pointer;
       list-style:none;
@@ -109,10 +117,10 @@
     }
     summary::-webkit-details-marker{display:none;}
     .chev{transition:transform .2s ease;}
-    details[open] .chev{transform:rotate(90deg);}
+    details[open] .chev{transform:rotate(90deg);}    
     .secInner{padding:0 14px 14px 14px;}
 
-    /* Preview (copied from WidgetAdmin with tiny tweaks) */
+    /* Preview */
     .pvShell{padding:18px;}
     .preview{
       background:#fff;
@@ -206,12 +214,14 @@
   <div style="display:flex;flex-direction:column;gap:2px;">
     <div class="title">Widget Config – Advanced</div>
     <div class="admin-nav">
-  <a href="../WidgetAdmin.html">Widget setup</a>
-  <span>·</span>
-  <a href="ConfigAdmin.html"><strong>Advanced config</strong></a>
-  <span>·</span>
-  <a href="../questions-admin/WidgetSurvey.html">Question editor</a>
-</div>
+      <a href="../WidgetAdmin.html">Widget setup</a>
+      <span>·</span>
+      <a href="ConfigAdmin.html"><strong>Advanced config</strong></a>
+      <span>·</span>
+      <a href="../questions-admin/WidgetSurvey.html">Question editor</a>
+      <span>·</span>
+      <span id="slugTag"></span>
+    </div>
   </div>
   <div class="toolbar">
     <button id="saveAll" type="button" class="btn primary">Save config…</button>
@@ -222,24 +232,37 @@
 <div class="wrap">
   <!-- LEFT: advanced controls -->
   <div class="card">
+    
+    <!-- Branding -->
     <details open>
-<div class="card" style="margin-bottom:16px;">
-  <details open>
-    <summary><span class="chev">▸</span> Branding</summary>
-    <div class="secInner">
-      <div class="sectionPad">
-        <div class="row">
-          <div class="label">Brand headline</div>
-          <input id="brandHeadline" type="text" placeholder="e.g. CEFR Assessment">
-        </div>
-        <div class="row">
-          <div class="label">“Powered by” label</div>
-          <input id="brandPoweredBy" type="text" placeholder="e.g. Powered by MSS Vox">
+      <summary><span class="chev">▸</span> Branding</summary>
+      <div class="secInner">
+        <div class="sectionPad">
+          <div class="row">
+            <div class="label">Brand headline</div>
+            <input id="brandHeadline" type="text" placeholder="e.g. CEFR Assessment">
+          </div>
+          <div class="row">
+            <div class="label">“Powered by” label</div>
+            <input id="brandPoweredBy" type="text" placeholder="e.g. Powered by MSS Vox">
+          </div>
+          <div class="row">
+            <div class="label">Brand image</div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <button type="button" class="btn ghost" id="brandImageBtn">Choose image…</button>
+              <input id="brandImageFile" type="file" accept="image/*" style="display:none;">
+              <span id="brandImageName" class="muted">No file chosen</span>
+            </div>
+            <div class="muted" style="margin-top:6px;">
+              Used as the logo in the widget header. PNG/JPG, ideally square (≤ 512 px).
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </details>
-</div>
+    </details>
+
+    <!-- API & Authentication -->
+    <details open>
       <summary><span class="chev">▸</span> API &amp; Authentication</summary>
       <div class="secInner">
         <div class="sectionPad">
@@ -268,12 +291,15 @@
           <div class="row">
             <div class="label">Admin write key (X-ADMIN-KEY)</div>
             <input id="adminWriteKey" type="password" placeholder="Used by Admin tools for PUT calls">
-            <div class="muted">Stored in <code>CONFIG.admin.writeKey</code> and reused by WidgetAdmin / ConfigAdmin.</div>
+            <div class="muted">
+              Stored in <code>CONFIG.admin.writeKey</code> and reused by WidgetAdmin / ConfigAdmin.
+            </div>
           </div>
         </div>
       </div>
     </details>
 
+    <!-- Logging & Uploads -->
     <details>
       <summary><span class="chev">▸</span> Logging &amp; Uploads</summary>
       <div class="secInner">
@@ -304,6 +330,7 @@
       </div>
     </details>
 
+    <!-- Audio limits & Theme -->
     <details>
       <summary><span class="chev">▸</span> Audio limits &amp; Theme</summary>
       <div class="secInner">
@@ -330,19 +357,20 @@
       </div>
     </details>
 
+    <!-- Labels & text -->
     <details>
-  <summary><span class="chev">▸</span> Labels &amp; text</summary>
-  <div class="secInner">
-    <div class="sectionPad">
-      <div class="muted" style="margin-bottom:8px;">
-        Toggle which labels appear in the widget and customise the wording below.
+      <summary><span class="chev">▸</span> Labels &amp; text</summary>
+      <div class="secInner">
+        <div class="sectionPad">
+          <div class="muted" style="margin-bottom:8px;">
+            Toggle which labels appear in the widget and customise the wording below.
+          </div>
+          <div id="labelsAdvanced"></div>
+          <hr style="border:none;border-top:1px solid var(--edge);margin:12px 0;">
+          <div id="labelsText"></div>
+        </div>
       </div>
-      <div id="labelsAdvanced"></div>
-      <hr style="border:none;border-top:1px solid var(--edge);margin:12px 0;">
-      <div id="labelsText"></div>
-    </div>
-  </div>
-</details>
+    </details>
 
     <div class="sectionPad" style="display:flex;gap:8px;justify-content:flex-end;">
       <button id="saveAllBottom" type="button" class="btn">Save config…</button>
@@ -353,7 +381,7 @@
   <div class="card pvShell">
     <h3 style="margin:0 0 8px 0; font-size:14px; padding:0 4px;">Preview</h3>
     <div class="muted" style="padding:0 4px 8px 4px;">
-      Uses current <code>form</code>, <code>config</code> and <code>image</code> from the server (or local JSON fallback).
+      Uses current <code>form</code>, <code>config</code> and <code>image</code> from the server (per slug, Postgres-backed with JSON fallback).
     </div>
     <div class="preview">
       <div class="pvHead">
@@ -387,7 +415,10 @@
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
-/* ========= shared constants (match WidgetAdmin) ========= */
+/* ========= SLUG + service base ========= */
+const params = new URLSearchParams(window.location.search);
+const SLUG = (params.get('slug') || 'mss-demo').trim();
+
 const SAVE_MODE = 'remote'; // 'remote' | 'local'
 
 const SERVICE_BASE = window.location.hostname.includes('localhost')
@@ -395,19 +426,19 @@ const SERVICE_BASE = window.location.hostname.includes('localhost')
   : 'https://msswidget-dev.onrender.com';
 
 const mode = SERVICE_BASE.includes('localhost') ? 'LOCAL DEV' : 'RENDER PROD';
-console.log(`🧩 ConfigAdmin running in ${mode} mode via`, SERVICE_BASE);
+console.log(`🧩 ConfigAdmin running in ${mode} mode for slug="${SLUG}" via`, SERVICE_BASE);
 
 /* ========= state ========= */
-let FORM = null;
-let CONFIG = null;
-let IMAGE = null;
-let idx = 0;
-
+let FORM = null;     // same per-slug form object used by Widget & WidgetSurvey
+let CONFIG = null;   // per-slug widget config
+let IMAGE = null;    // per-slug logo / image object
+let idx = 0;         // preview question index
 let _fhConfig = null; // local fallback for config only
 
 /* ========= helpers ========= */
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c] || c));
+const $  = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&':'&gt;'}[c] || c));
+
 function toast(msg, ok = true){
   const t = $('toast');
   t.textContent = msg;
@@ -416,6 +447,7 @@ function toast(msg, ok = true){
   clearTimeout(toast._t);
   toast._t = setTimeout(() => t.classList.remove('show'), 1800);
 }
+
 function getLogo(o){
   if (!o) return '';
   for (const k of ['logoDataUrl','dataUrl','logo','src','url','path']){
@@ -424,76 +456,122 @@ function getLogo(o){
   return '';
 }
 
-/* ========= load from server (with local JSON fallback) ========= */
+function adminHeaders(){
+  const h = { 'Content-Type': 'application/json' };
+  if (CONFIG && CONFIG.admin && CONFIG.admin.writeKey){
+    h['X-ADMIN-KEY'] = String(CONFIG.admin.writeKey);
+  }
+  return h;
+}
+
+/* ========= load all (Postgres per-slug with JSON fallback) ========= */
 async function loadAll(){
   const ts = Date.now();
-  const [f,c,i] = await Promise.allSettled([
-    fetch(`${SERVICE_BASE}/config/forms?ts=${ts}`,   { cache:'no-store' }),
-    fetch(`${SERVICE_BASE}/config/widget?ts=${ts}`,  { cache:'no-store' }),
-    fetch(`${SERVICE_BASE}/config/images?ts=${ts}`,  { cache:'no-store' })
-  ]);
 
-  // FORM
+  const base = SERVICE_BASE.replace(/\/+$/,'');
+  const formAdminUrl   = `${base}/api/admin/widget/${encodeURIComponent(SLUG)}`;
+  const formConfigUrl  = `${base}/config/forms?slug=${encodeURIComponent(SLUG)}&ts=${ts}`;
+  const configUrl      = `${base}/config/widget?slug=${encodeURIComponent(SLUG)}&ts=${ts}`;
+  const imagesUrl      = `${base}/config/images?slug=${encodeURIComponent(SLUG)}&ts=${ts}`;
+
+  // FORM (questions + labels)
   try{
-    if (f.status === 'fulfilled' && f.value.ok){
-      FORM = await f.value.json();
-    } else {
-      FORM = await (await fetch('form.json?ts='+ts,{cache:'no-store'})).json();
+    console.log('[ConfigAdmin] loading FORM from', formAdminUrl);
+    const r = await fetch(formAdminUrl, {
+      headers:{Accept:'application/json'},
+      cache:'no-store'
+    });
+    if (!r.ok) throw new Error('admin widget form failed: '+r.status);
+    const body = await r.json().catch(() => ({}));
+    const fObj = body && typeof body === 'object' && (body.form || body) ? (body.form || body) : {};
+    FORM = Object.assign({ headline:'Practice TOEFL Speaking Test', survey:[] }, fObj);
+  }catch(err1){
+    console.warn('[ConfigAdmin] admin widget form failed; trying /config/forms', err1);
+    try{
+      const r2 = await fetch(formConfigUrl, { cache:'no-store' });
+      if (!r2.ok) throw new Error('config/forms failed: '+r2.status);
+      FORM = await r2.json().catch(() => ({ headline:'Practice TOEFL Speaking Test', survey:[] }));
+    }catch(err2){
+      console.warn('[ConfigAdmin] /config/forms failed; falling back to local form.json', err2);
+      try{
+        const r3 = await fetch('form.json?ts='+ts, { cache:'no-store' });
+        if (!r3.ok) throw new Error('form.json missing: '+r3.status);
+        FORM = await r3.json().catch(() => ({ headline:'Practice TOEFL Speaking Test', survey:[] }));
+      }catch(err3){
+        console.error('[ConfigAdmin] all FORM loads failed; using empty default', err3);
+        FORM = { headline:'Practice TOEFL Speaking Test', survey:[] };
+      }
     }
-  }catch{
-    FORM = { headline:'Practice TOEFL Speaking Test', survey:[] };
   }
 
-  // CONFIG
+  // CONFIG (widget options)
   try{
-    if (c.status === 'fulfilled' && c.value.ok){
-      CONFIG = await c.value.json();
-    } else {
-      CONFIG = await (await fetch('config.json?ts='+ts,{cache:'no-store'})).json();
+    console.log('[ConfigAdmin] loading CONFIG from', configUrl);
+    const r = await fetch(configUrl, { cache:'no-store' });
+    if (!r.ok) throw new Error('config/widget failed: '+r.status);
+    CONFIG = await r.json().catch(() => null);
+  }catch(err){
+    console.warn('[ConfigAdmin] CONFIG load failed; falling back to local config.json', err);
+    try{
+      const r2 = await fetch('config.json?ts='+ts, { cache:'no-store' });
+      if (!r2.ok) throw new Error('local config.json missing: '+r2.status);
+      CONFIG = await r2.json().catch(() => null);
+    }catch(err2){
+      console.error('[ConfigAdmin] all CONFIG loads failed; using default skeleton', err2);
+      CONFIG = {
+        editable:{
+          headline:true,
+          recordButton:true,
+          previousButton:true,
+          nextButton:true,
+          poweredByLabel:true,
+          uploadButton:true,
+          stopButton:true,
+          NotRecordingLabel:true,
+          SubmitForScoringButton:true
+        },
+        theme:'apple',
+        api:{ enabled:true, baseUrl:'', key:'', secret:'' },
+        logger:{ enabled:false, url:'' },
+        upload:{ allowed:true },
+        audioMinSeconds:30,
+        audioMaxSeconds:61,
+        admin:{ writeKey:'' }
+      };
     }
-  }catch{
-    CONFIG = {
-            editable:{
-        headline:true,
-        recordButton:true,
-        previousButton:true,
-        nextButton:true,
-        poweredByLabel:true,
-        uploadButton:true,
-        stopButton:true,
-        NotRecordingLabel:true,
-        SubmitForScoringButton:true
-      },
-      theme:'apple',
-      api:{ enabled:true, baseUrl:'', key:'', secret:'' },
-      logger:{ enabled:false, url:'' },
-      upload:{ allowed:true },
-      audioMinSeconds:30,
-      audioMaxSeconds:61,
-      admin:{ writeKey:'' }
-    };
   }
 
-  // IMAGE
+  // IMAGE (logo)
   try{
-    if (i.status === 'fulfilled' && i.value.ok){
-      IMAGE = await i.value.json();
-    } else {
-      IMAGE = await (await fetch('image.json?ts='+ts,{cache:'no-store'})).json();
+    console.log('[ConfigAdmin] loading IMAGE from', imagesUrl);
+    const r = await fetch(imagesUrl, { cache:'no-store' });
+    if (!r.ok) throw new Error('config/images failed: '+r.status);
+    IMAGE = await r.json().catch(() => null) || { logoDataUrl:'' };
+  }catch(err){
+    console.warn('[ConfigAdmin] IMAGE load failed; falling back to local image.json', err);
+    try{
+      const r2 = await fetch('image.json?ts='+ts, { cache:'no-store' });
+      if (!r2.ok) throw new Error('local image.json missing: '+r2.status);
+      IMAGE = await r2.json().catch(() => ({ logoDataUrl:'' }));
+    }catch(err2){
+      console.error('[ConfigAdmin] all IMAGE loads failed; using empty image', err2);
+      IMAGE = { logoDataUrl:'' };
     }
-  }catch{
-    IMAGE = { logoDataUrl:'' };
   }
 
+  // Wire controls & render
+  $('slugTag').textContent = `slug=${SLUG}`;
   bindAdvancedControls();
   renderPreview();
 }
 
 /* ========= wire advanced form controls ========= */
 function bindAdvancedControls(){
-  // --- API ---
-// --- branding ---
-  FORM = FORM || {};
+  FORM = FORM || { headline:'', survey:[] };
+  CONFIG = CONFIG || {};
+  IMAGE = IMAGE || { logoDataUrl:'' };
+
+  // --- branding text ---
   $('brandHeadline').value = FORM.headline || '';
   $('brandHeadline').addEventListener('input', e => {
     FORM.headline = e.target.value;
@@ -505,301 +583,59 @@ function bindAdvancedControls(){
     FORM.poweredByLabel = e.target.value;
     renderPreview();
   });
-  const api = CONFIG.api || (CONFIG.api = {});
-  $('apiEnabled').checked = !!api.enabled;
+
+  // --- branding image ---
+  const brandBtn   = $('brandImageBtn');
+  const brandFile  = $('brandImageFile');
+  const brandName  = $('brandImageName');
+
+  if (brandBtn && brandFile && brandName){
+    const currentLogo = getLogo(IMAGE);
+    if (currentLogo){
+      brandName.textContent = 'Current logo loaded';
+    }
+
+    brandBtn.addEventListener('click', () => brandFile.click());
+
+    brandFile.addEventListener('change', () => {
+      const file = brandFile.files && brandFile.files[0];
+      if (!file){
+        brandName.textContent = 'No file chosen';
+        return;
+      }
+      brandName.textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = () => {
+        IMAGE = IMAGE || {};
+        IMAGE.logoDataUrl = reader.result;
+        renderPreview();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // --- API ---
+  CONFIG.api = CONFIG.api || {};
+  $('apiEnabled').checked = !!CONFIG.api.enabled;
   $('apiEnabled').addEventListener('change', e => {
-    api.enabled = e.target.checked;
+    CONFIG.api.enabled = e.target.checked;
   });
 
-  $('apiBase').value = api.baseUrl || '';
+  $('apiBase').value = CONFIG.api.baseUrl || '';
   $('apiBase').addEventListener('input', e => {
-    api.baseUrl = e.target.value.trim();
+    CONFIG.api.baseUrl = e.target.value.trim();
   });
 
-  $('apiKey').value = api.key || '';
+  $('apiKey').value = CONFIG.api.key || '';
   $('apiKey').addEventListener('input', e => {
-    api.key = e.target.value;
+    CONFIG.api.key = e.target.value;
   });
 
-  $('apiSecret').value = api.secret || '';
+  $('apiSecret').value = CONFIG.api.secret || '';
   $('apiSecret').addEventListener('input', e => {
-    api.secret = e.target.value;
+    CONFIG.api.secret = e.target.value;
   });
 
   CONFIG.admin = CONFIG.admin || {};
   $('adminWriteKey').value = CONFIG.admin.writeKey || '';
-  $('adminWriteKey').addEventListener('input', e => {
-    CONFIG.admin.writeKey = e.target.value;
-  });
-
-  // --- logging & uploads ---
-  CONFIG.logger = CONFIG.logger || {};
-  $('logEnabled').checked = !!CONFIG.logger.enabled;
-  $('logEnabled').addEventListener('change', e => {
-    CONFIG.logger.enabled = e.target.checked;
-  });
-
-  $('logUrl').value = CONFIG.logger.url || '';
-  $('logUrl').addEventListener('input', e => {
-    CONFIG.logger.url = e.target.value.trim();
-  });
-
-  CONFIG.upload = CONFIG.upload || {};
-  $('permitUpload').checked = CONFIG.upload.allowed !== false; // default true
-  $('permitUpload').addEventListener('change', e => {
-    CONFIG.upload.allowed = e.target.checked;
-    renderPreview();
-  });
-
-  // --- audio + theme ---
-  $('minSeconds').value = Number(CONFIG.audioMinSeconds ?? 30);
-  $('maxSeconds').value = Number(CONFIG.audioMaxSeconds ?? 61);
-
-  $('minSeconds').addEventListener('input', e => {
-    const v = Math.max(1, Number(e.target.value || 30));
-    CONFIG.audioMinSeconds = v;
-    renderPreview();
-  });
-  $('maxSeconds').addEventListener('input', e => {
-    const v = Math.max(1, Number(e.target.value || 61));
-    CONFIG.audioMaxSeconds = v;
-    renderPreview();
-  });
-
-  $('themeSelect').value = (CONFIG.theme || 'apple').toLowerCase();
-  $('themeSelect').addEventListener('change', e => {
-    CONFIG.theme = e.target.value;
-  });
-
-  // --- label visibility ---
-  buildLabelVisibilityControls();
-}
-
-/* ========= label visibility checkboxes ========= */
-function buildLabelVisibilityControls(){
-  const visContainer = $('labelsAdvanced');
-  const textContainer = $('labelsText');
-  if (!visContainer) return;
-  visContainer.innerHTML = '';
-  if (textContainer) textContainer.innerHTML = '';
-
-  CONFIG.editable = CONFIG.editable || {};
-  FORM = FORM || {};
-
-  const defs = [
-    ['headline','Headline text'],
-    ['recordButton','Record button text'],
-    ['stopButton','Stop button text'],
-    ['uploadButton','Upload button text'],
-    ['SubmitForScoringButton','Submit button text'],
-    ['previousButton','Previous button text'],
-    ['nextButton','Next button text'],
-    ['poweredByLabel','“Powered by” label'],
-    ['NotRecordingLabel','“Not recording” label']
-  ];
-
-  // Visibility checkboxes
-  defs.forEach(([key,label]) => {
-    if (!(key in CONFIG.editable)) CONFIG.editable[key] = true;
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = `
-      <label class="label">
-        <input type="checkbox" data-key="${key}" ${CONFIG.editable[key] ? 'checked' : ''} style="margin-right:6px;">
-        Show ${esc(label)}
-      </label>
-    `;
-    visContainer.appendChild(row);
-  });
-
-  visContainer.addEventListener('change', (e) => {
-    const cb = e.target.closest('input[type="checkbox"][data-key]');
-    if (!cb) return;
-    const k = cb.getAttribute('data-key');
-    CONFIG.editable[k] = cb.checked;
-    renderPreview();
-  });
-
-  // Text editors
-  if (!textContainer) return;
-
-  const pretty = (k) => {
-    if (k === 'SubmitForScoringButton') return 'Submit for scoring button';
-    if (k === 'NotRecordingLabel') return '“Not recording” label';
-    return k.replace(/([A-Z])/g,' $1').replace(/^./, c => c.toUpperCase());
-  };
-
-  defs.forEach(([field, label]) => {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = `
-      <div class="label">${esc(pretty(field))}</div>
-      <input type="text" data-field="${field}" placeholder="${esc(label)}"
-             value="${esc(FORM[field] || '')}">
-    `;
-    textContainer.appendChild(row);
-  });
-
-  textContainer.addEventListener('input', (e) => {
-    const input = e.target.closest('input[data-field]');
-    if (!input) return;
-    const field = input.getAttribute('data-field');
-    FORM[field] = input.value;
-    renderPreview();
-  });
-}
-/* ========= preview ========= */
-function renderPreview(){
-  const logoUrl = getLogo(IMAGE);
-  if ($('pvLogo')) $('pvLogo').src = logoUrl || '';
-  if ($('pvBrand')) $('pvBrand').textContent = FORM.headline || '';
-
-  const survey = Array.isArray(FORM.survey) ? FORM.survey : [];
-  if (!survey.length){
-    $('pvCounter').textContent = '';
-    $('pvQ').innerHTML = '<i>(No questions)</i>';
-  }else{
-    if (idx < 0) idx = 0;
-    if (idx > survey.length - 1) idx = survey.length - 1;
-    $('pvCounter').textContent = `Question ${idx+1} of ${survey.length}`;
-    $('pvQ').innerHTML = esc(survey[idx]).replace(/\n+/g,'<br>');
-  }
-
-  // Label-driven preview text
-  const editable = CONFIG.editable || {};
-  const getLabel = (field, fallback) =>
-    editable[field] === false ? '' : (FORM[field] || fallback);
-
-  const canUpload = CONFIG.upload && CONFIG.upload.allowed !== false;
-
-  $('pvRecordBtn').textContent = getLabel('recordButton','Record your response') || 'Record';
-  $('pvStopBtn').textContent   = getLabel('stopButton','Stop') || 'Stop';
-  $('pvUploadBtn').textContent = canUpload
-    ? (getLabel('uploadButton','Choose an audio file') || 'Choose file')
-    : 'Uploads disabled';
-  $('pvUploadBtn').style.opacity = canUpload ? 0.55 : 0.25;
-
-  $('pvSubmitBtn').textContent = getLabel('SubmitForScoringButton','Submit for scoring') || 'Submit';
-  $('pvRecState').textContent  = getLabel('NotRecordingLabel','Not recording') || 'Not recording';
-
-  const showPowered = editable.poweredByLabel !== false;
-  $('pvPowered').style.display = showPowered ? '' : 'none';
-  if (showPowered){
-    $('pvPowered').textContent = FORM.poweredByLabel || 'Powered by MSS Vox';
-  }
-
-  const minS = Number(CONFIG.audioMinSeconds ?? 30);
-  const maxS = Number(CONFIG.audioMaxSeconds ?? 61);
-  const mins = String(Math.floor(minS/60)).padStart(2,'0');
-  const secs = String(minS % 60).padStart(2,'0');
-  const maxm = String(Math.floor(maxS/60)).padStart(2,'0');
-  const maxs = String(maxS % 60).padStart(2,'0');
-  $('pvLength').textContent = `Allowed length: ${mins}:${secs}–${maxm}:${maxs}`;
-}
-
-/* ========= preview nav ========= */
-$('pvPrev')?.addEventListener('click', () => {
-  const s = Array.isArray(FORM?.survey) ? FORM.survey : [];
-  if (!s.length) return;
-  idx = (idx - 1 + s.length) % s.length;
-  renderPreview();
-});
-$('pvNext')?.addEventListener('click', () => {
-  const s = Array.isArray(FORM?.survey) ? FORM.survey : [];
-  if (!s.length) return;
-  idx = (idx + 1) % s.length;
-  renderPreview();
-});
-
-/* ========= saving ========= */
-function adminHeaders(){
-  const h = { 'Content-Type': 'application/json' };
-  if (CONFIG && CONFIG.admin && CONFIG.admin.writeKey){
-    h['X-ADMIN-KEY'] = String(CONFIG.admin.writeKey);
-  }
-  return h;
-}
-
-async function saveFormRemote(){
-  const base = SERVICE_BASE.replace(/\/+$/,'');
-  const res = await fetch(`${base}/config/forms`, {
-    method:'PUT',
-    headers: adminHeaders(),
-    body: JSON.stringify(FORM ?? {}, null, 2)
-  });
-  if (!res.ok) throw new Error(`PUT /config/forms → ${res.status}`);
-  await res.json().catch(() => ({}));
-}
-
-async function saveRemote(){
-  const base = SERVICE_BASE.replace(/\/+$/,'');
-  const res = await fetch(`${base}/config/widget`, {
-    method:'PUT',
-    headers: adminHeaders(),
-    body: JSON.stringify(CONFIG ?? {}, null, 2)
-  });
-  if (!res.ok) throw new Error(`PUT /config/widget → ${res.status}`);
-  await res.json().catch(() => ({}));
-}
-
-async function saveLocal(){
-  const blob = new Blob([JSON.stringify(CONFIG ?? {},null,2)], { type:'application/json' });
-  if (window.showSaveFilePicker){
-    try{
-      if (_fhConfig){
-        const perm = await _fhConfig.requestPermission({mode:'readwrite'});
-        if (perm === 'granted'){
-          const w = await _fhConfig.createWritable();
-          await w.write(blob); await w.close();
-          return;
-        }
-      }
-      _fhConfig = await window.showSaveFilePicker({
-        suggestedName:'config.json',
-        types:[{description:'JSON',accept:{'application/json':['.json']}}]
-      });
-      const w = await _fhConfig.createWritable();
-      await w.write(blob); await w.close();
-      return;
-    }catch(e){
-      // canceled → fallback to download link
-    }
-  }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'config.json';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-async function handleSave(){
-  try{
-        if (SAVE_MODE === 'remote'){
-      await Promise.all([
-        saveRemote(),
-        saveFormRemote()
-      ]);
-      toast('Config & labels saved to server');
-    }else{
-      await saveLocal();
-      toast('Config downloaded to file');
-    }
-  }catch(err){
-    console.warn('Remote save failed; falling back to local file', err);
-    toast('Server save failed. Downloading config.json…', false);
-    await saveLocal();
-  }
-}
-
-/* ========= wire buttons & boot ========= */
-window.addEventListener('DOMContentLoaded', async () => {
-  await loadAll();
-  $('saveAll')?.addEventListener('click', handleSave);
-  $('saveAllBottom')?.addEventListener('click', handleSave);
-  $('openWidget')?.addEventListener('click', () => {
-    window.open('../Widget.html','_blank','noopener');
-  });
-});
-</script>
-</body>
-</html>
+  $('adminWriteKey').addEventListener
