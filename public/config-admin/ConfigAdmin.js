@@ -1,14 +1,33 @@
-// MSS Widget MT – ConfigAdmin.js – 2025-11-13 15:00 EST
+// MSS Widget MT – ConfigAdmin.js – 2025-11-13 15:30 EST
 
 /* -------------------------------------------------------------
    Slug + endpoints (per-slug Postgres via /api/admin/widget/:slug)
 ------------------------------------------------------------- */
 
 // Resolve slug the same way Widget.html does
-// MSS Widget MT – ConfigAdmin.js – slug + admin base
+const urlParams = new URLSearchParams(window.location.search);
+const urlSlug = urlParams.get("slug");
+const rawSlug = urlSlug || window.mssWidgetSlug || "mss-demo";
+const SLUG = rawSlug.trim();
 
-// Resolve slug the same way Widget.html does
-// Base path for local JSON fallbacks (e.g., /config-admin)
+// Choose the correct admin API host
+let ADMIN_BASE;
+if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+  // local dev – your Express server
+  ADMIN_BASE = "http://localhost:3000";
+} else if (location.hostname.endsWith("vercel.app")) {
+  // prod frontend on Vercel – API on Render
+  ADMIN_BASE = "https://mss-widget-mt.onrender.com";
+} else {
+  // fallback: same origin
+  ADMIN_BASE = window.location.origin;
+}
+
+// Final admin URL (used by GET + PUT)
+const ADMIN_URL =
+  ADMIN_BASE + "/api/admin/widget/" + encodeURIComponent(SLUG);
+
+// Base path for this admin page (e.g. "/config-admin")
 const BASE_PATH = window.location.pathname.replace(/\/[^/]*$/, "");
 
 // Local JSON fallbacks live alongside ConfigAdmin.html
@@ -256,7 +275,8 @@ function populateFields() {
   if ($("cfgNextLabel")) $("cfgNextLabel").value = f.nextButton || "";
   if ($("cfgUploadLabel")) $("cfgUploadLabel").value = f.uploadButton || "";
   if ($("cfgStopLabel")) $("cfgStopLabel").value = f.stopButton || "";
-  if ($("cfgNotRecordingLabel")) $("cfgNotRecordingLabel").value = f.NotRecordingLabel || "";
+  if ($("cfgNotRecordingLabel"))
+    $("cfgNotRecordingLabel").value = f.NotRecordingLabel || "";
   if ($("cfgSubmitLabel")) $("cfgSubmitLabel").value = f.SubmitForScoringButton || "";
 }
 
