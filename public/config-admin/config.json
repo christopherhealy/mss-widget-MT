@@ -1,0 +1,31 @@
+
+{
+  "editable": {
+    "headline": true,
+    "recordButton": true,
+    "previousButton": true,
+    "nextButton": true,
+    "poweredByLabel": true,
+    "uploadButton": true,
+    "stopButton": true,
+    "NotRecordingLabel": true,
+    "SubmitForScoringButton": true
+  },
+  "theme": "apple",
+
+  "api": {
+    "enabled": true,
+    "baseUrl": "https://app.myspeakingscore.com",
+    "key": "6830272b-7a34-4341-a367-8eb840664976",
+    "secret": "1e9f78e2-ec19-4727-8434-fd7df9a8bd5a"
+  },
+
+  "logger": {
+    "enabled": true,
+    "url": "https://mss-widget-mt.onrender.com/log/submission"
+  },
+
+  "Permitupload": true,
+  "audioMinSeconds": 20,
+  "audioMaxSeconds": 100
+}
