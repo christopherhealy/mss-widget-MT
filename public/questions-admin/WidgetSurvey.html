@@ -1,4 +1,4 @@
-<!-- Build: 2025-11-12 17:05 ET (WS v3.3 merged) -->
+<!-- Build: 2025-11-12 23:10 ET (WS v3.4 clean) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -188,120 +188,126 @@
 const params = new URLSearchParams(location.search);
 const SLUG = (params.get("slug") || "mss-demo").trim();
 
-const ADMIN_READ_URL  = `/api/admin/widget/${encodeURIComponent(SLUG)}`;
-const ADMIN_WRITE_URL = `/api/admin/widget/${encodeURIComponent(SLUG)}`; // PUT with {form:{...}}
-const FALLBACK_FORM_URL = `./form.json?ts=${Date.now()}`;
+const ADMIN_READ_URL  = "/api/admin/widget/" + encodeURIComponent(SLUG);
+const ADMIN_WRITE_URL = "/api/admin/widget/" + encodeURIComponent(SLUG); // PUT {form:{...}}
+const FALLBACK_FORM_URL = "./form.json?ts=" + Date.now();
 
 /* ========= state ========= */
 let schema = null;          // latest server form object
 let survey = [];            // editable list
 let _fileHandle = null;
-let aeMode = 'add';
+let aeMode = "add";
 let aeIndex = -1;
 let aeDirty = false;
 
 /* ========= helpers ========= */
-const $ = (id)=>document.getElementById(id);
+function $(id){ return document.getElementById(id); }
 
-function setStatus(msg, ok=true){
-  const el = $('status'); if(!el) return;
-  el.textContent = (ok ? '✅ ' : '⚠️ ') + msg;
-  el.style.color = ok ? 'green' : '#b45309';
+function setStatus(msg, ok){
+  if (ok === undefined) ok = true;
+  const el = $("status"); if(!el) return;
+  el.textContent = (ok ? "✅ " : "⚠️ ") + msg;
+  el.style.color = ok ? "green" : "#b45309";
   clearTimeout(setStatus._t);
-  setStatus._t = setTimeout(()=>{ el.textContent=''; }, 1800);
+  setStatus._t = setTimeout(function(){ el.textContent=""; }, 1800);
 }
 
 function escapeHtml(s){
-  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+  return String(s).replace(/[&<>]/g, function(c){ return map[c] || c; });
 }
 
 function summarize(q){
   const parts = String(q).split(/\n+/);
-  const head = escapeHtml(parts[0] || '');
-  const rest = escapeHtml(parts.slice(1).join('\n'));
-  return `<div class="qtext"><div class="qfirst">${head}</div>` +
-         (rest ? `<div class="muted" style="margin-top:4px;white-space:pre-line">${rest}</div>` : '') +
-         `</div>`;
+  const head = escapeHtml(parts[0] || "");
+  const rest = escapeHtml(parts.slice(1).join("\n"));
+  var html = '<div class="qtext"><div class="qfirst">' + head + "</div>";
+  if (rest){
+    html += '<div class="muted" style="margin-top:4px;white-space:pre-line">' + rest + "</div>";
+  }
+  html += "</div>";
+  return html;
 }
 
 function getMerged(){
-  return { ...(schema||{}), survey: survey.slice() };
+  var merged = {};
+  if (schema && typeof schema === "object"){
+    for (var k in schema){ if (Object.prototype.hasOwnProperty.call(schema,k)) merged[k] = schema[k]; }
+  }
+  merged.survey = survey.slice();
+  return merged;
 }
 
 /* ========= render list ========= */
 function move(i, d){
-  const j = i + d;
+  var j = i + d;
   if (j < 0 || j >= survey.length) return;
-  [survey[i], survey[j]] = [survey[j], survey[i]];
+  var tmp = survey[i];
+  survey[i] = survey[j];
+  survey[j] = tmp;
   render();
 }
 
 function moveTo(i, dest){
   dest = Math.max(0, Math.min(dest, survey.length - 1));
   if (i === dest) return;
-  const it = survey.splice(i, 1)[0];
+  var it = survey.splice(i, 1)[0];
   survey.splice(dest, 0, it);
   render();
 }
 
 function render(){
-  const list = $('list');
+  var list = $("list");
   if (!survey.length){
-    list.innerHTML = `<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>`;
+    list.innerHTML = '<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>';
     return;
   }
-  list.innerHTML = survey.map((q,i)=>`
-    <div class="row" data-idx="${i}" draggable="true">
-      <div class="idx" title="Drag to reorder">${i+1}</div>
-      <div>${summarize(q)}</div>
-      <div class="ctrls">
-        <button type="button" class="btn" data-act="edit">Edit</button>
-        <button type="button" class="btn" data-act="top">Top</button>
-        <button type="button" class="btn" data-act="up">Up</button>
-        <button type="button" class="btn" data-act="down">Down</button>
-        <button type="button" class="btn" data-act="bottom">Bottom</button>
-        <button type="button" class="btn" data-act="remove">✕</button>
-      </div>
-    </div>
-  `).join('');
+  var html = "";
+  for (var i=0;i<survey.length;i++){
+    html +=
+      '<div class="row" data-idx="' + i + '" draggable="true">' +
+        '<div class="idx" title="Drag to reorder">' + (i+1) + "</div>" +
+        "<div>" + summarize(survey[i]) + "</div>" +
+        '<div class="ctrls">' +
+          '<button type="button" class="btn" data-act="edit">Edit</button>' +
+          '<button type="button" class="btn" data-act="top">Top</button>' +
+          '<button type="button" class="btn" data-act="up">Up</button>' +
+          '<button type="button" class="btn" data-act="down">Down</button>' +
+          '<button type="button" class="btn" data-act="bottom">Bottom</button>' +
+          '<button type="button" class="btn" data-act="remove">✕</button>' +
+        "</div>" +
+      "</div>";
+  }
+  list.innerHTML = html;
   wireDnd(list);
 }
 
 /* ========= DnD ========= */
 function wireDnd(container){
-  let ph=null, dragging=null, src=null;
-  container.querySelectorAll('.row').forEach(row=>{
-    row.dataset.allow="";
-    row.addEventListener('dragstart',start);
-    row.addEventListener('dragend',end);
-    row.querySelector('.idx').addEventListener('pointerdown',()=>{
-      row.dataset.allow="1";
-    },{passive:true});
-  });
-  container.addEventListener('dragover',over);
-  container.addEventListener('drop',drop);
+  var ph=null, dragging=null, src=null;
 
   function start(e){
-    const row=e.currentTarget;
-    if(row.dataset.allow!=="1"){ e.preventDefault(); return; }
-    row.dataset.allow="";
-    dragging=row; src=+row.dataset.idx; row.classList.add('dragging');
-    ph=document.createElement('div');
-    ph.className='placeholder';
-    ph.style.height=row.getBoundingClientRect().height+'px';
-    row.after(ph);
-    e.dataTransfer.effectAllowed='move';
+    var row=e.currentTarget;
+    if(row.getAttribute("data-allow")!=="1"){ e.preventDefault(); return; }
+    row.setAttribute("data-allow","");
+    dragging=row; src=+row.getAttribute("data-idx");
+    row.classList.add("dragging");
+    ph=document.createElement("div");
+    ph.className="placeholder";
+    ph.style.height=row.getBoundingClientRect().height+"px";
+    row.parentNode.insertBefore(ph, row.nextSibling);
+    e.dataTransfer.effectAllowed="move";
     try{
-      e.dataTransfer.setData('text/plain',String(src));
-      e.dataTransfer.setDragImage(row.querySelector('.idx')||row,16,16);
-    }catch{}
+      e.dataTransfer.setData("text/plain",String(src));
+      e.dataTransfer.setDragImage(row.querySelector(".idx")||row,16,16);
+    }catch(_){}
   }
 
   function over(e){
     if(!dragging||!ph) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect='move';
-    const after=getAfter(container,e.clientY);
+    e.dataTransfer.dropEffect="move";
+    var after=getAfter(container,e.clientY);
     if(after==null) container.appendChild(ph);
     else container.insertBefore(ph,after);
   }
@@ -309,16 +315,18 @@ function wireDnd(container){
   function drop(e){
     if(!dragging||!ph) return;
     e.preventDefault();
-    let target=0;
-    for(const c of container.children){
+    var children = container.children;
+    var target=0;
+    for(var i=0;i<children.length;i++){
+      var c = children[i];
       if(c===ph) break;
-      if(c.classList.contains('row')) target++;
+      if(c.classList && c.classList.contains("row")) target++;
     }
-    const from=src;
+    var from=src;
     if(from<target) target--;
     cleanup();
     if(from==null||from===target) return;
-    const [m]=survey.splice(from,1);
+    var m = survey.splice(from,1)[0];
     survey.splice(target,0,m);
     render();
   }
@@ -326,327 +334,377 @@ function wireDnd(container){
   function end(){ cleanup(); }
 
   function cleanup(){
-    container.querySelectorAll('.row').forEach(r=>r.dataset.allow="");
-    if(dragging) dragging.classList.remove('dragging');
+    var rows = container.querySelectorAll(".row");
+    for(var i=0;i<rows.length;i++) rows[i].setAttribute("data-allow","");
+    if(dragging) dragging.classList.remove("dragging");
     dragging=null; src=null;
-    if(ph) ph.remove();
+    if(ph && ph.parentNode) ph.parentNode.removeChild(ph);
     ph=null;
   }
 
   function getAfter(container,y){
-    const rows=[...container.querySelectorAll('.row:not(.dragging)')];
-    return rows.reduce((c,ch)=>{
-      const box=ch.getBoundingClientRect();
-      const off=y-box.top-box.height/2;
-      return (off<0&&off>c.offset)?{offset:off,element:ch}:c;
-    }, {offset:-Infinity,element:null}).element;
+    var rows = container.querySelectorAll(".row:not(.dragging)");
+    var bestOffset = -Infinity;
+    var bestElem = null;
+    for(var i=0;i<rows.length;i++){
+      var ch = rows[i];
+      var box=ch.getBoundingClientRect();
+      var off=y-box.top-box.height/2;
+      if(off<0 && off>bestOffset){
+        bestOffset = off;
+        bestElem = ch;
+      }
+    }
+    return bestElem;
   }
+
+  var rowEls = container.querySelectorAll(".row");
+  for(var i=0;i<rowEls.length;i++){
+    var row = rowEls[i];
+    row.setAttribute("data-allow","");
+    row.addEventListener("dragstart",start);
+    row.addEventListener("dragend",end);
+    var idxBtn = row.querySelector(".idx");
+    idxBtn.addEventListener("pointerdown", (function(r){
+      return function(){ r.setAttribute("data-allow","1"); };
+    })(row), {passive:true});
+  }
+  container.addEventListener("dragover",over);
+  container.addEventListener("drop",drop);
 }
 
 /* ========= Modals / confirms ========= */
 function showOverlay(id,show){
-  const el=$(id);
+  var el=$(id);
   if(!el) return;
-  el.style.display = show ? 'flex' : 'none';
-  el.setAttribute('aria-hidden', show ? 'false' : 'true');
+  el.style.display = show ? "flex" : "none";
+  el.setAttribute("aria-hidden", show ? "false" : "true");
 }
 
 function openAddModal(){
-  aeMode='add'; aeIndex=-1; aeDirty=false;
-  $('aeTitle').textContent='Add Question';
-  $('aeTextarea').value='';
-  showOverlay('aeOverlay',true);
+  aeMode="add"; aeIndex=-1; aeDirty=false;
+  $("aeTitle").textContent="Add Question";
+  $("aeTextarea").value="";
+  showOverlay("aeOverlay",true);
 }
 
 function openEditModal(i){
-  aeMode='edit'; aeIndex=i; aeDirty=false;
-  $('aeTitle').textContent='Edit Question';
-  $('aeTextarea').value = survey[i] || '';
-  showOverlay('aeOverlay',true);
+  aeMode="edit"; aeIndex=i; aeDirty=false;
+  $("aeTitle").textContent="Edit Question";
+  $("aeTextarea").value = survey[i] || "";
+  showOverlay("aeOverlay",true);
 }
 
 function wireAddEdit(){
-  const ta=$('aeTextarea');
-  ta.addEventListener('input',()=>aeDirty=true);
+  var ta=$("aeTextarea");
+  ta.addEventListener("input",function(){ aeDirty=true; });
 
-  $('aeCancel').addEventListener('click',()=>{
-    $('aeTextarea').value=''; aeDirty=false; showOverlay('aeOverlay',false);
+  $("aeCancel").addEventListener("click",function(){
+    $("aeTextarea").value=""; aeDirty=false; showOverlay("aeOverlay",false);
   });
 
-  $('aeSave').addEventListener('click',()=>{
-    const v=ta.value.trim();
-    if(!v){ setStatus('Nothing to save',false); return; }
-    if(aeMode==='add') survey.push(v);
-    else if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v;
-    aeDirty=false; render(); setStatus('Saved');
+  $("aeSave").addEventListener("click",function(){
+    var v=ta.value.trim();
+    if(!v){ setStatus("Nothing to save",false); return; }
+    if(aeMode==="add") survey.push(v);
+    else if(aeMode==="edit"&&aeIndex>-1) survey[aeIndex]=v;
+    aeDirty=false; render(); setStatus("Saved");
   });
 
-  $('aeSaveNew').addEventListener('click',()=>{
-    const v=ta.value.trim();
-    if(!v){ setStatus('Nothing to save',false); return; }
-    if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v;
+  $("aeSaveNew").addEventListener("click",function(){
+    var v=ta.value.trim();
+    if(!v){ setStatus("Nothing to save",false); return; }
+    if(aeMode==="edit"&&aeIndex>-1) survey[aeIndex]=v;
     else survey.push(v);
     render();
-    ta.value='';
-    aeMode='add'; aeIndex=-1; aeDirty=false;
-    setStatus('Saved. Ready for next.');
+    ta.value="";
+    aeMode="add"; aeIndex=-1; aeDirty=false;
+    setStatus("Saved. Ready for next.");
   });
 
-  $('aeClose').addEventListener('click', async ()=>{
-    if(aeDirty && $('aeTextarea').value.trim()){
-      const choice = await triConfirm('Save your question?','No','Cancel','Save');
-      if(choice==='save'){
-        const v=$('aeTextarea').value.trim();
-        if(aeMode==='add') survey.push(v);
-        else if(aeMode==='edit'&&aeIndex>-1) survey[aeIndex]=v;
-        render(); aeDirty=false; showOverlay('aeOverlay',false); setStatus('Saved');
-      }else if(choice==='nosave'){
-        aeDirty=false; showOverlay('aeOverlay',false);
-      }
+  $("aeClose").addEventListener("click", function(){
+    if(aeDirty && $("aeTextarea").value.trim()){
+      triConfirm("Save your question?","No","Cancel","Save").then(function(choice){
+        if(choice==="save"){
+          var v=$("aeTextarea").value.trim();
+          if(aeMode==="add") survey.push(v);
+          else if(aeMode==="edit"&&aeIndex>-1) survey[aeIndex]=v;
+          render(); aeDirty=false; showOverlay("aeOverlay",false); setStatus("Saved");
+        }else if(choice==="nosave"){
+          aeDirty=false; showOverlay("aeOverlay",false);
+        }
+      });
     }else{
-      showOverlay('aeOverlay',false);
+      showOverlay("aeOverlay",false);
     }
   });
 }
 
-async function confirmRemove(i){
-  const ok=await twoBtnConfirm('Remove this question?','Cancel','Remove');
-  if(!ok) return;
-  survey.splice(i,1);
-  render();
-  setStatus('Question removed');
-}
-
-function twoBtnConfirm(title,cancelLabel='Cancel',okLabel='OK'){
-  return new Promise(resolve=>{
-    const ov=$('confirmOverlay');
-    $('confirmTitle').textContent=title;
-    $('confirmMsg').textContent='';
-    const ok=$('confirmOk'), cancel=$('confirmCancel');
-    ok.textContent=okLabel;
-    cancel.textContent=cancelLabel;
-    ov.style.display='flex';
-    ov.setAttribute('aria-hidden','false');
-    const done=v=>{
-      ov.style.display='none';
-      ov.setAttribute('aria-hidden','true');
-      ok.onclick=cancel.onclick=null;
-      resolve(v);
-    };
-    ok.onclick = ()=>done(true);
-    cancel.onclick = ()=>done(false);
+function confirmRemove(i){
+  twoBtnConfirm("Remove this question?","Cancel","Remove").then(function(ok){
+    if(!ok) return;
+    survey.splice(i,1);
+    render();
+    setStatus("Question removed");
   });
 }
 
-function triConfirm(title,left='No',mid='Cancel',right='Yes'){
-  return new Promise(resolve=>{
-    const ov=$('confirmOverlay');
-    $('confirmTitle').textContent=title;
-    $('confirmMsg').textContent='';
-    const ok=$('confirmOk'), cancel=$('confirmCancel'), wrap=ok.parentNode;
-    wrap.innerHTML='';
-    const L=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent:left});
-    const M=Object.assign(document.createElement('button'),{className:'btn',type:'button',textContent=mid});
-    const R=Object.assign(document.createElement('button'),{className:'btn primary',type:'button',textContent:right});
+function twoBtnConfirm(title,cancelLabel,okLabel){
+  if(cancelLabel === undefined) cancelLabel = "Cancel";
+  if(okLabel === undefined) okLabel = "OK";
+  return new Promise(function(resolve){
+    var ov=$("confirmOverlay");
+    $("confirmTitle").textContent=title;
+    $("confirmMsg").textContent="";
+    var ok=$("confirmOk"), cancel=$("confirmCancel");
+    ok.textContent=okLabel;
+    cancel.textContent=cancelLabel;
+    ov.style.display="flex";
+    ov.setAttribute("aria-hidden","false");
+    var done=function(v){
+      ov.style.display="none";
+      ov.setAttribute("aria-hidden","true");
+      ok.onclick=null;
+      cancel.onclick=null;
+      resolve(v);
+    };
+    ok.onclick = function(){ done(true); };
+    cancel.onclick = function(){ done(false); };
+  });
+}
+
+function triConfirm(title,left,mid,right){
+  if(left === undefined) left="No";
+  if(mid === undefined) mid="Cancel";
+  if(right === undefined) right="Yes";
+  return new Promise(function(resolve){
+    var ov=$("confirmOverlay");
+    $("confirmTitle").textContent=title;
+    $("confirmMsg").textContent="";
+    var ok=$("confirmOk"), cancel=$("confirmCancel"), wrap=ok.parentNode;
+    wrap.innerHTML="";
+    function make(label, primary){
+      var b=document.createElement("button");
+      b.className=primary?"btn primary":"btn";
+      b.type="button";
+      b.textContent=label;
+      return b;
+    }
+    var L = make(left,false);
+    var M = make(mid,false);
+    var R = make(right,true);
     wrap.appendChild(L); wrap.appendChild(M); wrap.appendChild(R);
-    ov.style.display='flex';
-    ov.setAttribute('aria-hidden','false');
-    const cleanup=()=>{
-      ov.style.display='none';
-      ov.setAttribute('aria-hidden','true');
-      wrap.innerHTML='';
+    ov.style.display="flex";
+    ov.setAttribute("aria-hidden","false");
+    function cleanup(){
+      ov.style.display="none";
+      ov.setAttribute("aria-hidden","true");
+      wrap.innerHTML="";
       wrap.appendChild(cancel);
       wrap.appendChild(ok);
-    };
-    L.onclick=()=>{ cleanup(); resolve('nosave'); };
-    M.onclick=()=>{ cleanup(); resolve('cancel'); };
-    R.onclick=()=>{ cleanup(); resolve('save'); };
+    }
+    L.onclick=function(){ cleanup(); resolve("nosave"); };
+    M.onclick=function(){ cleanup(); resolve("cancel"); };
+    R.onclick=function(){ cleanup(); resolve("save"); };
   });
 }
 
 /* ========= Save to DB with file fallback ========= */
 async function saveToServer(){
-  const formOut = { ...(schema||{}), survey: survey.slice() };
+  var formOut = getMerged();
   try{
-    const res = await fetch(ADMIN_WRITE_URL, {
-      method:'PUT',
-      headers:{ 'Content-Type':'application/json' },
+    var res = await fetch(ADMIN_WRITE_URL, {
+      method:"PUT",
+      headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ form: formOut })
     });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    setStatus('Saved to server');
-    return 'server';
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    setStatus("Saved to server");
+    return "server";
   }catch(err){
-    console.error('Remote save failed, falling back to file:', err);
-    setStatus('Server save failed, saving to file instead', false);
-    const r = await saveToFilePicker(formOut, 'form.json');
-    return r; // 'saved' | 'download' | 'canceled'
+    console.error("Remote save failed, falling back to file:", err);
+    setStatus("Server save failed, saving to file instead", false);
+    var r = await saveToFilePicker(formOut, "form.json");
+    return r; // "saved" | "download" | "canceled"
   }
 }
 
-async function saveToFilePicker(jsonObj, suggestedName='form.json'){
-  const blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:'application/json'});
-  if(!('showSaveFilePicker' in window)){
-    const a=document.createElement('a');
+async function saveToFilePicker(jsonObj, suggestedName){
+  if (suggestedName === undefined) suggestedName = "form.json";
+  var blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:"application/json"});
+  if(!("showSaveFilePicker" in window)){
+    var a=document.createElement("a");
     a.href=URL.createObjectURL(blob);
-    a.setAttribute('download',suggestedName);
+    a.setAttribute("download",suggestedName);
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-    return 'download';
+    setTimeout(function(){ URL.revokeObjectURL(a.href); },1000);
+    return "download";
   }
   try{
     if(_fileHandle){
-      const perm=await _fileHandle.requestPermission({mode:'readwrite'});
-      if(perm==='granted'){
-        const w=await _fileHandle.createWritable();
+      var perm=await _fileHandle.requestPermission({mode:"readwrite"});
+      if(perm==="granted"){
+        var w=await _fileHandle.createWritable();
         await w.write(blob); await w.close();
-        return 'saved';
+        return "saved";
       }
     }
     _fileHandle=await window.showSaveFilePicker({
-      suggestedName,
-      types:[{description:'JSON', accept:{'application/json':['.json']}}]
+      suggestedName:suggestedName,
+      types:[{description:"JSON", accept:{"application/json":[".json"]}}]
     });
-    const w=await _fileHandle.createWritable();
-    await w.write(blob); await w.close();
-    return 'saved';
+    var w2=await _fileHandle.createWritable();
+    await w2.write(blob); await w2.close();
+    return "saved";
   }catch(e){
-    console.warn('Save canceled/failed:', e);
-    return 'canceled';
+    console.warn("Save canceled/failed:", e);
+    return "canceled";
   }
 }
 
 /* ========= Load (DB first → seed from /form.json if empty) ========= */
 async function load(){
   try{
-    console.log('[WidgetSurvey] loading for slug=', SLUG, 'via', ADMIN_READ_URL);
-    const r = await fetch(ADMIN_READ_URL, { headers:{Accept:'application/json'}, cache:'no-store' });
-    const body = await r.json().catch(()=>({}));
-    if(!r.ok || !body){ throw new Error('admin read failed'); }
+    console.log("[WidgetSurvey] loading for slug=", SLUG, "via", ADMIN_READ_URL);
+    var r = await fetch(ADMIN_READ_URL, { headers:{Accept:"application/json"}, cache:"no-store" });
+    var body = await r.json().catch(function(){ return {}; });
+    if(!r.ok || !body) throw new Error("admin read failed");
 
     schema = body.form || {};
-    let list = Array.isArray(schema.survey) ? schema.survey.slice() : [];
+    var list = Array.isArray(schema.survey) ? schema.survey.slice() : [];
 
     if(!list.length){
-      const seedRes = await fetch(FALLBACK_FORM_URL, { cache:'no-store' });
-      const seed = await seedRes.json().catch(()=>({}));
+      var seedRes = await fetch(FALLBACK_FORM_URL, { cache:"no-store" });
+      var seed = await seedRes.json().catch(function(){ return {}; });
       list = Array.isArray(seed.survey) ? seed.survey.slice() : [];
-      const newForm = { ...(schema||{}), ...(seed||{}), survey: list };
+      var newForm = {};
+      if (schema && typeof schema === "object"){
+        for (var k in schema){ if (Object.prototype.hasOwnProperty.call(schema,k)) newForm[k]=schema[k]; }
+      }
+      if (seed && typeof seed === "object"){
+        for (var k2 in seed){ if (Object.prototype.hasOwnProperty.call(seed,k2)) newForm[k2]=seed[k2]; }
+      }
+      newForm.survey = list;
       await fetch(ADMIN_WRITE_URL, {
-        method:'PUT',
-        headers:{'Content-Type':'application/json'},
+        method:"PUT",
+        headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ form: newForm })
       });
       schema = newForm;
     }
 
     survey = list.slice();
-    $('meta').textContent =
-      (schema.headline || `Questions for ${SLUG}`) + ' • ' + (new Date()).toLocaleString();
+    $("meta").textContent =
+      (schema.headline || ("Questions for " + SLUG)) + " • " + (new Date()).toLocaleString();
     render();
   }catch(err){
-    console.error('[WidgetSurvey] load failed (admin); trying /form.json', err);
+    console.error("[WidgetSurvey] load failed (admin); trying /form.json", err);
     try{
-      const res = await fetch(FALLBACK_FORM_URL, { cache:'no-store' });
-      const local = await res.json().catch(()=>({}));
+      var res = await fetch(FALLBACK_FORM_URL, { cache:"no-store" });
+      var local = await res.json().catch(function(){ return {}; });
       schema = local || {};
       survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
-      $('meta').textContent =
-        (schema.headline || 'My Speaking Score') + ' • ' + (new Date()).toLocaleString();
+      $("meta").textContent =
+        (schema.headline || "My Speaking Score") + " • " + (new Date()).toLocaleString();
       render();
-      setStatus('Loaded local form.json fallback', false);
+      setStatus("Loaded local form.json fallback", false);
     }catch(e){
-      console.error('Fallback form.json load failed', e);
-      setStatus('Failed to load questions', false);
+      console.error("Fallback form.json load failed", e);
+      setStatus("Failed to load questions", false);
     }
   }
 }
 
 /* ========= Row actions / boot ========= */
 function wireRowActions(){
-  const listEl=$('list');
-  listEl.addEventListener('click',(e)=>{
-    const btn=e.target.closest('button[data-act]');
+  var listEl=$("list");
+  listEl.addEventListener("click",function(e){
+    var btn=e.target.closest("button[data-act]");
     if(!btn) return;
-    const row=btn.closest('.row');
+    var row=btn.closest(".row");
     if(!row) return;
-    const i=+row.dataset.idx;
-    switch(btn.dataset.act){
-      case 'edit': openEditModal(i); break;
-      case 'top': moveTo(i,0); break;
-      case 'up': move(i,-1); break;
-      case 'down': move(i,1); break;
-      case 'bottom': moveTo(i,survey.length-1); break;
-      case 'remove': confirmRemove(i); break;
-    }
+    var i=+row.getAttribute("data-idx");
+    var act=btn.getAttribute("data-act");
+    if(act==="edit")      openEditModal(i);
+    else if(act==="top")  moveTo(i,0);
+    else if(act==="up")   move(i,-1);
+    else if(act==="down") move(i,1);
+    else if(act==="bottom") moveTo(i,survey.length-1);
+    else if(act==="remove") confirmRemove(i);
   });
 }
 
 /* ========= Finish dialog helpers ========= */
 function showFinishDialog(){
-  return new Promise(resolve=>{
-    const ov = document.getElementById('finishOverlay');
-    ov.style.display = 'flex';
-    ov.setAttribute('aria-hidden','false');
-    const close = (result)=>{
-      ov.style.display = 'none';
-      ov.setAttribute('aria-hidden','true');
-      document.getElementById('finishSave').onclick   = null;
-      document.getElementById('finishNoSave').onclick = null;
-      document.getElementById('finishCancel').onclick = null;
+  return new Promise(function(resolve){
+    var ov = document.getElementById("finishOverlay");
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden","false");
+    function close(result){
+      ov.style.display = "none";
+      ov.setAttribute("aria-hidden","true");
+      document.getElementById("finishSave").onclick   = null;
+      document.getElementById("finishNoSave").onclick = null;
+      document.getElementById("finishCancel").onclick = null;
       resolve(result);
-    };
-    document.getElementById('finishSave').onclick   = ()=> close('save');
-    document.getElementById('finishNoSave').onclick = ()=> close('nosave');
-    document.getElementById('finishCancel').onclick = ()=> close('cancel');
+    }
+    document.getElementById("finishSave").onclick   = function(){ close("save"); };
+    document.getElementById("finishNoSave").onclick = function(){ close("nosave"); };
+    document.getElementById("finishCancel").onclick = function(){ close("cancel"); };
   });
 }
 
 async function finishedFlow(){
-  const choice = await showFinishDialog();
-  if (choice === 'save'){
-    const r = await saveToServer();
-    if (r === 'server')        setStatus('Saved to server');
-    else if (r === 'saved')    setStatus('Saved to file');
-    else if (r === 'download') setStatus('Downloaded');
+  var choice = await showFinishDialog();
+  if (choice === "save"){
+    var r = await saveToServer();
+    if (r === "server")        setStatus("Saved to server");
+    else if (r === "saved")    setStatus("Saved to file");
+    else if (r === "download") setStatus("Downloaded");
   }
-  // 'nosave' or 'cancel' → no-op
 }
 
 /* ========= CSV helpers ========= */
 function normalizeCell(s){
-  if(s==null) return '';
-  let t=String(s).replace(/\r\n/g,'\n').trim();
-  t=t.replace(/\n+/g,' // ').replace(/\s*\/\/\s*/g,' // ');
+  if(s==null) return "";
+  var t=String(s).replace(/\r\n/g,"\n").trim();
+  t=t.replace(/\n+/g," // ").replace(/\s*\/\/\s*/g," // ");
   return t;
 }
 
 function parseCSV(text){
-  const rows=[];
-  let field='',row=[],inQ=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i],n=text[i+1];
+  var rows=[];
+  var field="",row=[],inQ=false;
+  for(var i=0;i<text.length;i++){
+    var c=text[i],n=text[i+1];
     if(inQ){
       if(c==='"'&&n==='"'){ field+='"'; i++; }
       else if(c==='"'){ inQ=false; }
       else { field+=c; }
     }else{
-      if(c==='\"'){ inQ=true; }
-      else if(c===','){ row.push(field); field=''; }
-      else if(c==='\n'){ row.push(field); field=''; rows.push(row); row=[]; }
-      else if(c!=='\r'){ field+=c; }
+      if(c==='"'){ inQ=true; }
+      else if(c===","){ row.push(field); field=""; }
+      else if(c==="\n"){ row.push(field); field=""; rows.push(row); row=[]; }
+      else if(c!=="\r"){ field+=c; }
     }
   }
   row.push(field); rows.push(row);
-  while(rows.length && rows[rows.length-1].every(v=>String(v).trim()==='')) rows.pop();
+  while(rows.length && rows[rows.length-1].every(function(v){ return String(v).trim()===""; })) rows.pop();
   return rows;
 }
 
 function findSingleDataColumn(rows){
-  const max=Math.max(...rows.map(r=>r.length));
-  let idx=-1;
-  for(let c=0;c<max;c++){
-    const has=rows.some(r=>r[c]!=null&&String(r[c]).trim()!=='');
+  var max=0;
+  for(var i=0;i<rows.length;i++){
+    if(rows[i].length>max) max=rows[i].length;
+  }
+  var idx=-1;
+  for(var c=0;c<max;c++){
+    var has=false;
+    for(var r=0;r<rows.length;r++){
+      var v=rows[r][c];
+      if(v!=null && String(v).trim()!==""){ has=true; break; }
+    }
     if(has){
       if(idx!==-1) return -1;
       idx=c;
@@ -656,83 +714,87 @@ function findSingleDataColumn(rows){
 }
 
 /* ========= boot ========= */
-window.addEventListener('DOMContentLoaded', ()=>{
-  console.log(`🧩 MSS Questions Admin for slug="${SLUG}"`);
+window.addEventListener("DOMContentLoaded", function(){
+  console.log("[WidgetSurvey] MSS Questions Admin for slug=", SLUG);
   load();
   wireRowActions();
-  $('addBtnTop').addEventListener('click', openAddModal);
-  $('addBtnBottom').addEventListener('click', openAddModal);
+  $("addBtnTop").addEventListener("click", openAddModal);
+  $("addBtnBottom").addEventListener("click", openAddModal);
   wireAddEdit();
 
   // Export
-  $('exportBtnTop').addEventListener('click', ()=>{
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([JSON.stringify(getMerged(),null,2)],{type:'application/json'}));
-    a.setAttribute('download','form.json');
+  $("exportBtnTop").addEventListener("click", function(){
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([JSON.stringify(getMerged(),null,2)],{type:"application/json"}));
+    a.setAttribute("download","form.json");
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-    setStatus('Exported');
+    setTimeout(function(){ URL.revokeObjectURL(a.href); },1000);
+    setStatus("Exported");
   });
-  $('exportBtnBottom').addEventListener('click', ()=>$('exportBtnTop').click());
+  $("exportBtnBottom").addEventListener("click", function(){ $("exportBtnTop").click(); });
 
   // Save to file (explicit)
-  const saveMerged = async ()=>{
-    const r = await saveToFilePicker(getMerged(), 'form.json');
+  async function saveMerged(){
+    var r = await saveToFilePicker(getMerged(), "form.json");
     setStatus(
-      r==='saved' ? 'Saved to file' :
-      r==='download' ? 'Downloaded' : 'Canceled',
-      r!=='canceled'
+      r==="saved" ? "Saved to file" :
+      r==="download" ? "Downloaded" : "Canceled",
+      r!=="canceled"
     );
-  };
-  $('saveToFileBtnTop').addEventListener('click', saveMerged);
-  $('saveToFileBtnBottom').addEventListener('click', saveMerged);
+  }
+  $("saveToFileBtnTop").addEventListener("click", saveMerged);
+  $("saveToFileBtnBottom").addEventListener("click", saveMerged);
 
   // Finished
-  $('finishedBtnTop').addEventListener('click', finishedFlow);
-  $('finishedBtnBottom').addEventListener('click', finishedFlow);
+  $("finishedBtnTop").addEventListener("click", finishedFlow);
+  $("finishedBtnBottom").addEventListener("click", finishedFlow);
 
   // Imports
   (function wireImportJson(){
-    const f=$('importJson');
-    f.addEventListener('change', async (e)=>{
-      const file=e.target.files&&e.target.files[0];
-      e.target.value='';
+    var f=$("importJson");
+    f.addEventListener("change", async function(e){
+      var file=e.target.files&&e.target.files[0];
+      e.target.value="";
       if(!file) return;
       try{
-        const parsed=JSON.parse(await file.text());
-        if(!parsed || typeof parsed!=='object') throw new Error('Invalid JSON object.');
+        var parsed=JSON.parse(await file.text());
+        if(!parsed || typeof parsed!=="object") throw new Error("Invalid JSON object.");
         schema=parsed;
         survey=Array.isArray(parsed.survey)?parsed.survey.slice():[];
-        setStatus('Imported JSON');
+        setStatus("Imported JSON");
         render();
-        $('meta').textContent=(schema.headline||'My Speaking Score')+' • '+(new Date()).toLocaleString();
+        $("meta").textContent=(schema.headline||"My Speaking Score")+" • "+(new Date()).toLocaleString();
       }catch(err){
-        alert('Import failed: '+err.message);
+        alert("Import failed: "+err.message);
       }
     });
   })();
 
   (function wireImportCsv(){
-    const f=$('importCsv');
-    f.addEventListener('change', async (e)=>{
-      const file=e.target.files&&e.target.files[0];
-      e.target.value='';
+    var f=$("importCsv");
+    f.addEventListener("change", async function(e){
+      var file=e.target.files&&e.target.files[0];
+      e.target.value="";
       if(!file) return;
-      const rows=parseCSV(await file.text());
-      if(!rows.length){ setStatus('CSV is empty',false); return; }
-      const col=findSingleDataColumn(rows);
-      if(col===-1){ alert('CSV must contain exactly one column with data.'); return; }
-      const first=String(rows[0][col]??'').trim().toLowerCase();
-      const hasHeader=(first==='name'||first==='title');
-      const start=hasHeader?1:0;
-      const qs=rows.slice(start).map(r=>normalizeCell(r[col])).filter(Boolean);
-      if(!qs.length){ setStatus('No questions parsed',false); return; }
-      const choice=await triConfirm('Append to existing questions?','Replace','Cancel','Append');
-      if(choice==='cancel') return;
-      if(choice==='save') survey=survey.concat(qs);
-      else if(choice==='nosave') survey=qs.slice();
+      var rows=parseCSV(await file.text());
+      if(!rows.length){ setStatus("CSV is empty",false); return; }
+      var col=findSingleDataColumn(rows);
+      if(col===-1){ alert("CSV must contain exactly one column with data."); return; }
+      var first=String(rows[0][col]||"").trim().toLowerCase();
+      var hasHeader=(first==="name"||first==="title");
+      var start=hasHeader?1:0;
+      var qs=[];
+      for(var i=0;i<rows.length-start;i++){
+        var v = normalizeCell(rows[start+i][col]);
+        if(v) qs.push(v);
+      }
+      if(!qs.length){ setStatus("No questions parsed",false); return; }
+      var choice=await triConfirm("Append to existing questions?","Replace","Cancel","Append");
+      if(choice==="cancel") return;
+      if(choice==="save") survey=survey.concat(qs);
+      else if(choice==="nosave") survey=qs.slice();
       render();
-      setStatus('CSV imported');
+      setStatus("CSV imported");
     });
   })();
 });
