@@ -1,145 +1,339 @@
-/* config-admin.js v3.3 • Build 2025-11-12 15:35 ET */
-(function(){
-  const qs=(s,r=document)=>r.querySelector(s);
-  const statusEl=qs('#mssAdminStatus');
+/* ConfigAdmin.js – Build 2025-11-13 09:45 ET
+   Fully Postgres-backed slug admin
+--------------------------------------------------------- */
 
-  const slug=new URLSearchParams(location.search).get('slug')?.trim()||'';
-  const ADMIN_URL=`/api/admin/widget/${encodeURIComponent(slug)}`;
-  const LOGO_URL = `${ADMIN_URL}/logo`;
-  console.log('[config-admin] slug:',slug,'ADMIN_URL:',ADMIN_URL);
+(function () {
 
-  function setStatus(msg,warn=false){ if(!statusEl) return; statusEl.textContent=msg||''; statusEl.style.color=warn?'#b45309':'#0a7a0a'; }
-  const getBool=el=>!!el?.checked, setBool=(el,v)=>{ if(el) el.checked=!!v; };
-  const getVal=el=>el?.value??'', setVal=(el,v)=>{ if(el) el.value=(v??''); };
+  // -----------------------------
+  // Helpers
+  // -----------------------------
+  const qs  = (s, r = document) => r.querySelector(s);
+  const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-  const els={
-    headline:qs('#cfgHeadline'), poweredBy:qs('#cfgPoweredBy'), editableHeadline:qs('#cfgEditableHeadline'),
-    theme:qs('#cfgTheme'), allowUpload:qs('#cfgAllowUpload'), minSec:qs('#cfgMinSec'), maxSec:qs('#cfgMaxSec'),
-    showHeadline:qs('#showHeadline'), showRecordButton:qs('#showRecordButton'), showPrevButton:qs('#showPrevButton'),
-    showNextButton:qs('#showNextButton'), showStopButton:qs('#showStopButton'), showUploadButton:qs('#showUploadButton'),
-    showPoweredByLabel:qs('#showPoweredByLabel'), showNotRecordingLabel:qs('#showNotRecordingLabel'), showSubmitButton:qs('#showSubmitButton'),
-    apiBaseUrl:qs('#cfgApiBaseUrl'), apiKey:qs('#cfgApiKey'), apiSecret:qs('#cfgApiSecret'), loggerEnabled:qs('#cfgLoggerEnabled'), loggerUrl:qs('#cfgLoggerUrl'),
-    dailyLimit:qs('#cfgDailyLimit'), notifyOnLimit:qs('#cfgNotifyOnLimit'), autoBlockOnLimit:qs('#cfgAutoBlockOnLimit'),
-    brandingActions:qs('#mssBrandingActions'), logoFile:qs('#mssBrandLogoFile'), logoImg:qs('#mssBrandLogoImg'),
-    logoStatus:qs('#mssBrandLogoStatus'), logoProg:qs('#mssBrandLogoProg'), logoUpload:qs('#mssBrandLogoUpload'), logoRemove:qs('#mssBrandLogoRemove'),
-    form:qs('#mssConfigForm'),
+  const statusEl = qs('#status');
+  const setStatus = (msg, warn = false) => {
+    statusEl.textContent = msg;
+    statusEl.style.background = warn ? '#ffecec' : '#eef6ff';
+    statusEl.style.borderLeftColor = warn ? '#b00020' : '#0a66c2';
   };
 
-  const DEFAULTS={ headline:'CEFR Assessment', poweredBy:'Powered by MSS Vox', editableHeadline:false,
-    theme:'default', allowUpload:false, minSec:30, maxSec:61,
-    showHeadline:true, showRecordButton:true, showPrevButton:true, showNextButton:true, showStopButton:true,
-    showUploadButton:false, showPoweredByLabel:true, showNotRecordingLabel:true, showSubmitButton:true,
-    apiBaseUrl:'https://app.myspeakingscore.com', apiKey:'', apiSecret:'', loggerEnabled:false, loggerUrl:'',
-    dailyLimit:50, notifyOnLimit:true, autoBlockOnLimit:false,
+  // -----------------------------
+  // Slug & API
+  // -----------------------------
+  const slug = new URLSearchParams(location.search).get('slug')?.trim();
+  if (!slug) {
+    setStatus("⚠️ No slug provided (?slug=missing). Cannot load config.", true);
+  }
+
+  const ADMIN_URL = `/api/admin/widget/${encodeURIComponent(slug || '')}`;
+  const LOGO_URL  = `${ADMIN_URL}/logo`;
+
+  console.log("[ConfigAdmin] slug=", slug, "ADMIN_URL=", ADMIN_URL);
+
+  // -----------------------------
+  // Elements map
+  // -----------------------------
+  const els = {
+    // Branding
+    headline: qs('#headline'),
+    poweredBy: qs('#poweredBy'),
+    editableHeadline: qs('#editableHeadline'),
+    logoFile: qs('#logoFile'),
+    uploadLogoBtn: qs('#uploadLogoBtn'),
+    removeLogoBtn: qs('#removeLogoBtn'),
+    brandPreview: qs('#brandPreview'),
+    logoStatus: qs('#logoStatus'),
+
+    // Labels
+    lblRecord: qs('#lblRecord'),
+    lblStop: qs('#lblStop'),
+    lblSubmit: qs('#lblSubmit'),
+
+    // API
+    apiBase: qs('#apiBase'),
+    apiKey: qs('#apiKey'),
+    apiSecret: qs('#apiSecret'),
+    adminWriteKey: qs('#adminWriteKey'),
+
+    // Widget Options
+    allowUpload: qs('#allowUpload'),
+    editableHeadline: qs('#editableHeadline'),
+    minSec: qs('#minSec'),
+    maxSec: qs('#maxSec'),
+
+    // Form
+    form: qs('#configForm'),
   };
 
-  function pickLogoUrl(cfg){
-    return cfg.brandLogoUrl
-        || cfg.logoUrl
-        || cfg.branding?.logoUrl
-        || cfg.branding?.logo?.url
-        || '';
-  }
 
-  function disableBrandingActions(disabled){
-    if(els.brandingActions) els.brandingActions.setAttribute('aria-disabled', disabled?'true':'false');
-    els.logoUpload?.toggleAttribute('disabled', disabled);
-    els.logoRemove?.toggleAttribute('disabled', disabled);
-  }
+  // -----------------------------
+  // Fallback config (if API unavailable)
+  // -----------------------------
+  const DEFAULTS = {
+    headline: "CEFR Assessment",
+    poweredBy: "Powered by MSS Vox",
 
-  function applyToUI(cfg){
-    setVal(els.headline,cfg.headline); setVal(els.poweredBy,cfg.poweredBy); setBool(els.editableHeadline,!!cfg.editableHeadline);
-    setVal(els.theme,cfg.theme||'default'); setBool(els.allowUpload,!!cfg.allowUpload); setVal(els.minSec,cfg.minSec??''); setVal(els.maxSec,cfg.maxSec??'');
-    setBool(els.showHeadline,!!cfg.showHeadline); setBool(els.showRecordButton,!!cfg.showRecordButton);
-    setBool(els.showPrevButton,!!cfg.showPrevButton); setBool(els.showNextButton,!!cfg.showNextButton);
-    setBool(els.showStopButton,!!cfg.showStopButton); setBool(els.showUploadButton,!!cfg.showUploadButton);
-    setBool(els.showPoweredByLabel,!!cfg.showPoweredByLabel); setBool(els.showNotRecordingLabel,!!cfg.showNotRecordingLabel);
-    setBool(els.showSubmitButton,!!cfg.showSubmitButton);
-    setVal(els.apiBaseUrl,cfg.apiBaseUrl||''); setVal(els.apiKey,cfg.apiKey||cfg.api?.key||''); setVal(els.apiSecret,cfg.apiSecret||cfg.api?.secret||'');
-    setBool(els.loggerEnabled,!!cfg.loggerEnabled); setVal(els.loggerUrl,cfg.loggerUrl||'');
-    setVal(els.dailyLimit,cfg.dailyLimit??''); setBool(els.notifyOnLimit,!!cfg.notifyOnLimit); setBool(els.autoBlockOnLimit,!!cfg.autoBlockOnLimit);
+    lblRecord: "Record",
+    lblStop: "Stop",
+    lblSubmit: "Submit",
 
-    const logo = pickLogoUrl(cfg);
-    if(logo){ els.logoImg.src = `${logo}${logo.includes('?')?'&':'?'}t=${Date.now()}`; els.logoImg.style.display=''; els.logoStatus.textContent='Logo uploaded.'; }
-    else { els.logoImg.removeAttribute('src'); els.logoImg.style.display='none'; els.logoStatus.textContent='No logo uploaded yet.'; }
-  }
+    allowUpload: false,
+    editableHeadline: false,
+    minSec: 30,
+    maxSec: 60,
 
-  async function loadConfig(){
-    if(!slug){ setStatus('⚠️ Missing ?slug= in URL', true); applyToUI(DEFAULTS); return; }
-    try{
-      const res = await fetch(ADMIN_URL, { headers:{Accept:'application/json'}, cache:'no-store' });
-      const text = await res.text();
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      let body; try{ body = JSON.parse(text); } catch{ throw new Error('non-JSON'); }
+    apiBase: "https://app.myspeakingscore.com",
+    apiKey: "",
+    apiSecret: "",
+    adminWriteKey: "",
+
+    brandLogoUrl: ""
+  };
+
+  // -----------------------------
+  // LOAD CONFIG
+  // -----------------------------
+  async function loadConfig() {
+    if (!slug) return;
+
+    try {
+      const res = await fetch(ADMIN_URL, {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      });
+
+      if (!res.ok) {
+        console.warn("GET failed", res.status);
+        useFallback("Config not found. Using defaults.");
+        return;
+      }
+
+      const body = await res.json().catch(() => ({}));
       const cfg = body.config || body.form || body || {};
-      applyToUI({ ...DEFAULTS, ...cfg });
-      setStatus('Loaded');
 
-      // Probe logo endpoint; disable buttons if missing
-      try{ const head = await fetch(LOGO_URL, { method:'HEAD' }); disableBrandingActions(!head.ok); }
-      catch{ disableBrandingActions(true); }
-    }catch(e){
-      console.error('loadConfig failed', e); applyToUI(DEFAULTS); setStatus('Failed to load config – using defaults', true); disableBrandingActions(true);
+      console.log("[ConfigAdmin] Loaded config:", cfg);
+
+      applyToUI({ ...DEFAULTS, ...cfg });
+      setStatus("Config loaded.");
+    }
+    catch (e) {
+      console.error("loadConfig error:", e);
+      useFallback("Failed to load from API. Using fallback.", true);
     }
   }
 
-  function collectFromUI(){
+
+  // Fallback to local JSON (rare)
+  async function useFallback(msg, warn = false) {
+    setStatus(msg, warn);
+
+    try {
+      const res = await fetch(`/config-admin/form.json?ts=${Date.now()}`);
+      const cfg = await res.json().catch(() => DEFAULTS);
+
+      console.log("[ConfigAdmin] Using fallback JSON", cfg);
+      applyToUI({ ...DEFAULTS, ...cfg });
+    }
+    catch (e) {
+      console.error("fallback load failed", e);
+      applyToUI(DEFAULTS);
+    }
+  }
+
+
+  // -----------------------------
+  // APPLY -> UI
+  // -----------------------------
+  function applyToUI(cfg) {
+    /* Branding */
+    els.headline.value = cfg.headline || "";
+    els.poweredBy.value = cfg.poweredBy || "";
+
+    if (cfg.brandLogoUrl) {
+      const bust = `${cfg.brandLogoUrl}${cfg.brandLogoUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+      els.brandPreview.src = bust;
+      els.brandPreview.style.display = "block";
+      els.logoStatus.textContent = "Logo loaded.";
+    }
+    else {
+      els.brandPreview.style.display = "none";
+      els.logoStatus.textContent = "No brand logo.";
+    }
+
+    /* Labels */
+    els.lblRecord.value = cfg.lblRecord || "";
+    els.lblStop.value = cfg.lblStop || "";
+    els.lblSubmit.value = cfg.lblSubmit || "";
+
+    /* API */
+    els.apiBase.value = cfg.apiBase || "";
+    els.apiKey.value = cfg.apiKey || "";
+    els.apiSecret.value = cfg.apiSecret || "";
+    els.adminWriteKey.value = cfg.adminWriteKey || "";
+
+    /* Widget Options */
+    els.allowUpload.checked = !!cfg.allowUpload;
+    els.editableHeadline.checked = !!cfg.editableHeadline;
+    els.minSec.value = cfg.minSec ?? 0;
+    els.maxSec.value = cfg.maxSec ?? 0;
+  }
+
+
+  // -----------------------------
+  // COLLECT UI -> CONFIG OBJ
+  // -----------------------------
+  function collectConfig() {
     const cfg = {
-      headline:getVal(els.headline), poweredBy:getVal(els.poweredBy), editableHeadline:getBool(els.editableHeadline),
-      theme:getVal(els.theme)||'default', allowUpload:getBool(els.allowUpload), minSec:+getVal(els.minSec)||0, maxSec:+getVal(els.maxSec)||0,
-      showHeadline:getBool(els.showHeadline), showRecordButton:getBool(els.showRecordButton), showPrevButton:getBool(els.showPrevButton),
-      showNextButton:getBool(els.showNextButton), showStopButton:getBool(els.showStopButton), showUploadButton:getBool(els.showUploadButton),
-      showPoweredByLabel:getBool(els.showPoweredByLabel), showNotRecordingLabel:getBool(els.showNotRecordingLabel), showSubmitButton:getBool(els.showSubmitButton),
-      apiBaseUrl:getVal(els.apiBaseUrl), apiKey:getVal(els.apiKey), apiSecret:getVal(els.apiSecret), loggerEnabled:getBool(els.loggerEnabled), loggerUrl:getVal(els.loggerUrl),
-      dailyLimit:+getVal(els.dailyLimit)||0, notifyOnLimit:getBool(els.notifyOnLimit), autoBlockOnLimit:getBool(els.autoBlockOnLimit),
+      /* Branding */
+      headline: els.headline.value,
+      poweredBy: els.poweredBy.value,
+
+      /* Labels */
+      lblRecord: els.lblRecord.value,
+      lblStop: els.lblStop.value,
+      lblSubmit: els.lblSubmit.value,
+
+      /* API */
+      apiBase: els.apiBase.value,
+      apiKey: els.apiKey.value,
+      apiSecret: els.apiSecret.value,
+      adminWriteKey: els.adminWriteKey.value,
+
+      /* Widget Options */
+      allowUpload: els.allowUpload.checked,
+      editableHeadline: els.editableHeadline.checked,
+      minSec: +els.minSec.value || 0,
+      maxSec: +els.maxSec.value || 0,
     };
-    if(els.logoImg?.src) cfg.brandLogoUrl = els.logoImg.src.replace(/\?t=\d+$/,'');
+
+    // If preview is showing
+    if (els.brandPreview?.src && !els.brandPreview.src.includes('data:')) {
+      cfg.brandLogoUrl = els.brandPreview.src;
+    }
+
     return cfg;
   }
 
-  async function saveConfig(){
-    try{
-      const res = await fetch(ADMIN_URL, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ config: collectFromUI() }) });
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      setStatus('Saved');
-    }catch(e){ console.error('saveConfig failed', e); setStatus('Save failed', true); }
+
+  // -----------------------------
+  // SAVE CONFIG
+  // -----------------------------
+  async function saveConfig() {
+    if (!slug) {
+      alert("Cannot save — no slug in URL.");
+      return;
+    }
+
+    const cfg = collectConfig();
+
+    try {
+      const res = await fetch(ADMIN_URL, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-ADMIN-KEY": els.adminWriteKey.value || ""
+        },
+        body: JSON.stringify({ config: cfg })
+      });
+
+      if (!res.ok) throw new Error("HTTP " + res.status);
+
+      setStatus("Saved.");
+    }
+    catch (e) {
+      console.error("Save failed:", e);
+      setStatus("Save failed.", true);
+    }
   }
 
-  function updateLogoUI(url){
-    if(url){ els.logoImg.src=`${url}${url.includes('?')?'&':'?'}t=${Date.now()}`; els.logoImg.style.display=''; els.logoStatus.textContent='Logo uploaded.'; }
-    else { els.logoImg.removeAttribute('src'); els.logoImg.style.display='none'; els.logoStatus.textContent='No logo uploaded yet.'; }
+
+  // -----------------------------
+  // UPLOAD LOGO
+  // -----------------------------
+  async function uploadLogo() {
+    if (!slug) return alert("No slug.");
+
+    const f = els.logoFile.files[0];
+    if (!f) return alert("Choose a logo file.");
+
+    const fd = new FormData();
+    fd.append("file", f);
+
+    setStatus("Uploading logo…");
+
+    try {
+      const res = await fetch(LOGO_URL, {
+        method: "POST",
+        body: fd,
+        headers: {
+          "X-ADMIN-KEY": els.adminWriteKey.value || ""
+        }
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("HTTP " + res.status);
+
+      const url = body.url || body.brandLogoUrl;
+      if (url) {
+        els.brandPreview.src = `${url}?t=${Date.now()}`;
+        els.brandPreview.style.display = "block";
+        els.logoStatus.textContent = "Logo uploaded.";
+      }
+
+      setStatus("Logo uploaded.");
+    }
+    catch (e) {
+      console.error("Logo upload failed", e);
+      setStatus("Logo upload failed.", true);
+    }
   }
 
-  async function uploadLogo(){
-    if(els.brandingActions?.getAttribute('aria-disabled')==='true') return alert('Logo endpoint not available on this environment.');
-    const f = els.logoFile?.files?.[0]; if(!f) return alert('Choose a logo file first.');
-    setStatus('Uploading logo…'); els.logoProg?.style?.setProperty('display',''); if(els.logoProg) els.logoProg.value=20;
-    try{
-      const fd=new FormData(); fd.append('file',f);
-      const res = await fetch(LOGO_URL, { method:'POST', body:fd });
-      const body = await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      updateLogoUI(body.url || body.brandLogoUrl || '');
-      if(els.logoProg){ els.logoProg.value=100; setTimeout(()=>{ els.logoProg.style.display='none'; els.logoProg.value=0; }, 300); }
-      setStatus('Logo uploaded');
-    }catch(e){ console.error('logo upload failed', e); if(els.logoProg){ els.logoProg.style.display='none'; els.logoProg.value=0; } setStatus('Logo upload failed', true); }
+
+  // -----------------------------
+  // REMOVE LOGO
+  // -----------------------------
+  async function removeLogo() {
+    if (!slug) return;
+
+    if (!confirm("Remove logo?")) return;
+
+    try {
+      const res = await fetch(LOGO_URL, {
+        method: "DELETE",
+        headers: {
+          "X-ADMIN-KEY": els.adminWriteKey.value || ""
+        }
+      });
+
+      if (!res.ok) throw new Error("HTTP " + res.status);
+
+      els.brandPreview.style.display = "none";
+      els.brandPreview.removeAttribute("src");
+      els.logoStatus.textContent = "Logo removed.";
+
+      setStatus("Logo removed.");
+    }
+    catch (e) {
+      console.error("Remove logo failed", e);
+      setStatus("Failed to remove logo.", true);
+    }
   }
 
-  async function removeLogo(){
-    if(els.brandingActions?.getAttribute('aria-disabled')==='true') return alert('Logo endpoint not available on this environment.');
-    if(!confirm('Remove current logo?')) return;
-    setStatus('Removing logo…');
-    try{
-      const res = await fetch(LOGO_URL, { method:'DELETE' });
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      updateLogoUI(''); setStatus('Logo removed');
-    }catch(e){ console.error('logo remove failed', e); setStatus('Logo remove failed', true); }
-  }
 
-  // wire
-  els.form?.addEventListener('submit', e=>{ e.preventDefault(); saveConfig(); });
-  els.logoUpload?.addEventListener('click', uploadLogo);
-  els.logoRemove?.addEventListener('click', removeLogo);
+  // -----------------------------
+  // Wire events
+  // -----------------------------
+  els.form?.addEventListener("submit", e => {
+    e.preventDefault();
+    saveConfig();
+  });
 
+  els.uploadLogoBtn?.addEventListener("click", uploadLogo);
+  els.removeLogoBtn?.addEventListener("click", removeLogo);
+
+  // -----------------------------
+  // Init
+  // -----------------------------
   loadConfig();
+
 })();
