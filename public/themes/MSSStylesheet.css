@@ -1,4 +1,4 @@
-/* ========== MSS Shared Design System ========== */
+/* ========== MSS Shared Design System Nov 13 3:40PM ========== */
 
 /* ---------- Root tokens ---------- */
 :root {
@@ -1217,4 +1217,42 @@ body.mssMorningSky {
 .mss-score-dialog-inner {
   max-height: min(80vh, 580px);
   overflow-y: auto;
+}
+
+.mss-top-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+}
+
+.mss-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.mss-top-meta {
+  text-align: right;
+  align-items: flex-end;
+}
+
+.mss-chevron {
+  font-size: 1.5rem;  /* bigger */
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.85;
+  user-select: none;
+  pointer-events: none;
+}
+
+.mss-help-text {
+  font-size: 0.8rem;
+  color: #6b7280;       /* same grey as "Not recording" */
+  margin-top: 0.25rem;
+}
+.mss-actions-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
