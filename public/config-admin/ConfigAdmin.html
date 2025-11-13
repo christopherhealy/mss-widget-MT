@@ -192,23 +192,34 @@
           </details>
 
           <!-- ACTIONS -->
-          <details class="mss-card mss-section" open>
-            <summary>ACTIONS</summary>
+          <<details class="mss-card mss-section" open>
+  <summary>ACTIONS</summary>
 
-            <div class="mss-actions-row" style="margin-top: 0.75rem;">
-              <button id="saveBtn" class="mss-btn-primary">Save config</button>
-              <button id="reloadBtn" class="mss-btn-secondary">Reload from server</button>
-            </div>
+  <div class="mss-actions-row" style="margin-top: 0.75rem;">
+    <!-- Primary action: same look as "Record your response" / "Submit for scoring" -->
+    <button id="saveBtn" class="mss-btn mss-btn-primary">
+      Save config
+    </button>
 
-            <div class="mss-actions-row" style="margin-top: 0.75rem;">
-              <button id="openWidgetBtn" class="mss-btn-secondary">Open Widget</button>
-              <button id="exportBtn" class="mss-btn-secondary">Export JSON</button>
-            </div>
+    <!-- Secondary: same look as "Next MD" -->
+    <button id="reloadBtn" class="mss-btn mss-btn-outline">
+      Reload from server
+    </button>
+  </div>
 
-            <p id="status" class="mss-help-text" style="margin-top: 0.75rem;">
-              Ready
-            </p>
-          </details>
+  <div class="mss-actions-row" style="margin-top: 0.75rem;">
+    <button id="openWidgetBtn" class="mss-btn mss-btn-outline">
+      Open Widget
+    </button>
+    <button id="exportBtn" class="mss-btn mss-btn-outline">
+      Export JSON
+    </button>
+  </div>
+
+  <p id="status" class="mss-help-text" style="margin-top: 0.75rem;">
+    Saved to server (Postgres)
+  </p>
+</details>
         </div>
 
         <!-- RIGHT COLUMN: Live preview only -->
