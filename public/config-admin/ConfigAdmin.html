@@ -51,17 +51,27 @@
             </div>
 
             <div class="mss-field-group">
-              <label for="cfgBrandLogoInput" class="mss-label">Brand logo (PNG/JPG)</label>
-              <input
-                id="cfgBrandLogoInput"
-                type="file"
-                accept="image/*"
-                class="mss-input-file"
-              />
-              <p class="mss-help-text">
-                Base64 is stored in <code>config.brandLogo</code>.
-              </p>
-            </div>
+  <label class="mss-label">Brand logo (PNG/JPG)</label>
+
+  <div class="mss-file-row">
+    <label for="cfgBrandLogoInput" class="mss-btn-secondary mss-btn-file">
+      Choose file
+    </label>
+    <span id="cfgBrandLogoName" class="mss-file-name mss-muted">
+      No file chosen
+    </span>
+    <input
+      id="cfgBrandLogoInput"
+      type="file"
+      accept="image/*"
+      class="mss-input-file-hidden"
+    />
+  </div>
+
+  <p class="mss-help-text">
+    Base64 is stored in <code>config.brandLogo</code>.
+  </p>
+</div>
           </details>
 
           <!-- API & AUTH -->
