@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Widget MT – Question Help Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Shared MSS design system -->
+  <link id="themeCss" rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
+</head>
+<body class="mssVoxAurora">
+  <header class="mss-top">
+    <div class="mss-top-inner">
+      <div class="mss-row mss-top-row">
+        <div class="mss-stack-tight">
+          <div class="mss-pill">MSS WIDGET MT</div>
+          <div class="mss-title">Question Help Editor</div>
+        </div>
+        <div class="mss-stack-tight mss-top-meta">
+          <div id="slugDisplay" class="mss-muted">slug=…</div>
+          <div id="meta" class="mss-meta"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mss-main">
+    <div class="mss-main-inner">
+      <div class="mss-admin-layout">
+        <div class="mss-config-column">
+          <section class="mss-card">
+            <h2 class="mss-card-title">Select question</h2>
+            <div class="mss-field-group">
+              <label for="questionSelect" class="mss-label">
+                Question
+              </label>
+              <select id="questionSelect" class="mss-input">
+                <option value="">Loading questions…</option>
+              </select>
+              <p class="mss-help-text">
+                Choose a question to edit its MaxHelp / MinHelp text.
+              </p>
+            </div>
+          </section>
+
+          <section class="mss-card">
+            <h2 class="mss-card-title">Prompt for AI</h2>
+            <div class="mss-field-group">
+              <label for="qhPrompt" class="mss-label">Prompt</label>
+              <textarea
+                id="qhPrompt"
+                class="mss-input"
+                rows="8"
+              ></textarea>
+              <p class="mss-help-text">
+                Copy this prompt into ChatGPT or your favourite AI app. Then paste
+                the long answer into MaxHelp and the summary into MinHelp.
+              </p>
+            </div>
+          </section>
+
+          <section class="mss-card">
+            <h2 class="mss-card-title">MaxHelp – reading passage</h2>
+            <div class="mss-field-group">
+              <label for="qhMaxHelp" class="mss-label">
+                MaxHelp (≈ 60 seconds of reading)
+              </label>
+              <textarea
+                id="qhMaxHelp"
+                class="mss-input"
+                rows="10"
+              ></textarea>
+            </div>
+          </section>
+
+          <section class="mss-card">
+            <h2 class="mss-card-title">MinHelp – point summary</h2>
+            <div class="mss-field-group">
+              <label for="qhMinHelp" class="mss-label">
+                MinHelp (point-by-point summary)
+              </label>
+              <textarea
+                id="qhMinHelp"
+                class="mss-input"
+                rows="8"
+              ></textarea>
+            </div>
+          </section>
+
+          <section class="mss-card">
+            <h2 class="mss-card-title">Actions</h2>
+            <div class="mss-actions-row" style="margin-top:0.75rem;">
+              <button id="saveBtn" class="mss-btn mss-btn-primary">
+                Save help
+              </button>
+              <button id="reloadBtn" class="mss-btn mss-btn-outline">
+                Reload from server
+              </button>
+            </div>
+            <p id="status" class="mss-help-text" style="margin-top:0.75rem;">
+              Ready
+            </p>
+          </section>
+        </div>
+
+        <!-- Right column could be future preview; for now, empty -->
+        <div class="mss-preview-column">
+          <section class="mss-card">
+            <h2 class="mss-card-title">Notes</h2>
+            <p class="mss-help-text">
+              This page lets you attach MaxHelp / MinHelp content to each
+              question for the current school (by slug).
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/help-admin/HelpAdmin.js?v=1"></script>
+</body>
+</html>
