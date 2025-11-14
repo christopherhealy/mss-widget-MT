@@ -1017,3 +1017,7 @@
   display: flex;
   justify-content: center;
 }
+.mss-help-text {
+  font-size: 0.82rem;
+  color: var(--mss-muted);
+}
