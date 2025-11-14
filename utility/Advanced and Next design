@@ -1,0 +1,16 @@
+OK back up and at 'em!
+
+Bit of context about next steps.
+The config-admin we are finishing today is going to be called Advanced - it is the custom place where an Admin can do everything - just as we have been planning. So we will finish that (inspired by the WidgetAdmin here- it's the json-based one)
+
+Once that works we will have a default (new) tab that presents Widget styles - pre-designed - that the Admin can choose from - just pick a style.
+- single question - just read a topic section - record while reading - listen back - try again - submit - score - done.
+- choose a question - get some hints - review hints for 30 seconds - record - listen back - try again - submit - score
+- current widget - no upload - choose a question - etc.
+- advanced - the Admin can design the Widget 
+
+So that's where we are headed.
+
+It means that for each question there will be two levels of help - the reading section (=answer) and the hint section. A new form will list the questions (read only) and create answers and hints for each. Only those question with answers and hints will be available to be used where the widget offers that as an option.
+
+So for now - let's nail our Advanced (config-admin index)

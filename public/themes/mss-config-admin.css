@@ -29,6 +29,64 @@
   gap: 12px;
 }
 
+/* Two-column layout for Advanced Config */
+.mss-main-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 2rem;
+}
+
+.mss-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.6fr);
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.mss-config-column,
+.mss-preview-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Hide native <details> marker, use our own chevron */
+.mss-section summary::-webkit-details-marker,
+.mss-section summary::marker {
+  display: none;
+}
+
+/* Make summaries look like section headers */
+.mss-section summary {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+}
+
+/* Chevron icon itself */
+.mss-chevron {
+  font-size: 1.2rem;
+  margin-right: 0.5rem;
+  line-height: 1;
+  user-select: none;
+}
+.mss-input-file-hidden {
+  display: none;
+}
+
+.mss-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.mss-file-name {
+  font-size: 0.8rem;
+}
+
+
 /* ────────────────────────────────────────────────
    MSS Config-Admin: Enhanced section styling
    Chevrons, collapse animation, modal polish
@@ -812,4 +870,154 @@
 /* Optional: make the first expanded card stand out slightly */
 .mss-admin-card:first-of-type:not(.is-collapsed) {
   background: #f9fbff;
+}
+
+/* --- Live Preview layout --- */
+
+.mss-widget-preview-card {
+  max-width: 430px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header (logo + text) */
+
+.mss-widget-header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 14px;
+}
+
+.mss-widget-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: #e5e7eb;
+  object-fit: contain;
+}
+
+.mss-widget-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.mss-widget-powered {
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+/* Question text */
+
+.mss-widget-question {
+  margin: 4px 0 16px;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* Prev / Next row */
+
+.mss-nav-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+/* Toolbar row for Record/Stop/Upload */
+
+.mss-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* Buttons – mirror widget styles */
+
+.mss-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 8px 18px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  background: #e5e7eb;
+  color: #111827;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.12s ease,
+    transform 0.08s ease;
+}
+
+.mss-btn:hover {
+  background: #d1d5db;
+}
+
+.mss-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+  box-shadow: none;
+  transform: none;
+}
+
+.mss-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.3);
+}
+
+.mss-btn-primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.mss-btn-outline {
+  background: #fff;
+  border-color: #d1d5db;
+}
+
+.mss-btn-outline:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+/* Recording bar */
+
+.mss-preview-recbar {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mss-preview-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #d1d5db;
+}
+
+/* Submit button row */
+
+.mss-submit-row {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+.mss-help-text {
+  font-size: 0.82rem;
+  color: var(--mss-muted);
 }

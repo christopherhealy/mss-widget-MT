@@ -19,9 +19,7 @@
           <div class="mss-admin-mark">MSS</div>
           <div class="mss-admin-brand-text">
             <div class="mss-admin-brand-main">MSS Widget Admin</div>
-            <div class="mss-admin-brand-sub">
-              Configure your school’s speaking widget
-            </div>
+            <div class="mss-admin-brand-sub">Configure your school’s speaking widget</div>
           </div>
         </div>
 
@@ -32,10 +30,14 @@
       </header>
 
       <!-- Tabs -->
-      <nav class="mss-admin-tabs">
-        <div class="mss-admin-tab mss-admin-tab--static is-active">Configuration</div>
-        <button id="mssAdminBtnQuestions" type="button" class="mss-admin-tab">Questions</button>
-        <button id="mssAdminBtnReports" type="button" class="mss-admin-tab mss-admin-tab--disabled" disabled>Reports</button>
+      <nav class="mss-admin-tabs" role="tablist">
+        <div class="mss-admin-tab mss-admin-tab--static is-active" role="tab" aria-selected="true">Configuration</div>
+        <button id="mssAdminBtnQuestions" type="button" class="mss-admin-tab" role="tab" aria-selected="false">
+          Questions
+        </button>
+        <button id="mssAdminBtnReports" type="button" class="mss-admin-tab mss-admin-tab--disabled" role="tab" aria-selected="false" disabled>
+          Reports
+        </button>
       </nav>
 
       <main class="mss-admin-main">
@@ -43,7 +45,8 @@
           <form id="mssConfigForm" class="mss-admin-form">
             <h1 class="mss-admin-page-title">Widget configuration</h1>
             <p class="mss-admin-intro">
-              Control how your widget looks and behaves. Question text and ordering can be edited on the <strong>Questions</strong> page.
+              Control how your widget looks and behaves. Question text and ordering can be edited on the
+              <strong>Questions</strong> page.
             </p>
 
             <!-- Brand & text -->
@@ -149,7 +152,7 @@
               </div>
             </section>
 
-            <!-- API & logging (with protected keys) -->
+            <!-- MSS API & logging (protected keys) -->
             <section class="mss-admin-card is-collapsed" data-section="api">
               <div class="mss-admin-card-header">
                 <button type="button" class="mss-admin-chevron" aria-expanded="false" aria-label="Expand section">›</button>
@@ -201,7 +204,7 @@
               </div>
             </section>
 
-            <!-- Branding (logo) -->
+            <!-- Branding -->
             <section class="mss-admin-card is-collapsed" data-section="branding">
               <div class="mss-admin-card-header">
                 <button type="button" class="mss-admin-chevron" aria-expanded="false" aria-label="Expand section">›</button>
@@ -226,7 +229,7 @@
 
             <!-- Footer -->
             <div class="mss-admin-footer">
-              <p id="mssAdminStatus" class="mss-admin-status"></p>
+              <p id="mssAdminStatus" class="mss-admin-status" aria-live="polite"></p>
               <div class="mss-admin-footer-actions">
                 <button type="button" id="mssOpenWidget" class="mss-admin-secondary-btn">Open widget</button>
                 <button type="submit" class="mss-admin-primary-btn">Save changes</button>
@@ -253,6 +256,19 @@
     </div>
 
     <!-- Logic -->
-    <script src="/config-admin/config-admin.js?v=2"></script>
+    <script src="/config-admin/config-admin.js?v=3"></script>
+    <script>
+      // Route the Questions tab to our new editor
+      document.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(location.search);
+        const slug = (params.get('slug') || 'mss-demo').trim();
+        const qBtn = document.getElementById('mssAdminBtnQuestions');
+        if (qBtn) {
+          qBtn.addEventListener('click', () => {
+            location.href = '/questions-admin/WidgetSurvey.html?slug=' + encodeURIComponent(slug);
+          });
+        }
+      });
+    </script>
   </body>
 </html>

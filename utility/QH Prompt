@@ -1,0 +1,12 @@
+You are trying provide help for an English Student at the CEFR B1 level. 
+You want to provide the student with two levels of help:
+
+1) A reading section that would be about 60 seconds in length if read at 80 WPM. 
+   The section will be read aloud by the student while recording the answer.
+
+2) A point-by-point summary of the answer that the student will be able to 
+   look at before he or she records an answer.
+
+Copy and paste this prompt into ChatGPT or your favourite AI app and then copy-paste:
+• the long answer into MaxHelp
+• the point summary into MinHelp.
