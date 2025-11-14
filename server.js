@@ -1,4 +1,4 @@
-// Updated Nov 13 2:47Pm //
+// Updated Nov 14 7:45 AM - QH version //
 // server.js (ESM, works with "type": "module")
 import express from "express";
 import pkg from "pg";
@@ -47,6 +47,24 @@ const LOG_HEADERS = [
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+/* ---------- QUESTION HELP DEFAULT PROMPT ---------- */
+
+const DEFAULT_HELP_PROMPT = `
+You are trying provide help for an English Student at the CEFR B1 level.
+You want to provide the student with two levels of help:
+
+1) A reading section that would be about 60 seconds in length if read at 80 WPM.
+   The section will be read aloud by the student while recording the answer.
+
+2) A point-by-point summary of the answer that the student will be able to
+   look at before he or she records an answer.
+
+Copy and paste this prompt into ChatGPT or your favourite AI app and then
+copy-paste:
+• the long answer into MaxHelp
+• the point summary into MinHelp.
+`.trim();
 
 /* ---------- middleware ---------- */
 app.use(
@@ -901,6 +919,186 @@ app.get("/signup", (req, res) => {
 // Serve admin login page explicitly
 app.get("/admin-login", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "admin-login", "index.html"));
+});
+
+/* ---------- ADMIN: QUESTIONS LIST (per school) ---------- */
+
+// Return all questions for a school, by slug.
+// NOTE: adjust "question_text" below to your actual column name
+// (e.g. "prompt", "text", etc.) if needed.
+app.get("/api/admin/questions/:slug", async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const schoolResult = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1`,
+      [slug]
+    );
+
+    if (!schoolResult.rowCount) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+
+    const schoolId = schoolResult.rows[0].id;
+
+    const questionsResult = await pool.query(
+      `
+        SELECT
+          id,
+          question_text -- TODO: change to your real column, e.g. "prompt"
+        FROM questions
+        WHERE school_id = $1
+        ORDER BY id ASC
+      `,
+      [schoolId]
+    );
+
+    const questions = questionsResult.rows.map((row) => ({
+      id: row.id,
+      text: row.question_text,
+    }));
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      questions,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/questions/:slug error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+/* ---------- ADMIN: QUESTION HELP (GET) ---------- */
+
+app.get("/api/admin/help/:slug/:questionId", async (req, res) => {
+  const { slug, questionId } = req.params;
+  const qid = Number(questionId);
+
+  if (!Number.isInteger(qid) || qid <= 0) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "invalid_question_id" });
+  }
+
+  try {
+    // Find school by slug
+    const schoolResult = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1`,
+      [slug]
+    );
+    if (!schoolResult.rowCount) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+    const schoolId = schoolResult.rows[0].id;
+
+    // Try to load existing help record
+    const helpResult = await pool.query(
+      `
+        SELECT maxhelp, minhelp, prompt
+        FROM questions_help
+        WHERE school_id = $1 AND question_id = $2
+        LIMIT 1
+      `,
+      [schoolId, qid]
+    );
+
+    if (helpResult.rowCount) {
+      const row = helpResult.rows[0];
+      return res.json({
+        ok: true,
+        slug,
+        schoolId,
+        questionId: qid,
+        maxhelp: row.maxhelp || "",
+        minhelp: row.minhelp || "",
+        prompt: row.prompt || DEFAULT_HELP_PROMPT,
+        exists: true,
+      });
+    }
+
+    // No record yet – return defaults (do NOT insert)
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      questionId: qid,
+      maxhelp: "",
+      minhelp: "",
+      prompt: DEFAULT_HELP_PROMPT,
+      exists: false,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/help/:slug/:questionId error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/* ---------- ADMIN: QUESTION HELP (PUT) ---------- */
+
+app.put("/api/admin/help/:slug/:questionId", async (req, res) => {
+  if (!checkAdminKey(req, res)) return;
+
+  const { slug, questionId } = req.params;
+  const qid = Number(questionId);
+
+  if (!Number.isInteger(qid) || qid <= 0) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "invalid_question_id" });
+  }
+
+  const body = req.body || {};
+  const maxhelp = (body.maxhelp || "").toString();
+  const minhelp = (body.minhelp || "").toString();
+  const prompt = (body.prompt || DEFAULT_HELP_PROMPT).toString();
+
+  try {
+    // Find school by slug
+    const schoolResult = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1`,
+      [slug]
+    );
+    if (!schoolResult.rowCount) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+    const schoolId = schoolResult.rows[0].id;
+
+    // Upsert help record
+    const upsertResult = await pool.query(
+      `
+        INSERT INTO questions_help (school_id, question_id, maxhelp, minhelp, prompt)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (school_id, question_id)
+        DO UPDATE SET
+          maxhelp   = EXCLUDED.maxhelp,
+          minhelp   = EXCLUDED.minhelp,
+          prompt    = EXCLUDED.prompt,
+          updated_at = NOW()
+        RETURNING id, maxhelp, minhelp, prompt, created_at, updated_at
+      `,
+      [schoolId, qid, maxhelp, minhelp, prompt]
+    );
+
+    const record = upsertResult.rows[0];
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      questionId: qid,
+      help: record,
+    });
+  } catch (err) {
+    console.error("PUT /api/admin/help/:slug/:questionId error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
 });
 
 // ---------- ADMIN LOGIN API ----------
