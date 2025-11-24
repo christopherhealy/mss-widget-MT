@@ -53,7 +53,7 @@ const HELP_CACHE = {};
 
 // Per-question help cache for WidgetMin + WidgetMax / READMAX
 // questionId -> { min: string, max: string }
-const HELP_CACHE = {};
+
 
 /* -----------------------------------------------------------------------
    BACKEND BASE (Node / Render)
