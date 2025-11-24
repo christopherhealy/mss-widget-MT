@@ -1,4 +1,4 @@
-<!-- Build: 2025-11-12 22:40 ET (WS clean per-slug, Postgres-backed) -->
+<!-- Build: 2025-11-15 6:55 AM ET clean up for Help work  -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -138,6 +138,8 @@
     </div>
   </div>
 
+
+
   <!-- Add/Edit modal -->
   <div id="aeOverlay" class="overlay" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-label="Add or Edit Question">
@@ -154,6 +156,7 @@
     </div>
   </div>
 
+  
   <!-- Finished dialog -->
   <div id="finishOverlay" class="finishOverlay" aria-hidden="true">
     <div class="finishDlg">
@@ -179,23 +182,96 @@
     </div>
   </div>
 
+  <!-- Help dialog -->
+  <div id="helpOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Question Help">
+      <div class="modalHead">
+        <div class="title">Question Help</div>
+      </div>
+      <div class="modalBody">
+        <div class="muted" style="margin-bottom:8px;">
+          <b>Question</b><br>
+          <span id="helpQuestionText"></span>
+        </div>
+
+        <div style="margin-top:8px;">
+          <div class="muted" style="margin-bottom:4px;">Most Help</div>
+          <textarea id="helpMax" class="ta" style="min-height:140px;"></textarea>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="muted" style="margin-bottom:4px;">Limited Help</div>
+          <textarea id="helpMin" class="ta" style="min-height:80px;"></textarea>
+        </div>
+
+        <div style="margin-top:10px;">
+  	  <div class="muted" style="margin-bottom:4px;">Prompt for AI assist</div>
+  	  <textarea id="helpPrompt" class="ta" style="min-height:80px;"></textarea>
+          <button id="copyPromptBtn" type="button" class="btn" style="margin-top:6px;">
+            Copy prompt
+          </button>
+
+    	   <div class="muted" style="margin-top:8px; font-size:12px; line-height:1.5;">
+    	     TIP: Copy and paste this prompt into ChatGPT or your favourite AI app and then<br>
+    	     copy-paste:<br>
+    	     &bull; the long answer into <b>MaxHelp</b><br>
+    	     &bull; the point summary into <b>MinHelp</b>.
+  	  </div>
+        </div>
+
+      <div class="modalFoot">
+        <button id="helpCancel" type="button" class="btn">Cancel</button>
+        <button id="helpSave" type="button" class="btn primary">Save Help</button>
+      </div>
+    </div>
+  </div>
+
 <script>
-/* -------------------------------------------------------------
-   SLUG + ENDPOINTS (per-slug Postgres via /api/admin/widget/:slug)
-------------------------------------------------------------- */
+// -------- SLUG + ENDPOINTS (per-school via assessments) --------
+var params = new URLSearchParams(window.location.search);
+var SLUG   = (params.get("slug") || "mss-demo").trim();
 
-var params   = new URLSearchParams(window.location.search);
-var SLUG     = (params.get("slug") || "mss-demo").trim();
-var ADMIN_URL = "/api/admin/widget/" + encodeURIComponent(SLUG);   // GET + PUT
-var FALLBACK_FORM_URL = "./form.json?ts=" + Date.now();           // only if admin fails
+// 1) Resolve (or auto-create) default assessment for this school slug
+var ADMIN_ASSESS_URL   = "/api/admin/assessments/" + encodeURIComponent(SLUG);
 
-/* ========= state ========= */
-var schema    = null;   // latest server form object
-var survey    = [];     // editable list
+// 2) Load/save questions by assessmentId
+var QUESTIONS_BASE_URL = "/api/assessments/"; // we'll append ASSESSMENT_ID + "/questions"
+
+// 3) Local fallback only used for export/import backup
+var FALLBACK_FORM_URL  = "./form.json?ts=" + Date.now();
+
+var ASSESSMENT_ID = null;
+var SCHOOL_ID = null;
+
+
+
+// existing state vars can stay as-is:
+var schema    = null;   // simple wrapper (used for headline + export)
+var survey    = [];     // the questions list
 var fileHandle = null;
 var aeMode    = "add";
 var aeIndex   = -1;
+
+
 var aeDirty   = false;
+
+// Help modal state
+var helpQuestionId    = null;
+var helpQuestionText  = "";
+var helpQuestionIndex = -1;   // index into survey[]
+
+var DEFAULT_HELP_PROMPT =
+  "You are trying provide help for an English Student at the CEFR B1 level.\n" +
+  "You want to provide the student with two levels of help:\n\n" +
+  "Here is the question for the student: [QUESTION]\n\n" +
+  "We need you to provide a good answer for it two ways:\n\n" +
+  "1) A reading section that would be about 60 seconds in length if read at 80 WPM.\n" +
+  "   The section will be read aloud by the student while recording the answer.\n\n" +
+  "2) A point-by-point summary of the answer that the student will be able to\n" +
+  "   look at before he or she records an answer.\n";
+
+
+
 
 /* ========= helpers ========= */
 function $(id){ return document.getElementById(id); }
@@ -216,13 +292,30 @@ function escapeHtml(s){
 }
 
 function summarize(q){
-  var parts = String(q).split(/\n+/);
+  var text = (q && typeof q === "object") ? (q.question || q.text || "") : (q || "");
+  var parts = String(text).split(/\n+/);
   var head = escapeHtml(parts[0] || "");
   var rest = escapeHtml(parts.slice(1).join("\n"));
   var extra = rest
     ? '<div class="muted" style="margin-top:4px;white-space:pre-line">' + rest + "</div>"
     : "";
   return '<div class="qtext"><div class="qfirst">' + head + "</div>" + extra + "</div>";
+}
+
+function openAddModal(){
+  aeMode = "add"; aeIndex = -1; aeDirty = false;
+  $("aeTitle").textContent = "Add Question";
+  $("aeTextarea").value = "";
+  showOverlay("aeOverlay", true);
+}
+
+function openEditModal(i){
+  aeMode = "edit"; aeIndex = i; aeDirty = false;
+  var item = survey[i];
+  var text = item && typeof item === "object" ? (item.question || item.text || "") : (item || "");
+  $("aeTitle").textContent = "Edit Question";
+  $("aeTextarea").value = text;
+  showOverlay("aeOverlay", true);
 }
 
 function getMerged(){
@@ -255,22 +348,31 @@ function render(){
       '<div class="muted">No questions found. Click <b>＋ Add</b> or use <b>Import</b>/<b>CSV Import</b>.</div>';
     return;
   }
+
   var html = "";
   for (var i = 0; i < survey.length; i++){
+    var item    = survey[i];
+    var hasHelp = !!(item && item.hasHelp);
+
     html +=
-      '<div class="row" data-idx="' + i + '" draggable="true">' +
-        '<div class="idx" title="Drag to reorder">' + (i+1) + "</div>" +
-        "<div>" + summarize(survey[i]) + "</div>" +
+      '<div class="row" data-idx="' + i + '" draggable="true"' +
+        (hasHelp ? ' data-has-help="1"' : '') + '>' +
+        '<div class="idx" title="Drag to reorder">' + (i + 1) + '</div>' +
+        '<div>' + summarize(item) + '</div>' +
         '<div class="ctrls">' +
           '<button type="button" class="btn" data-act="edit">Edit</button>' +
+          '<button type="button" class="btn" data-act="help">' +
+            'Help' + (hasHelp ? ' •' : '') +
+          '</button>' +
           '<button type="button" class="btn" data-act="top">Top</button>' +
           '<button type="button" class="btn" data-act="up">Up</button>' +
           '<button type="button" class="btn" data-act="down">Down</button>' +
           '<button type="button" class="btn" data-act="bottom">Bottom</button>' +
           '<button type="button" class="btn" data-act="remove">✕</button>' +
-        "</div>" +
-      "</div>";
+        '</div>' +
+      '</div>';
   }
+
   list.innerHTML = html;
   wireDnd(list);
 }
@@ -279,8 +381,9 @@ function render(){
 function wireDnd(container){
   var ph = null, dragging = null, src = null;
 
+  // Use Array.prototype.forEach.call for max compatibility
   var rows = container.querySelectorAll(".row");
-  rows.forEach(function(row){
+  Array.prototype.forEach.call(rows, function(row){
     row.dataset.allow = "";
     row.addEventListener("dragstart", start);
     row.addEventListener("dragend", end);
@@ -297,9 +400,13 @@ function wireDnd(container){
 
   function start(e){
     var row = e.currentTarget;
-    if (row.dataset.allow !== "1"){ e.preventDefault(); return; }
+    if (row.dataset.allow !== "1"){
+      e.preventDefault();
+      return;
+    }
     row.dataset.allow = "";
-    dragging = row; src = +row.dataset.idx;
+    dragging = row;
+    src = +row.dataset.idx;
     row.classList.add("dragging");
     ph = document.createElement("div");
     ph.className = "placeholder";
@@ -310,6 +417,7 @@ function wireDnd(container){
       e.dataTransfer.setData("text/plain", String(src));
       e.dataTransfer.setDragImage(row.querySelector(".idx") || row, 16, 16);
     }catch(_) {}
+    console.log("[DnD] dragstart from index", src);
   }
 
   function over(e){
@@ -322,28 +430,42 @@ function wireDnd(container){
   }
 
   function drop(e){
-    if (!dragging || !ph) return;
-    e.preventDefault();
-    var target = 0;
-    Array.prototype.forEach.call(container.children, function(c){
-      if (c === ph) return;
-      if (c.classList && c.classList.contains("row")) target++;
-    });
-    var from = src;
-    if (from < target) target--;
-    cleanup();
-    if (from == null || from === target) return;
-    var m = survey.splice(from, 1)[0];
-    survey.splice(target, 0, m);
-    render();
+  if (!dragging || !ph) return;
+  e.preventDefault();
+
+  // Count how many .row elements come BEFORE the placeholder.
+  var target = 0;
+  var children = Array.prototype.slice.call(container.children);
+  for (var i = 0; i < children.length; i++){
+    var c = children[i];
+    if (c === ph) break; // stop at placeholder
+    if (c.classList && c.classList.contains("row")) target++;
   }
 
-  function end(){ cleanup(); }
+  var from = src;
+  if (from < target) target--;           // classic “remove then insert” adjust
+  console.log("[DnD] drop from", from, "to", target);
+
+  cleanup();
+  if (from == null || from === target) return;
+
+  var m = survey.splice(from, 1)[0];
+  survey.splice(target, 0, m);
+  render();
+}
+
+  function end(){
+    cleanup();
+  }
 
   function cleanup(){
-    container.querySelectorAll(".row").forEach(function(r){ r.dataset.allow = ""; });
+    Array.prototype.forEach.call(
+      container.querySelectorAll(".row"),
+      function(r){ r.dataset.allow = ""; }
+    );
     if (dragging) dragging.classList.remove("dragging");
-    dragging = null; src = null;
+    dragging = null;
+    src = null;
     if (ph) ph.remove();
     ph = null;
   }
@@ -357,27 +479,15 @@ function wireDnd(container){
       var box = ch.getBoundingClientRect();
       var off = y - box.top - box.height / 2;
       if (off < 0 && off > best.offset){
-        best.offset = off; best.element = ch;
+        best.offset = off;
+        best.element = ch;
       }
     });
     return best.element;
   }
 }
-
 /* ========= Modals / confirms ========= */
-function openAddModal(){
-  aeMode = "add"; aeIndex = -1; aeDirty = false;
-  $("aeTitle").textContent = "Add Question";
-  $("aeTextarea").value = "";
-  showOverlay("aeOverlay", true);
-}
 
-function openEditModal(i){
-  aeMode = "edit"; aeIndex = i; aeDirty = false;
-  $("aeTitle").textContent = "Edit Question";
-  $("aeTextarea").value = survey[i] || "";
-  showOverlay("aeOverlay", true);
-}
 
 function showOverlay(id, show){
   var el = $(id); if (!el) return;
@@ -398,19 +508,43 @@ function wireAddEdit(){
   $("aeSave").addEventListener("click", function(){
     var v = ta.value.trim();
     if (!v){ setStatus("Nothing to save", false); return; }
-    if (aeMode === "add") survey.push(v);
-    else if (aeMode === "edit" && aeIndex > -1) survey[aeIndex] = v;
-    aeDirty = false; render(); setStatus("Saved");
+
+    if (aeMode === "add") {
+      survey.push({ id: null, question: v });
+    } else if (aeMode === "edit" && aeIndex > -1) {
+      var item = survey[aeIndex];
+      if (item && typeof item === "object") {
+        item.question = v;
+      } else {
+        survey[aeIndex] = { id: null, question: v };
+      }
+    }
+
+    aeDirty = false;
+    render();
+    setStatus("Saved");
   });
 
   $("aeSaveNew").addEventListener("click", function(){
     var v = ta.value.trim();
     if (!v){ setStatus("Nothing to save", false); return; }
-    if (aeMode === "edit" && aeIndex > -1) survey[aeIndex] = v;
-    else survey.push(v);
+
+    if (aeMode === "edit" && aeIndex > -1) {
+      var item = survey[aeIndex];
+      if (item && typeof item === "object") {
+        item.question = v;
+      } else {
+        survey[aeIndex] = { id: null, question: v };
+      }
+    } else {
+      survey.push({ id: null, question: v });
+    }
+
     render();
     ta.value = "";
-    aeMode = "add"; aeIndex = -1; aeDirty = false;
+    aeMode = "add";
+    aeIndex = -1;
+    aeDirty = false;
     setStatus("Saved. Ready for next.");
   });
 
@@ -419,11 +553,23 @@ function wireAddEdit(){
       triConfirm("Save your question?", "No", "Cancel", "Save").then(function(choice){
         if (choice === "save"){
           var v = $("aeTextarea").value.trim();
-          if (aeMode === "add") survey.push(v);
-          else if (aeMode === "edit" && aeIndex > -1) survey[aeIndex] = v;
-          render(); aeDirty = false; showOverlay("aeOverlay", false); setStatus("Saved");
+          if (aeMode === "add") {
+            survey.push({ id: null, question: v });
+          } else if (aeMode === "edit" && aeIndex > -1) {
+            var item = survey[aeIndex];
+            if (item && typeof item === "object") {
+              item.question = v;
+            } else {
+              survey[aeIndex] = { id: null, question: v };
+            }
+          }
+          render();
+          aeDirty = false;
+          showOverlay("aeOverlay", false);
+          setStatus("Saved");
         }else if (choice === "nosave"){
-          aeDirty = false; showOverlay("aeOverlay", false);
+          aeDirty = false;
+          showOverlay("aeOverlay", false);
         }
       });
     }else{
@@ -487,27 +633,76 @@ function triConfirm(title,left,mid,right){
   });
 }
 
-/* ========= Save to DB with file fallback ========= */
+/* ========= Nov 14 Save to DB with file fallback ========= */
 async function saveToServer(){
-  var formOut = getMerged();
-  try{
-    var res = await fetch(ADMIN_URL, {
+  if (!ASSESSMENT_ID){
+    console.error("[WidgetSurvey] no ASSESSMENT_ID – cannot save.");
+    setStatus("No assessmentId – cannot save.", false);
+    return "error";
+  }
+
+  // Normalize for API: keep id (may be null), sort_order, question text
+  var payloadQuestions = survey
+  .map(function(item, idx){
+    var q = (item && typeof item === "object") ? item : { question: item };
+    var text = (q.question || q.text || "").toString().trim();
+    if (!text) return null;
+
+    // If we already have a sort_order, keep it; otherwise fall back to idx+1
+    var order =
+      (q.sort_order != null && q.sort_order !== "")
+        ? q.sort_order
+        : (idx + 1);
+
+    return {
+      id:        q.id || null,
+      sort_order: order,
+      question:  text
+    };
+  })
+  .filter(function(q){ return q !== null; });
+
+// 👀 Debug: see exactly what we're sending to the API
+console.log("[WidgetSurvey] payloadQuestions =", JSON.stringify(payloadQuestions, null, 2));
+
+  if (!payloadQuestions.length){
+    setStatus("No questions to save", false);
+    return "error";
+  }
+
+  var payload = { questions: payloadQuestions };
+
+  try {
+    var url = QUESTIONS_BASE_URL + encodeURIComponent(ASSESSMENT_ID) + "/questions";
+    console.log("[WidgetSurvey] saving questions to", url, "for slug", SLUG, "payload:", payload);
+
+    var res = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ form: formOut })
+      body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    console.log("[WidgetSurvey] saved to", ADMIN_URL, "for slug", SLUG);
-    setStatus("Saved to server");
+
+    if (!res.ok){
+      var errBody = null;
+      try { errBody = await res.json(); } catch (_) {}
+      console.error("Save failed with status", res.status, "body:", errBody);
+      setStatus("Server save failed (" + res.status + ")", false);
+      return "error";
+    }
+
+    setStatus("Saved to server", true);
+
+    // Refresh so we pick up fresh IDs
+    try { await load(); } catch (_) {}
     return "server";
-  }catch(err){
-    console.error("Remote save failed, falling back to file:", err);
-    setStatus("Server save failed, saving to file instead", false);
-    var r = await saveToFilePicker(formOut, "form.json");
-    return r;       // "saved" | "download" | "canceled"
+  } catch (err) {
+    console.error("Save error:", err);
+    setStatus("Server save error", false);
+    return "error";
   }
 }
-
+ 
+   
 async function saveToFilePicker(jsonObj, suggestedName){
   if (suggestedName === void 0) suggestedName = "form.json";
   var blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:"application/json"});
@@ -543,50 +738,98 @@ async function saveToFilePicker(jsonObj, suggestedName){
   }
 }
 
-/* ========= Load (DB first; fallback to form.json ONLY if admin fails) ========= */
+/* ========= Nov 14 Load (DB → bootstrap → form.json) ========= */
 async function load(){
-  try{
-    console.log("[WidgetSurvey] loading for slug=", SLUG, "via", ADMIN_URL);
-    var r = await fetch(ADMIN_URL, {
-      headers: { "Accept":"application/json" },
+  setStatus("Loading…", false);
+
+  try {
+    // 1) Resolve assessment for this slug (creates default if needed)
+    console.log("[WidgetSurvey] resolving assessment for slug=", SLUG, "via", ADMIN_ASSESS_URL);
+    var aRes = await fetch(ADMIN_ASSESS_URL + "?ts=" + Date.now(), { cache: "no-store" });
+    if (!aRes.ok) throw new Error("assessment lookup failed: " + aRes.status);
+
+    var aBody = await aRes.json().catch(function(){ return {}; });
+    if (!aBody || !aBody.assessmentId) {
+      throw new Error("no assessmentId in response");
+    }
+
+    ASSESSMENT_ID = aBody.assessmentId;
+    console.log("[WidgetSurvey] using assessmentId=", ASSESSMENT_ID);
+
+// Optional: if backend sends schoolId, capture it
+if (aBody.schoolId || aBody.school_id){
+  SCHOOL_ID = aBody.schoolId || aBody.school_id;
+  console.log("[WidgetSurvey] using schoolId=", SCHOOL_ID, "for slug", SLUG);
+}
+
+    // Minimal schema so exports have a headline
+    schema = { headline: "Questions for " + SLUG };
+
+    // 2) Load questions for that assessment
+    var qUrl = QUESTIONS_BASE_URL + encodeURIComponent(ASSESSMENT_ID) + "/questions";
+    console.log("[WidgetSurvey] loading questions from", qUrl);
+
+    var qRes = await fetch(qUrl + "?ts=" + Date.now(), {
+      headers: { "Accept": "application/json" },
       cache: "no-store"
     });
-    if (!r.ok) throw new Error("admin read failed: " + r.status);
-    var body = await r.json().catch(function(){ return {}; });
-    var formObj = (body && typeof body === "object" && (body.form || body)) ? (body.form || body) : {};
-    schema = formObj;
-    survey = Array.isArray(formObj.survey) ? formObj.survey.slice() : [];
+
+ if (qRes.ok) {
+  var qBody = await qRes.json().catch(function(){ return {}; });
+
+  // survey = array of { id, question, sort_order }
+  survey = [];
+
+ if (qBody && Array.isArray(qBody.questions)) {
+  survey = qBody.questions
+    .map(function(row, idx){
+      // Prefer sort_order, then legacy position, then idx+1
+      var order =
+        (row.sort_order != null && row.sort_order !== "")
+          ? row.sort_order
+          : (row.position != null && row.position !== "")
+            ? row.position
+            : (idx + 1);
+
+      return {
+        id:        row.id || null,
+        question:  row.question != null ? String(row.question) : "",
+        sort_order: order,
+        // if backend joins/flags help, surface it here
+        hasHelp: !!(row.hasHelp || row.has_help)
+      };
+    })
+    .filter(function(item){
+      return item.question.trim() !== "";
+    })
+    .sort(function(a, b){
+      return a.sort_order - b.sort_order;
+    });
+}
+
+} else if (qRes.status === 404) {
+  console.warn("[WidgetSurvey] questions 404 – starting empty list");
+  survey = [];
+} else {
+  throw new Error("questions load failed: " + qRes.status);
+}
 
     $("meta").textContent =
-      (schema.headline || ("Questions for " + SLUG)) +
-      " • " + (new Date()).toLocaleString() +
-      " • slug=" + SLUG;
+      "Questions for " + SLUG +
+      " • assessmentId=" + ASSESSMENT_ID +
+      " • " + (new Date()).toLocaleString();
 
     render();
-    console.log("[WidgetSurvey] loaded from server", ADMIN_URL);
-    return;   // success – do not touch form.json
-  }catch(err){
-    console.error("[WidgetSurvey] admin load failed; trying local form.json", err);
-  }
-
-  // Only if admin fails, try static form.json
-  try{
-    var res = await fetch(FALLBACK_FORM_URL, { cache:"no-store" });
-    if (!res.ok) throw new Error("fallback not found: " + res.status);
-    var local = await res.json().catch(function(){ return {}; });
-    schema = local || {};
-    survey = Array.isArray(schema.survey) ? schema.survey.slice() : [];
-    $("meta").textContent =
-      (schema.headline || "My Speaking Score") +
-      " • " + (new Date()).toLocaleString() +
-      " • slug=" + SLUG + " (local)";
+    setStatus("Loaded.", true);
+  } catch (err) {
+    console.error("[WidgetSurvey] load failed", err);
+    setStatus("Failed to load from DB – starting empty list", false);
+    schema = { headline: "Questions for " + SLUG };
+    survey = [];
     render();
-    setStatus("Loaded local form.json fallback", false);
-  }catch(e){
-    console.error("[WidgetSurvey] fallback form.json load failed", e);
-    setStatus("Failed to load questions", false);
   }
 }
+
 
 /* ========= Finished dialog ========= */
 function showFinishDialog(){
@@ -615,11 +858,21 @@ async function finishedFlow(){
   var choice = await showFinishDialog();
   if (choice === "save"){
     var r = await saveToServer();
-    if (r === "server")      setStatus("Saved to server");
-    else if (r === "saved")  setStatus("Saved to file");
-    else if (r === "download") setStatus("Downloaded");
+    if (r !== "server"){
+      // we already set an error status inside saveToServer
+      return;
+    }
   }
-  // nosave / cancel → stay
+  // "nosave" or "cancel" → do nothing
+}
+
+function confirmRemove(i){
+  twoBtnConfirm("Remove this question?", "Cancel", "Remove").then(function(ok){
+    if (!ok) return;
+    survey.splice(i, 1);
+    render();
+    setStatus("Question removed");
+  });
 }
 
 /* ========= Row actions / boot ========= */
@@ -630,8 +883,9 @@ function wireRowActions(){
     if (!btn) return;
     var row = btn.closest(".row"); if (!row) return;
     var i = +row.dataset.idx;
-    switch(btn.dataset.act){
+       switch(btn.dataset.act){
       case "edit":   openEditModal(i); break;
+      case "help":   openHelpFor(i);   break;
       case "top":    moveTo(i,0); break;
       case "up":     move(i,-1); break;
       case "down":   move(i,1); break;
@@ -641,13 +895,16 @@ function wireRowActions(){
   });
 }
 
+
 window.addEventListener("DOMContentLoaded", function(){
   console.log('🧩 MSS Questions Admin for slug="' + SLUG + '"');
   load();
+
   wireRowActions();
   $("addBtnTop").addEventListener("click", openAddModal);
   $("addBtnBottom").addEventListener("click", openAddModal);
   wireAddEdit();
+  wireHelpModal(); 
 
   // Export
   $("exportBtnTop").addEventListener("click", function(){
@@ -673,6 +930,7 @@ window.addEventListener("DOMContentLoaded", function(){
       r !== "canceled"
     );
   };
+
   $("saveToFileBtnTop").addEventListener("click", saveMerged);
   $("saveToFileBtnBottom").addEventListener("click", saveMerged);
 
@@ -691,7 +949,19 @@ window.addEventListener("DOMContentLoaded", function(){
         var parsed = JSON.parse(await file.text());
         if (!parsed || typeof parsed !== "object") throw new Error("Invalid JSON object.");
         schema = parsed;
-        survey = Array.isArray(parsed.survey) ? parsed.survey.slice() : [];
+        schema = parsed;
+       survey = Array.isArray(parsed.survey)
+          ? parsed.survey.map(function(q){
+           if (q && typeof q === "object") {
+            return {
+              id: q.id || null,
+              question: q.question != null ? String(q.question) : String(q || "")
+             };
+             }
+             return { id: null, question: String(q || "") };
+         })
+       : [];
+
         setStatus("Imported JSON");
         render();
         $("meta").textContent =
@@ -717,8 +987,12 @@ window.addEventListener("DOMContentLoaded", function(){
       var first = String(rows[0][col] || "").trim().toLowerCase();
       var hasHeader = (first === "name" || first === "title");
       var start = hasHeader ? 1 : 0;
-      var qs = rows.slice(start).map(function(r){ return normalizeCell(r[col]); })
-                    .filter(function(v){ return !!v; });
+      var qs = rows.slice(start)
+             .map(function(r){
+               var t = normalizeCell(r[col]);
+               return t ? { id: null, question: t } : null;
+             })
+             .filter(function(item){ return !!item; });
       if (!qs.length){ setStatus("No questions parsed", false); return; }
       var choice = await triConfirm("Append to existing questions?","Replace","Cancel","Append");
       if (choice === "cancel") return;
@@ -729,6 +1003,154 @@ window.addEventListener("DOMContentLoaded", function(){
   })();
 });
 
+function openHelpFor(index){
+  var q = survey[index];
+  if (!q){
+    setStatus("No question found for help", false);
+    return;
+  }
+
+  var id   = q.id || q.question_id || q.questionId;
+  var text = q.question || q.text || String(q);
+
+  if (!id){
+    setStatus("This question has no ID yet – save questions first.", false);
+    return;
+  }
+
+  helpQuestionId     = id;
+  helpQuestionText   = text;
+  helpQuestionIndex  = index;
+
+  $("helpQuestionText").textContent = text;
+
+  var url = "/api/admin/help/" +
+            encodeURIComponent(SLUG) + "/" +
+            encodeURIComponent(id);
+
+  console.log("[WidgetSurvey] load help for questionId=", id, "via", url);
+
+  fetch(url, { cache: "no-store" })
+    .then(function(res){
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    })
+    .then(function(body){
+      $("helpMax").value = body.maxhelp || "";
+      $("helpMin").value = body.minhelp || "";
+
+      // Build template with the actual question inserted
+      var template = DEFAULT_HELP_PROMPT.replace("[QUESTION]", text);
+
+      // Decide whether to use DB prompt or the new template
+      var prompt = body.prompt || "";
+      var isLegacy =
+        !prompt ||
+        prompt.indexOf("Here is the question for the student") === -1;
+
+      $("helpPrompt").value = isLegacy ? template : prompt;
+
+      // Mark local state based on what we loaded
+      if (helpQuestionIndex > -1 && survey[helpQuestionIndex]){
+        survey[helpQuestionIndex].hasHelp =
+          !!(body.maxhelp || body.minhelp || body.prompt);
+      }
+      render(); // update indicator
+
+      showOverlay("helpOverlay", true);
+      setStatus(body.exists ? "Loaded existing help" : "No help yet – ready to add");
+    })
+    .catch(function(err){
+      console.error("Help load error", err);
+      setStatus("Failed to load help", false);
+    });
+}
+
+function wireHelpModal(){
+  // Close without saving
+  $("helpCancel").addEventListener("click", function(){
+    showOverlay("helpOverlay", false);
+  });
+
+  // Copy prompt to clipboard
+  var copyBtn = $("copyPromptBtn");
+  if (copyBtn){
+    copyBtn.addEventListener("click", function(){
+      var txt = $("helpPrompt").value || "";
+      if (!txt.trim()){
+        setStatus("Nothing to copy", false);
+        return;
+      }
+      navigator.clipboard.writeText(txt).then(function(){
+        var old = copyBtn.textContent;
+        copyBtn.textContent = "Copied!";
+        setTimeout(function(){ copyBtn.textContent = old; }, 700);
+        setStatus("Prompt copied", true);
+      }).catch(function(err){
+        console.error("Clipboard copy failed", err);
+        setStatus("Clipboard blocked by browser", false);
+      });
+    });
+  }
+
+  // Save help to server
+   // Save help to server
+  $("helpSave").addEventListener("click", function(){
+    if (!helpQuestionId){
+      setStatus("No question selected for help", false);
+      return;
+    }
+
+    var body = {
+      maxhelp:  $("helpMax").value || "",
+      minhelp:  $("helpMin").value || "",
+      prompt:   $("helpPrompt").value || DEFAULT_HELP_PROMPT
+    };
+
+    var params   = new URLSearchParams(window.location.search);
+    var adminKey = (params.get("adminKey") || "").trim();
+    var headers  = { "Content-Type": "application/json" };
+    if (adminKey) headers["X-ADMIN-KEY"] = adminKey;
+
+    var url = "/api/admin/help/" +
+              encodeURIComponent(SLUG) + "/" +
+              encodeURIComponent(helpQuestionId);
+
+    console.log("[WidgetSurvey] saving help to", url, "body=", body);
+
+    fetch(url, {
+      method: "PUT",
+      headers: headers,
+      body: JSON.stringify(body)
+    })
+      .then(function(res){
+        if (!res.ok){
+          // Try to read body for easier debugging
+          return res.text().then(function(txt){
+            var msg = "Help save failed (" + res.status + ")";
+            console.error(msg, "response:", txt);
+            throw new Error(msg);
+          });
+        }
+        return res.text().catch(function(){ return ""; });
+      })
+      .then(function(){
+        // Only mark as having help on TRUE success
+        if (helpQuestionIndex > -1 && survey[helpQuestionIndex]){
+          survey[helpQuestionIndex].hasHelp =
+            !!(body.maxhelp || body.minhelp || body.prompt);
+        }
+        render();
+
+        setStatus("Help saved", true);
+        showOverlay("helpOverlay", false);
+      })
+      .catch(function(err){
+        console.error("Help save error", err);
+        setStatus("Failed to save help", false);
+      });
+  });
+}
 /* ========= CSV helpers ========= */
 function normalizeCell(s){
   if (s == null) return "";

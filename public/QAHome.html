@@ -1,0 +1,325 @@
+<!-- /public/QAHome.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Widget MT – QA Home</title>
+
+  <!-- Shared MSS design system -->
+  <link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Helvetica, Arial, sans-serif;
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    .qa-shell {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    .qa-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .qa-header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+
+    .qa-header p {
+      margin: 0;
+      color: #6b7280;
+      max-width: 640px;
+    }
+
+    .qa-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .qa-badge {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      color: #374151;
+    }
+
+    .qa-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .qa-card {
+      background: #ffffff;
+      border-radius: 16px;
+      border: 1px solid #e5e7eb;
+      padding: 16px 18px 14px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    }
+
+    .qa-card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 4px;
+    }
+
+    .qa-card p {
+      margin: 0 0 10px;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+
+    .qa-links {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .qa-links a {
+      font-size: 0.86rem;
+      text-decoration: none;
+      color: #1d4ed8;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .qa-links a span.qa-tag {
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+
+    .qa-section-title {
+      margin: 24px 0 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6b7280;
+    }
+
+    .qa-footer {
+      margin-top: 28px;
+      font-size: 0.75rem;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="qa-shell">
+    <header class="qa-header">
+      <div>
+        <h1>MSS Widget MT – QA Home</h1>
+        <p>
+          One-stop launchpad for end-to-end testing: widgets, dashboards,
+          lead capture, and school portals for <strong>mss-demo</strong> and
+          <strong>widget-academy</strong>.
+        </p>
+        <div class="qa-badges">
+          <span class="qa-badge">Environment: localhost:3000</span>
+          <span class="qa-badge">DB: msswidgetmt_db (Render)</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 1. Widgets -->
+    <div class="qa-section-title">Widgets</div>
+    <div class="qa-grid">
+      <section class="qa-card">
+        <h2>mss-demo – Core Widget</h2>
+        <p>Baseline widget with slider help and inline dashboard panel.</p>
+        <div class="qa-links">
+          <a href="/widgets/Widget.html?slug=mss-demo" target="_blank">
+            Core widget
+            <span class="qa-tag">Widget.html</span>
+          </a>
+          <a href="/widgets/WidgetMin.html?slug=mss-demo" target="_blank">
+            MIN-help widget
+            <span class="qa-tag">WidgetMin.html</span>
+          </a>
+          <a href="/widgets/WidgetMax.html?slug=mss-demo" target="_blank">
+            MAX-help widget
+            <span class="qa-tag">WidgetMax.html</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="qa-card">
+        <h2>Widget Academy – Embedded Widget</h2>
+        <p>
+          Widget instance for <strong>slug=widget-academy</strong>. Used in the
+          Widget Academy end-to-end flow.
+        </p>
+        <div class="qa-links">
+          <a href="/widgets/Widget.html?slug=widget-academy" target="_blank">
+            WA core widget
+            <span class="qa-tag">Widget.html</span>
+          </a>
+          <a href="/widgets/WidgetMin.html?slug=widget-academy" target="_blank">
+            WA MIN-help widget
+            <span class="qa-tag">WidgetMin.html</span>
+          </a>
+          <a href="/widgets/WidgetMax.html?slug=widget-academy" target="_blank">
+            WA MAX-help widget
+            <span class="qa-tag">WidgetMax.html</span>
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <!-- 2. Dashboards -->
+    <div class="qa-section-title">Dashboards</div>
+    <div class="qa-grid">
+      <section class="qa-card">
+        <h2>mss-demo – Dashboards</h2>
+        <p>
+          View recent submissions and inline lead-capture flows
+          for <code>mss-demo</code>.
+        </p>
+        <div class="qa-links">
+          <a href="/dashboards/Dashboard3.html?slug=mss-demo" target="_blank">
+            Default results dashboard
+            <span class="qa-tag">Dashboard3</span>
+          </a>
+          <a href="/dashboards/Dashboard4.html?slug=mss-demo" target="_blank">
+            Lead-capture dashboard
+            <span class="qa-tag">Dashboard4</span>
+          </a>
+          <a href="/api/dashboard/submissions?slug=mss-demo&limit=20" target="_blank">
+            API: latest submissions JSON
+            <span class="qa-tag">/api/dashboard/submissions</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="qa-card">
+        <h2>Widget Academy – Dashboards</h2>
+        <p>
+          Same dashboards, scoped to <code>widget-academy</code> slug.
+        </p>
+        <div class="qa-links">
+          <a href="/dashboards/Dashboard3.html?slug=widget-academy" target="_blank">
+            WA default dashboard
+            <span class="qa-tag">Dashboard3</span>
+          </a>
+          <a href="/dashboards/Dashboard4.html?slug=widget-academy" target="_blank">
+            WA lead-capture dashboard
+            <span class="qa-tag">Dashboard4</span>
+          </a>
+          <a href="/api/dashboard/submissions?slug=widget-academy&limit=20" target="_blank">
+            API: WA submissions JSON
+            <span class="qa-tag">/api/dashboard/submissions</span>
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <!-- 3. Admin / School Portal -->
+    <div class="qa-section-title">Admin & School Portals</div>
+    <div class="qa-grid">
+      <section class="qa-card">
+        <h2>Config Admin</h2>
+        <p>
+          Full widget configuration (config + form + image) loaded from
+          <code>schools.settings</code>.
+        </p>
+        <div class="qa-links">
+          <a href="/config-admin/ConfigAdmin.html?slug=mss-demo" target="_blank">
+            mss-demo – ConfigAdmin
+            <span class="qa-tag">config-admin</span>
+          </a>
+          <a href="/config-admin/ConfigAdmin.html?slug=widget-academy" target="_blank">
+            Widget Academy – ConfigAdmin
+            <span class="qa-tag">config-admin</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="qa-card">
+        <h2>School Portal</h2>
+        <p>
+          School-facing portal for reports and test lists (uses
+          <code>vw_widget_reports</code>).
+        </p>
+        <div class="qa-links">
+          <a href="/admin/SchoolPortal.html?slug=mss-demo" target="_blank">
+            mss-demo – School Portal
+            <span class="qa-tag">SchoolPortal</span>
+          </a>
+          <a href="/admin/SchoolPortal.html?slug=widget-academy" target="_blank">
+            Widget Academy – School Portal
+            <span class="qa-tag">SchoolPortal</span>
+          </a>
+          <a href="/api/admin/tests?slug=widget-academy" target="_blank">
+            API: WA tests JSON
+            <span class="qa-tag">/api/admin/tests</span>
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <!-- 4. Widget Academy marketing + signup -->
+    <div class="qa-section-title">Widget Academy – Marketing & Signup</div>
+    <div class="qa-grid">
+      <section class="qa-card">
+        <h2>Widget Academy – Marketing Pages</h2>
+        <p>
+          External-facing pages simulating the school’s own site.
+        </p>
+        <div class="qa-links">
+          <a href="/WidgetAcademy_home.html" target="_blank">
+            Widget Academy home
+            <span class="qa-tag">WidgetAcademy_home.html</span>
+          </a>
+          <a href="/WidgetAcademy_signup.html" target="_blank">
+            Widget Academy signup
+            <span class="qa-tag">WidgetAcademy_signup.html</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="qa-card">
+        <h2>System Health & Utilities</h2>
+        <p>Quick checks for service health and environment.</p>
+        <div class="qa-links">
+          <a href="/health" target="_blank">
+            Service health
+            <span class="qa-tag">/health</span>
+          </a>
+          <a href="/api/embed-check?schoolId=1" target="_blank">
+            Embed-check sample
+            <span class="qa-tag">/api/embed-check</span>
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <footer class="qa-footer">
+      QA tip: run <code>msswidget_backup_YYYY-MM-DD_HH-MM.sql</code> before
+      major schema changes. Keep latest copy on X-Pro.
+    </footer>
+  </div>
+</body>
+</html>

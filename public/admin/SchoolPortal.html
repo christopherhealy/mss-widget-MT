@@ -1,0 +1,332 @@
+<!-- /admin/SchoolPortal.html — v0.5 Portal, Build: 2025-11-23 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS School Portal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+  <link rel="stylesheet" href="/themes/SchoolPortal.css" />
+  
+</head>
+<body>
+  <div class="portal-shell">
+    <header class="portal-header">
+      <div>
+        <div class="portal-title" id="portal-title">School Portal</div>
+        <div class="portal-subtitle" id="portal-subtitle">
+          Loading school details…
+        </div>
+      </div>
+      <div class="badge" id="portal-slug-badge">slug: —</div>
+    </header>
+
+    <div class="grid">
+      <!-- Left: Widget & Reports -->
+      <div class="column">
+        <!-- Widget & Dashboard card -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">Widget & Dashboard</div>
+            <div class="card-actions">
+              <button class="btn" id="btn-widgetSurvey">Open Question Editor</button>
+              <button class="btn" id="btn-configAdmin">Open Config Admin</button>
+              <div class="portal-top-actions">
+                <button id="openReportsBtn" class="btn">View reports</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="portal-tab-row">
+            <div class="widget-preview-tabs">
+              <button
+                class="widget-preview-tab active"
+                data-target="widget"
+                id="tab-widget">
+                Show Widget
+              </button>
+              <button
+                class="widget-preview-tab"
+                data-target="dashboard"
+                id="tab-dashboard">
+                Show Dashboard
+              </button>
+            </div>
+
+            <div class="muted" id="portal-assessment-label">Assessment: —</div>
+          </div>
+
+          <div class="widget-frame">
+            <iframe id="portal-iframe" src="about:blank"></iframe>
+          </div>
+
+          <div class="embed-snippet">
+            <div class="embed-snippet-label">Embed snippet for your school website</div>
+            <textarea id="embed-snippet" readonly></textarea>
+            <div style="margin-top:4px;display:flex;justify-content:flex-end;">
+              <button class="btn" id="btn-copy-embed">Copy embed code</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Reports card -->
+        <section class="card" style="margin-top:14px;" data-role="tests-card">
+          <div class="card-header">
+            <div class="card-title">Test Results</div>
+            <div class="card-actions">
+              <button class="btn" id="btn-refresh-tests">
+                <span class="muted">Refresh</span>
+              </button>
+              <button class="btn btn-primary" id="btn-download-csv" type="button">
+                Download CSV
+              </button>
+              <button class="btn btn-danger" id="btn-delete-selected" type="button">
+                Delete Selected
+              </button>
+            </div>
+          </div>
+
+          <div class="filters-row">
+            <label>
+              From
+              <input type="date" id="filter-from" />
+            </label>
+            <label>
+              To
+              <input type="date" id="filter-to" />
+            </label>
+            <span class="muted" id="tests-count-label">0 tests</span>
+          </div>
+
+          <div class="tests-table-wrapper">
+            <table class="tests-table" id="tests-table">
+              <thead>
+  <tr>
+    <th>Select</th>
+    <th>ID</th>
+    <th>Date</th>
+    <th>Student</th>
+    <th>Question</th>
+    <th>TOEFL</th>
+    <th>IELTS</th>
+    <th>PTE</th>
+    <th>CEFR</th>
+    <th>Vox</th>
+    <th>Help</th>
+    <th>Dash</th>
+    <th>Fluency</th>
+    <th>Grammar</th>
+    <th>Pron.</th>
+    <th>Vocab</th>
+    <th>MSS CEFR</th>
+    <th>MSS TOEFL</th>
+    <th>MSS IELTS</th>
+    <th>MSS PTE</th>
+    <th>Transcript</th>
+    <th>Prompt</th>
+  </tr>
+</thead>
+              <tbody id="tests-tbody">
+                <tr><td colspan="21" class="muted">No data yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right: Stats -->
+      <div class="column">
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">Activity Snapshot</div>
+            <div class="timeframe-toggle" id="timeframe-toggle">
+              <button class="timeframe-btn active" data-range="today">Today</button>
+              <button class="timeframe-btn" data-range="week">This Week</button>
+              <button class="timeframe-btn" data-range="month">This Month</button>
+              <button class="timeframe-btn" data-range="year">This Year</button>
+            </div>
+          </div>
+
+          <div id="stats-loading" class="muted">
+            <span class="spinner"></span> Fetching stats…
+          </div>
+
+          <div id="stats-content" style="display:none;">
+            <div class="muted" id="stats-range-label"></div>
+
+            <div class="stats-row" style="margin-top:6px;">
+              <div class="stat-pill">
+                <div class="stat-label">Total tests</div>
+                <div class="stat-value" id="stat-totalTests">—</div>
+              </div>
+              <div class="stat-pill">
+                <div class="stat-label">Most popular question</div>
+                <div class="stat-value" id="stat-topQuestion">—</div>
+              </div>
+            </div>
+
+            <div class="stats-row">
+              <div class="stat-pill">
+                <div class="stat-label">Highest CEFR</div>
+                <div class="stat-value" id="stat-highestCEFR">—</div>
+              </div>
+              <div class="stat-pill">
+                <div class="stat-label">Lowest CEFR</div>
+                <div class="stat-value" id="stat-lowestCEFR">—</div>
+              </div>
+              <div class="stat-pill">
+                <div class="stat-label">Average CEFR</div>
+                <div class="stat-value" id="stat-avgCEFR">—</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tiny helper: "View reports" scrolls to Test Results card -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const openReportsBtn = document.getElementById("openReportsBtn");
+      const testsCard = document.querySelector('[data-role="tests-card"]');
+
+      if (openReportsBtn && testsCard) {
+        openReportsBtn.addEventListener("click", () => {
+          testsCard.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+    });
+  </script>
+
+  <!-- Styled Warning Modal -->
+  <div id="portal-warning-backdrop" class="portal-warning-backdrop hidden">
+    <div class="portal-warning-modal">
+      <div class="modal-title">⚠️ Warning</div>
+      <div class="modal-message" id="portal-warning-message">
+        Something went wrong.
+      </div>
+      <button class="modal-btn" id="portal-warning-ok">OK</button>
+    </div>
+  </div>
+
+  <!-- Transcript modal -->
+  <div
+    id="portal-transcript-backdrop"
+    class="portal-modal-backdrop hidden"
+  >
+    <div class="portal-modal">
+      <div class="portal-modal-header">
+        <h2 id="portal-transcript-title">Transcript</h2>
+        <button
+          type="button"
+          id="portal-transcript-close"
+          class="portal-modal-close"
+        >
+          ×
+        </button>
+      </div>
+      <div
+        id="portal-transcript-body"
+        class="portal-modal-body"
+      ></div>
+      <div class="portal-modal-footer">
+        <button
+          type="button"
+          id="portal-transcript-ok"
+          class="mss-btn mss-btn-primary"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+<!-- Delete confirmation modal -->
+<div id="portal-delete-backdrop" class="portal-warning-backdrop hidden">
+  <div class="portal-warning-modal">
+    <div class="modal-title">Delete submissions?</div>
+    <div class="modal-message" id="portal-delete-message">
+      Are you sure you want to delete these submissions? This cannot be undone.
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+      <button
+        type="button"
+        class="modal-btn"
+        id="portal-delete-cancel"
+        style="background:#6b7280;"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="modal-btn"
+        id="portal-delete-confirm"
+      >
+        Delete
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Prompt Dialog (for teachers) -->
+<div
+  id="mssPromptOverlay"
+  class="mss-prompt-overlay"
+  hidden
+></div>
+
+<div
+  id="mssPromptModal"
+  class="mss-prompt-modal"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="mssPromptTitle"
+  hidden
+>
+  <div class="mss-prompt-header">
+    <div>
+      <h2 id="mssPromptTitle">AI Feedback Prompt</h2>
+      <p class="mss-prompt-subtitle">
+        Copy this text and paste it into ChatGPT or your favourite AI tool.
+        It will generate feedback and an email you can send to the student.
+      </p>
+    </div>
+    <button
+      id="mssPromptClose"
+      class="mss-btn-ghost mss-prompt-close"
+      type="button"
+      aria-label="Close"
+    >
+      ✕
+    </button>
+  </div>
+
+  <div class="mss-prompt-body">
+    <label for="mssPromptText" class="mss-prompt-label">
+      Prompt text
+    </label>
+    <textarea
+      id="mssPromptText"
+      class="mss-prompt-textarea"
+      readonly
+    ></textarea>
+  </div>
+
+  <div class="mss-prompt-footer">
+    <button
+      id="mssPromptCopy"
+      class="mss-btn-primary"
+      type="button"
+    >
+      Copy prompt
+    </button>
+    <span id="mssPromptStatus" class="mss-prompt-status"></span>
+  </div>
+</div>
+
+  <!-- Single include of SchoolPortal.js -->
+  <script src="/admin/SchoolPortal.js"></script>
+</body>
+</html>

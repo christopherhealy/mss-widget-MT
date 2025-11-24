@@ -1,4 +1,4 @@
-/* ========== MSS Shared Design System Nov 13 3:40PM ========== */
+/* ========== MSS Shared Design System Nov 13 3:40PM (cleaned) ========== */
 
 /* ---------- Root tokens ---------- */
 :root {
@@ -56,13 +56,25 @@
 }
 
 .mss-top-inner {
-  max-width: 1120px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 10px 18px;
+  padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 1.5rem;
+}
+
+.mss-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.mss-top-meta {
+  text-align: right;
+  align-items: flex-end;
 }
 
 /* generic row + stack */
@@ -190,8 +202,11 @@
   color: #111827;
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s ease, border-color 0.15s ease,
-    transform 0.08s ease, box-shadow 0.12s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.08s ease,
+    box-shadow 0.12s ease;
   white-space: nowrap;
 }
 
@@ -202,6 +217,13 @@
 .mss-btn:active {
   transform: translateY(1px);
   box-shadow: none;
+}
+
+.mss-btn[disabled] {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+  transform: none;
 }
 
 .mss-btn-primary {
@@ -276,7 +298,9 @@
   font-family: var(--mss-font-sans);
   background: var(--mss-surface-soft);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
     background 0.15s ease;
 }
 
@@ -698,120 +722,6 @@
 /* Wrapper for widget page */
 .mss-widget-shell {
   width: 100%;
-  max-width: 720px;
-}
-
-/* ========== Dialog / toast (shared) ========== */
-
-.mss-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.38);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 40;
-}
-
-.mss-dialog-backdrop[hidden] {
-  display: none;
-}
-
-.mss-dialog {
-  background: #ffffff;
-  border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.32);
-  padding: 20px 24px 18px;
-  max-width: 420px;
-  width: min(420px, 90vw);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.mss-dialog-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.mss-dialog-body {
-  font-size: 14px;
-  color: #374151;
-}
-
-.mss-dialog-actions {
-  margin-top: 8px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-/* toast */
-
-.mss-toast {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 16px;
-  margin-inline: auto;
-  width: fit-content;
-  max-width: 90vw;
-  background: #111827;
-  color: #f9fafb;
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-size: 0.8rem;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-  transition: opacity 0.18s ease, transform 0.2s ease;
-  z-index: 80;
-}
-
-.mss-toast[data-kind="err"] {
-  background: #991b1b;
-}
-
-.mss-toast[data-kind="warn"] {
-  background: #92400e;
-}
-
-.mss-toast-show {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* ---------- Small responsive tweaks ---------- */
-
-@media (max-width: 640px) {
-  .mss-top-inner {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .mss-admin-nav {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .mss-layout {
-    margin-top: 10px;
-  }
-}
-
-/* Live Widget runtime layout refinements */
-
-.mss-widget-shell {
-  max-width: 860px;
-}
-
-.mss-widget-shell .mss-card {
-  padding: 24px 28px 26px;
-}
-
-.mss-widget-shell {
-  width: 100%;
   max-width: 860px;
 }
 
@@ -833,45 +743,28 @@
   min-width: 110px;
   padding: 8px 22px;
   font-size: 14px;
+  line-height: 1.2;
+  vertical-align: middle;
 }
 
 /* Hide Previous cleanly without breaking centering */
 .mss-nav-row #prevBtn[disabled],
 .mss-nav-row #prevBtn[style*="display:none"] {
-  visibility: hidden;        /* keeps space but hides button */
+  visibility: hidden;
   pointer-events: none;
 }
-
-/* Ensure all nav buttons have perfectly centered text */
-.mss-nav-row .mss-btn {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 110px;
-  padding: 8px 22px;
-  font-size: 14px;
-  line-height: 1.2;
-  vertical-align: middle;
-}
-
 
 /* Always keep the submit button visible (even if disabled) */
 #submitBtn {
   opacity: 1 !important;
   visibility: visible !important;
 }
-.mss-btn[disabled] {
-  opacity: 0.45;
-  cursor: default;
-  box-shadow: none;
-  transform: none;
-}
 
-/* Basic page background / centering */
+/* Basic page backgrounds / themes */
 body.mss {
   margin: 0;
   min-height: 100vh;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--mss-font-sans);
   background: radial-gradient(circle at top, #dbeafe 0, #f1f5f9 50%, #e2e8f0 100%);
   display: flex;
   align-items: center;
@@ -883,13 +776,13 @@ body.mss {
 body.mssVoxSky {
   margin: 0;
   min-height: 100vh;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--mss-font-sans);
   background: radial-gradient(
     circle at 50% -10%,
-    #2563eb 0%,       /* MSS blue glow */
-    #eff6ff 30%,      /* soft transition */
-    #f3f4f6 80%,      /* light neutral */
-    #e5e7eb 100%      /* grounding grey */
+    #2563eb 0%,
+    #eff6ff 30%,
+    #f3f4f6 80%,
+    #e5e7eb 100%
   );
   display: flex;
   align-items: center;
@@ -898,42 +791,38 @@ body.mssVoxSky {
   color: #111827;
 }
 
- 
-    /* Basic page background / centering */
-    body.mssVoxAurora {
-      margin: 0;
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(
-        circle at top,
-        #2563eb 0%,       /* MSS blue */
-        #e0f2fe 35%,      /* soft sky */
-        #f3f4f6 75%,      /* neutral */
-        #e5e7eb 100%      /* edge fade */
-      );
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 32px 16px;
-      color: #111827;
-    }
-
-    .shell {
-      width: 100%;
-      max-width: 900px;
-    }
-    /* ...rest of your existing CSS stays the same... */
-  
+body.mssVoxAurora {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--mss-font-sans);
+  background: radial-gradient(
+    circle at top,
+    #2563eb 0%,
+    #e0f2fe 35%,
+    #f3f4f6 75%,
+    #e5e7eb 100%
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: #111827;
+}
 
 body.mssMorningSky {
   background: linear-gradient(
     180deg,
-    #dbeafe 0%,        /* pale sky */
-    #f0f9ff 40%,       /* daylight fade */
-    #fefce8 80%,       /* soft warmth */
-    #f9fafb 100%       /* base white */
+    #dbeafe 0%,
+    #f0f9ff 40%,
+    #fefce8 80%,
+    #f9fafb 100%
   );
   color: #111827;
+}
+
+.shell {
+  width: 100%;
+  max-width: 900px;
 }
 
 .mss-card {
@@ -1069,7 +958,7 @@ body.mssMorningSky {
 
 .mss-dashboard-transcript pre {
   margin: 6px 0 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--mss-font-sans);
   white-space: pre-wrap;
   word-wrap: break-word;
   font-size: 0.78rem;
@@ -1091,36 +980,21 @@ body.mssMorningSky {
   justify-content: space-between;
 }
 
-/* Responsive tweaks for dashboard */
-@media (max-width: 800px) {
-  .mss-dashboard-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 640px) {
-  .mss-dashboard-shell {
-    padding-inline: 12px;
-  }
-}
-/* ========== Responsive tuning for Dashboard (mobile-first) ========== */
-
-/* Collapse grid to single column on smaller devices */
+/* Responsive tuning for Dashboard (mobile-first) */
 @media (max-width: 800px) {
   .mss-dashboard-grid {
     grid-template-columns: 1fr;
   }
 
   .mss-dashboard-chart-card {
-    order: -1; /* move chart above metrics */
+    order: -1;
   }
 
   .mss-dashboard-metrics {
-    grid-template-columns: 1fr; /* stack the metric cards */
+    grid-template-columns: 1fr;
   }
 }
 
-/* Slightly larger text on mobile for readability */
 @media (max-width: 640px) {
   .mss-dashboard-metric-value {
     font-size: 1rem;
@@ -1136,7 +1010,7 @@ body.mssMorningSky {
   }
 
   .mss-dashboard-chart-track {
-    height: 8px; /* make bars a little easier to tap/see */
+    height: 8px;
   }
 
   .mss-dashboard-shell {
@@ -1161,26 +1035,20 @@ body.mssMorningSky {
     align-self: flex-end;
   }
 }
+
 /* Score dialog layout */
 .mss-score-dialog {
-  max-width: 720px;
-  width: min(720px, 100vw - 24px);  /* keep a little margin on mobile */
+  max-width: min(720px, 100%);
+  width: 100%;
+  box-sizing: border-box;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
 }
 
-/* Inner scroll for long content (transcript etc.) */
 .mss-score-dialog-inner {
-  max-height: calc(90vh - 40px);
+  max-height: min(80vh, 580px);
   overflow-y: auto;
-}
-
-/* Mobile tweak: hug the edges a bit tighter */
-@media (max-width: 640px) {
-  .mss-score-dialog {
-    width: calc(100vw - 16px);
-  }
 }
 
 /* Transcript box */
@@ -1197,48 +1065,18 @@ body.mssMorningSky {
   overflow-y: auto;
 }
 
-/* Actual transcript text */
 .tx-body p {
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.5;
-  white-space: normal;          /* allow wrapping */
-  word-break: break-word;       /* break long "words" (e.g. rgba(...) strings) */
-  overflow-wrap: anywhere;      /* extra safety for long tokens */
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-/* Score dashboard dialog – keep it mobile friendly */
-.mss-score-dialog {
-  max-width: min(720px, 100%);
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.mss-score-dialog-inner {
-  max-height: min(80vh, 580px);
-  overflow-y: auto;
-}
-
-.mss-top-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1rem 1.5rem;
-}
-
-.mss-top-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1.5rem;
-}
-
-.mss-top-meta {
-  text-align: right;
-  align-items: flex-end;
-}
-
+/* Bigger chevron (used in some accordions) */
 .mss-chevron {
-  font-size: 1.5rem;  /* bigger */
+  font-size: 1.5rem;
   font-weight: 600;
   line-height: 1;
   opacity: 0.85;
@@ -1246,11 +1084,13 @@ body.mssMorningSky {
   pointer-events: none;
 }
 
+/* Help hint text */
 .mss-help-text {
   font-size: 0.8rem;
-  color: #6b7280;       /* same grey as "Not recording" */
+  color: #6b7280;
   margin-top: 0.25rem;
 }
+
 .mss-actions-row {
   display: flex;
   gap: 0.75rem;
@@ -1260,4 +1100,1072 @@ body.mssMorningSky {
 .mss-widget-logo {
   width: 32px;
   height: 32px;
+}
+
+/* Help indicator states in admin rows */
+.row[data-has-help="1"] .idx {
+  border-color: #10b981;
+}
+
+/* Help button visual states */
+.row[data-has-help="1"] .btn[data-act="help"] {
+  background: #bbf7d0;
+  border-color: #16a34a;
+  color: #166534;
+}
+
+.row[data-has-help="0"] .btn[data-act="help"] {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+/* Optional little dot badge when help exists */
+.row[data-has-help="1"] .btn[data-act="help"]::after {
+  content: "•";
+  margin-left: 4px;
+  font-size: 14px;
+}
+
+/* ========== Help slider + modal ========== */
+
+.mss-help-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.mss-help-bar input[type="range"] {
+  flex: 1;
+}
+
+/* Help modal, paired with [hidden] attribute */
+.mss-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 50;
+}
+
+.mss-modal[hidden] {
+  display: none;
+}
+
+.mss-modal-inner {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px 18px 14px;
+  max-width: 640px;
+  width: min(640px, 95vw);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25);
+}
+
+.mss-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mss-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.mss-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mss-help-content {
+  font-size: 0.9rem;
+  color: #374151;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+
+.mss-modal-footer small {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* Controls row inside modal (for "lots of help" mode) */
+.mss-modal-controls {
+  margin-top: 10px;
+  display: none; /* shown only in "lots of help" */
+  align-items: center;
+  gap: 8px;
+}
+
+/* -------------------------------------------------------
+   MSS Widget — Help Modal (Final Version)
+   ------------------------------------------------------- */
+
+/* Overlay behind modal */
+#mssHelpOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0,0,0,0.40) !important;
+  backdrop-filter: blur(3px);
+  z-index: 9998 !important;
+  display: none;
+}
+
+/* Modal container */
+#mssHelpModal {
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: min(680px, 95vw) !important;
+  max-height: 80vh !important;
+
+  background: #ffffff !important;
+  border-radius: 16px !important;
+  box-shadow: 0 6px 32px rgba(0,0,0,0.18) !important;
+  z-index: 9999 !important;
+
+  display: none;
+  overflow: hidden; /* header fixed, body scrolls */
+}
+
+/* Modal header */
+#mssHelpHeader {
+  padding: 18px 24px !important;
+  font-size: 19px !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  color: #111 !important;
+  background: #fafafa !important;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Close button */
+#mssHelpClose {
+  cursor: pointer !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: #555;
+}
+#mssHelpClose:hover {
+  background: #e5e5e5;
+}
+
+/* Modal content area */
+#mssHelpBody {
+  padding: 20px 24px !important;
+  overflow-y: auto !important;
+  max-height: calc(80vh - 70px) !important;
+  font-size: 15px !important;
+  line-height: 1.55 !important;
+  color: #222 !important;
+}
+
+/* Ensure hidden attribute works everywhere */
+[hidden] {
+  display: none !important;
+}
+
+/* =========================================================
+   MSS Widget.html – compatibility styles
+   Map current widget markup classes to the design system.
+   ========================================================= */
+
+/* Root widget card */
+#mss-widget-root {
+  box-sizing: border-box;
+  max-width: 860px;
+  margin: 32px auto;
+  padding: 22px 24px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(209, 213, 219, 0.9);
+  background: radial-gradient(circle at top left, #eff6ff 0, #ffffff 45%);
+  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.18);
+  font-family: var(--mss-font-sans);
+}
+
+/* Header / branding row */
+.mss-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.mss-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mss-logo-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mss-logo {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.mss-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mss-brand {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--mss-heading);
+}
+
+.mss-powered {
+  font-size: 0.78rem;
+  color: var(--mss-muted);
+}
+
+.mss-header-right {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mss-muted);
+}
+
+/* Main layout */
+.mss-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Question card */
+.mss-question-card {
+  border-radius: 14px;
+  border: 1px solid var(--mss-border-subtle);
+  background: var(--mss-surface-soft);
+  padding: 12px 14px;
+}
+
+.mss-question-text {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  color: var(--mss-text);
+}
+
+/* Controls wrapper */
+.mss-controls {
+  border-radius: 16px;
+  border: 1px solid var(--mss-border-subtle);
+  background: #ffffff;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Nav row */
+.mss-nav-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Record row */
+.mss-record-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* Upload row */
+.mss-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.mss-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--mss-border);
+  padding: 5px 12px;
+  background: #f9fafb;
+  cursor: pointer;
+}
+
+.mss-file-input {
+  display: none;
+}
+
+.mss-clear-file {
+  font-size: 0.8rem;
+}
+
+.mss-file-badge {
+  font-size: 0.78rem;
+  color: var(--mss-muted);
+}
+
+/* Timer + recording state */
+.mss-timer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+}
+
+.mss-rec-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mss-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #d1d5db;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
+}
+
+.mss-rec-dot.on {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+  transform: scale(1.05);
+}
+
+.mss-rec-state {
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.mss-timer {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+}
+
+/* Player */
+.mss-player-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mss-player {
+  width: 100%;
+}
+
+.mss-length-hint {
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+/* Submit row */
+.mss-submit-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+/* Help row */
+.mss-help-row {
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px dashed var(--mss-border-subtle);
+  background: #f9fafb;
+  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #4b5563;
+}
+
+.mss-help-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.mss-help-label-prefix {
+  font-weight: 500;
+}
+
+.mss-help-slider {
+  flex: 1;
+}
+
+.mss-help-label {
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.mss-help-right {
+  display: flex;
+  align-items: center;
+}
+
+/* Footer status */
+.mss-footer {
+  margin-top: 12px;
+}
+
+.mss-status {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+/* Small viewport tweaks */
+@media (max-width: 640px) {
+  #mss-widget-root {
+    margin: 18px auto;
+    padding-inline: 16px;
+  }
+  .mss-nav-row {
+    flex-wrap: wrap;
+  }
+  .mss-record-row {
+    flex-wrap: wrap;
+  }
+  .mss-help-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Remove any accidental blur effects */
+* {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+}
+/* Keep the widget surface neutral, no tint */
+.mss-widget-shell,
+.mss-widget-card {
+  background-color: #f9fafb !important;  /* or your preferred neutral */
+}
+
+/* Remove the global blue “wash” from help overlays */
+.mss-help-overlay,
+.mss-help-tint,
+.help-overlay,
+.help-tint {
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+  pointer-events: none; /* make sure it can't grab clicks */
+}
+
+/* Make Help panel exactly the same width as the widget card */
+
+.mss-help-panel {
+  width: 95vw;
+  max-width: var(--mss-widget-width, 980px);
+  margin-left: auto;
+  margin-right: auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+/* If the widget uses a different width, match that */
+.mss-widget-card,
+.mss-widget-shell {
+  max-width: 980px;
+}
+#helpModal.mss-help-modal {
+  position: relative !important;      /* 👈 anchor in the normal flow */
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+
+  width: 100% !important;
+  max-width: 980px !important;
+  margin: 0 auto !important;          /* center */
+  padding: 0 !important;
+  box-sizing: border-box;
+}
+#helpOverlay {
+  display: none !important;
+}
+
+/* ===========================================
+   Inline Help + Answer Panel (Nov 17 2025)
+   =========================================== */
+
+/* Utility: hidden */
+.hidden {
+  display: none !important;
+}
+
+/* HELP PANEL -------------------------------- */
+.mss-help-panel {
+  background: var(--mss-surface, #ffffff);
+  border: 1px solid var(--mss-border, #e5e7eb);
+  border-radius: 10px;
+  padding: 16px;
+  transition: max-height 0.35s ease, opacity 0.35s ease;
+  overflow: hidden;
+}
+
+/* When collapsed after a submission */
+.mss-help-panel.mss-help-collapsed {
+  max-height: 120px;
+  opacity: 0.65;
+  backdrop-filter: none; /* explicitly no blur */
+}
+
+/* Help text body */
+.mss-help-body {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  margin-top: 8px;
+  color: var(--mss-text, #111827);
+}
+
+/* ANSWER PANEL (dashboard inside) ----------- */
+.mss-answer-panel {
+  background: var(--mss-surface, #ffffff);
+  border: 1px solid var(--mss-border, #e5e7eb);
+  border-radius: 10px;
+  padding: 0;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+/* Header inside inline answer panel */
+.mss-answer-header {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--mss-surface-soft, #f9fafb);
+  border-bottom: 1px solid var(--mss-border-subtle, #e5e7eb);
+}
+
+.mss-answer-title {
+  font-weight: 600;
+  color: var(--mss-heading, #0f172a);
+}
+
+/* Link-style button */
+.mss-link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--mss-primary, #1d4ed8);
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+
+.mss-link-button:hover {
+  opacity: 0.75;
+}
+
+/* Optional spacing adjust when answer is visible */
+.mss-has-answer .mss-answer-panel {
+  margin-top: 12px;
+}
+
+/* ==========================================================
+   MSS Widget v1.1 – Base layout & components
+   Scoped to #mss-widget-root to avoid collisions
+   ========================================================== */
+
+#mss-widget-root {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
+  color: #111827;
+  background: transparent;
+}
+
+#mss-widget-root .mss-widget-shell {
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 16px;
+  background: #f3f4f6;
+  border-radius: 18px;
+}
+
+/* Header */
+
+#mss-widget-root .mss-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+#mss-widget-root .mss-widget-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#mss-widget-root .mss-widget-logoWrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#mss-widget-root .mss-widget-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#mss-widget-root .mss-widget-titleBlock {
+  display: flex;
+  flex-direction: column;
+}
+
+#mss-widget-root .mss-widget-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+#mss-widget-root .mss-widget-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+#mss-widget-root .mss-widget-meta {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+#mss-widget-root .mss-widget-counter {
+  white-space: nowrap;
+}
+
+/* Instructions */
+
+#mss-widget-root .mss-widget-instructions {
+  margin-bottom: 12px;
+}
+
+#mss-widget-root .mss-widget-instructionsText {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+/* Question card */
+
+#mss-widget-root .mss-widget-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#mss-widget-root .mss-widget-questionCard {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow: 0 0 0 1px #e5e7eb;
+}
+
+#mss-widget-root .mss-widget-questionBody {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #111827;
+}
+
+/* Paragraph spacing inside questions */
+#mss-widget-root .mss-widget-questionBody p {
+  margin: 0 0 8px;
+}
+
+#mss-widget-root .mss-widget-questionBody p:last-child {
+  margin-bottom: 0;
+}
+
+/* Help */
+
+#mss-widget-root .mss-widget-helpRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #e5e7eb33;
+}
+
+#mss-widget-root .mss-widget-helpLabelGroup {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+#mss-widget-root .mss-widget-helpSliderWrap {
+  padding: 0 4px;
+}
+
+#mss-widget-root .mss-widget-helpSlider {
+  width: 100%;
+}
+
+#mss-widget-root .mss-widget-helpButton {
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+/* Controls */
+
+#mss-widget-root .mss-widget-controls {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 0 0 1px #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#mss-widget-root .mss-widget-recRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+#mss-widget-root .mss-widget-recStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#mss-widget-root .mss-widget-recDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #d1d5db;
+}
+
+#mss-widget-root .mss-widget-recDot.on {
+  background: #ef4444;
+}
+
+#mss-widget-root .mss-widget-recText {
+  color: #4b5563;
+}
+
+#mss-widget-root .mss-widget-timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: #111827;
+}
+
+/* Button helpers */
+
+#mss-widget-root .mss-widget-btnRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+#mss-widget-root .mss-widget-btnGroup {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+#mss-widget-root .mss-widget-btn {
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  background: #ffffff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#mss-widget-root .mss-widget-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#mss-widget-root .mss-widget-btn.mss-primary {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+#mss-widget-root .mss-widget-btn.mss-secondary {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+#mss-widget-root .mss-widget-btn.mss-ghost {
+  background: transparent;
+}
+
+#mss-widget-root .mss-widget-btn.mss-textBtn {
+  background: transparent;
+  border-color: transparent;
+  color: #4b5563;
+}
+
+/* Upload row */
+
+#mss-widget-root .mss-widget-uploadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+#mss-widget-root .mss-upload-label {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px dashed #d1d5db;
+  padding: 6px 12px;
+  cursor: pointer;
+  background: #f9fafb;
+}
+
+#mss-widget-root .mss-upload-label input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+#mss-widget-root .mss-widget-fileBadge {
+  color: #4b5563;
+}
+
+/* Player */
+
+#mss-widget-root .mss-widget-playerWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+#mss-widget-root .mss-widget-player {
+  width: 100%;
+}
+
+#mss-widget-root .mss-widget-lengthHint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Submit row + spinner */
+
+#mss-widget-root .mss-widget-submitRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+#mss-widget-root .mss-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #1d4ed8;
+  animation: mss-spin 0.75s linear infinite;
+}
+
+#mss-widget-root .mss-hidden {
+  display: none !important;
+}
+
+@keyframes mss-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Footer status */
+
+#mss-widget-root .mss-widget-footer {
+  margin-top: 12px;
+}
+
+#mss-widget-root .mss-widget-status {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* Inline dashboard */
+
+#mss-widget-root .mss-dashboard {
+  margin-top: 18px;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 0 0 1px #e5e7eb;
+  padding: 14px 16px 16px;
+}
+
+#mss-widget-root .mss-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+#mss-widget-root .mss-dashboard-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#mss-widget-root .mss-dashboard-body {
+  min-height: 200px;
+}
+
+/* Collapsed states controlled by JS */
+#mss-widget-root .mss-dashboard-hidden {
+  display: none;
+}
+
+/* Responsive tweaks */
+
+@media (max-width: 640px) {
+  #mss-widget-root .mss-widget-shell {
+    margin: 16px auto;
+    padding: 12px;
+  }
+
+  #mss-widget-root .mss-widget-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  #mss-widget-root .mss-widget-btnRow {
+    grid-template-columns: 1fr;
+  }
+
+  #mss-widget-root .mss-widget-btnGroup {
+    justify-content: stretch;
+  }
+
+  #mss-widget-root .mss-widget-btnGroup .mss-widget-btn {
+    flex: 1;
+  }
+}
+
+.portal-warning-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.40);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.portal-warning-backdrop.hidden {
+  display: none;
+}
+
+.portal-warning-modal {
+  background: #ffffff;
+  padding: 24px;
+  width: 360px;
+  border-radius: 12px;
+  box-shadow: 0 8px 26px rgba(0,0,0,0.18);
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.portal-warning-modal .modal-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #b91c1c;
+  margin-bottom: 12px;
+}
+
+.portal-warning-modal .modal-message {
+  font-size: 15px;
+  color: #374151;
+  margin-bottom: 20px;
+}
+
+.portal-warning-modal .modal-btn {
+  background: #2563eb;
+  color: white;
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.portal-warning-modal .modal-btn:hover {
+  background: #1e4ed8;
+}
+/* Force SchoolPortal into a single-column stacking layout */
+#portal-root,
+.mss-portal,
+.mss-layout,
+.portal-main {
+  display: block !important;
 }

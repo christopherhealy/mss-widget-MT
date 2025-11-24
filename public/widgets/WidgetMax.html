@@ -1,0 +1,504 @@
+<!-- public/widgets/WidgetMax.html — READMAX: always-on full sample answer -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Widget – Read & Record</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <style>
+    :root {
+      --mss-bg: #f3f4f6;
+      --mss-surface: #ffffff;
+      --mss-border: #e5e7eb;
+      --mss-text: #111827;
+      --mss-muted: #6b7280;
+      --mss-accent: #1d4ed8;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      background: var(--mss-bg);
+      color: var(--mss-text);
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    #mss-widget-root {
+      width: 100%;
+      max-width: 960px;
+    }
+
+    .mss-card {
+      background: var(--mss-surface);
+      border-radius: 16px;
+      border: 1px solid var(--mss-border);
+      padding: 20px 20px 16px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+    }
+
+    .mss-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .mss-title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .mss-title h1 {
+      font-size: 20px;
+      margin: 0;
+    }
+
+    .mss-title p {
+      font-size: 13px;
+      margin: 0;
+      color: var(--mss-muted);
+    }
+
+    .mss-logo {
+      flex-shrink: 0;
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      background: #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .mss-logo img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .mss-question-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: var(--mss-muted);
+    }
+
+    #counter {
+      font-weight: 500;
+      color: var(--mss-text);
+    }
+
+    .mss-prompt {
+      border-radius: 12px;
+      background: #f9fafb;
+      border: 1px solid var(--mss-border);
+      padding: 12px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* READMAX Max-help panel */
+    #maxHelpPanel {
+      margin-top: 4px;
+      margin-bottom: 12px;
+      padding: 14px 14px 10px;
+      border-radius: 14px;
+      border: 1px solid var(--mss-border);
+      background: #f9fafb;
+      font-size: 13px;
+      color: var(--mss-text);
+    }
+
+    .mss-helpmax-header h2 {
+      font-size: 14px;
+      margin: 0 0 8px;
+      font-weight: 600;
+    }
+
+    .mss-helpmax-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mss-helpmax-section h3 {
+      font-size: 13px;
+      margin: 0 0 4px;
+      font-weight: 600;
+    }
+
+    .mss-helpmax-section div {
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--mss-text);
+    }
+
+    .mss-controls-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.8fr);
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .mss-rec-col,
+    .mss-upload-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .mss-rec-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #recDot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #9ca3af;
+    }
+
+    #recDot.on {
+      background: #dc2626;
+      box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2);
+    }
+
+    #recState {
+      font-size: 13px;
+      color: var(--mss-muted);
+    }
+
+    .mss-rec-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .mss-btn {
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      background: #f9fafb;
+    }
+
+    .mss-btn-primary {
+      background: var(--mss-accent);
+      color: #ffffff;
+      border-color: var(--mss-accent);
+    }
+
+    .mss-upload-row {
+      border-radius: 10px;
+      border: 1px dashed #d1d5db;
+      background: #f9fafb;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .mss-upload-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--mss-muted);
+    }
+
+    .mss-upload-label span {
+      font-weight: 500;
+      color: var(--mss-text);
+    }
+
+    #fileBadge {
+      font-size: 12px;
+      color: var(--mss-muted);
+    }
+
+    #fileInput {
+      display: none;
+    }
+
+    .mss-player-wrap {
+      display: none;
+      margin-top: 6px;
+    }
+
+    .mss-player-wrap audio {
+      width: 100%;
+    }
+
+    .mss-footer-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--mss-muted);
+    }
+
+    #status {
+      flex: 1;
+    }
+
+    #timer {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+    }
+
+    #submitBtn {
+      white-space: nowrap;
+    }
+
+    #submitProgress {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--mss-muted);
+    }
+
+    .mss-spinner {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 2px solid #d1d5db;
+      border-top-color: var(--mss-accent);
+      animation: spin 0.7s linear infinite;
+    }
+
+    .mss-hidden {
+      display: none !important;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Dashboard container */
+    #dashboardContainer {
+      margin-top: 16px;
+      border-radius: 16px;
+      border: 1px solid var(--mss-border);
+      background: #0f172a;
+      color: #e5e7eb;
+      min-height: 200px;
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.25s ease,
+        transform 0.25s ease;
+    }
+
+    .mss-dashboard-hidden {
+      max-height: 0;
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+    }
+
+    .mss-dashboard-visible {
+      max-height: 560px;
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    #dashboardHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    #dashboardBody {
+      padding: 0 0 8px;
+      height: 420px;
+    }
+
+    #dashboardCloseBtn {
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      background: transparent;
+      color: #e5e7eb;
+      padding: 3px 10px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 720px) {
+      .mss-controls-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .mss-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .mss-logo {
+        align-self: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- NOTE: data-widget-mode="readmax" drives behaviour in widget-core.js -->
+  <div id="mss-widget-root" data-widget-mode="readmax">
+    <div class="mss-card">
+      <!-- HEADER -->
+      <header class="mss-header">
+        <div class="mss-title">
+          <h1 id="brand">MySpeakingScore – Speaking Practice</h1>
+          <p id="powered">Get instant feedback on your speaking</p>
+        </div>
+        <div class="mss-logo">
+          <img id="brandImg" src="" alt="School logo" />
+        </div>
+      </header>
+
+      <!-- META ROW -->
+      <div class="mss-question-meta">
+        <div id="counter">QUESTION 1 OF 1</div>
+        <div></div>
+      </div>
+
+      <!-- PROMPT -->
+      <div id="question" class="mss-prompt">
+        Loading question…
+      </div>
+
+      <!-- ALWAYS-ON MAX HELP -->
+      <section id="maxHelpPanel" aria-hidden="false">
+        <div class="mss-helpmax-header">
+          <h2>Model Answer &amp; Ideas</h2>
+        </div>
+        <div class="mss-helpmax-body">
+          <div class="mss-helpmax-section">
+            <h3>Instructions</h3>
+            <div id="maxHelpIntro">
+              You will see one or more speaking questions. Read the prompt
+              carefully, then record or upload your answer.
+            </div>
+          </div>
+          <div class="mss-helpmax-section">
+            <h3>Full sample answer (Max Help)</h3>
+            <div id="maxHelpMax">Loading sample answer…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTROLS ROW (NOW UNDER HELP) -->
+      <div class="mss-controls-row">
+        <!-- RECORDING COLUMN -->
+        <div class="mss-rec-col">
+          <div class="mss-rec-header">
+            <div id="recDot"></div>
+            <div id="recState">Not recording</div>
+          </div>
+          <div class="mss-rec-buttons">
+            <button id="recBtn" type="button" class="mss-btn mss-btn-primary">
+              Record
+            </button>
+            <button id="stopBtn" type="button" class="mss-btn">
+              Stop
+            </button>
+          </div>
+          <div class="mss-player-wrap" id="playerWrap">
+            <audio id="player" controls></audio>
+            <div
+              id="lengthHint"
+              style="margin-top:4px; font-size:12px; color:var(--mss-muted);"
+            ></div>
+          </div>
+        </div>
+
+        <!-- UPLOAD COLUMN -->
+        <div class="mss-upload-col">
+          <div class="mss-upload-row">
+            <div class="mss-upload-label">
+              <span>Choose an audio file</span>
+              <span id="fileBadge"></span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button
+                type="button"
+                class="mss-btn"
+                onclick="document.getElementById('fileInput').click();"
+              >
+                Browse…
+              </button>
+              <button
+                id="clearFileBtn"
+                type="button"
+                class="mss-btn"
+                style="font-size:11px;"
+              >
+                Clear
+              </button>
+            </div>
+            <input id="fileInput" type="file" accept="audio/*" />
+          </div>
+        </div>
+      </div>
+
+      <!-- FOOTER -->
+      <div class="mss-footer-row">
+        <div id="status">Ready to record when you are.</div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div id="submitProgress" class="mss-hidden">
+            <div class="mss-spinner"></div>
+            <span>Scoring…</span>
+          </div>
+          <div id="timer"></div>
+          <button
+            id="submitBtn"
+            type="button"
+            class="mss-btn mss-btn-primary"
+            disabled
+          >
+            Submit for scoring
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- INLINE DASHBOARD CONTAINER -->
+    <section
+      id="dashboardContainer"
+      class="mss-dashboard-hidden mss-dashboard-collapsed"
+    >
+      <div id="dashboardHeader">
+        <div>Latest results</div>
+        <button id="dashboardCloseBtn" type="button">
+          Close
+        </button>
+      </div>
+      <div id="dashboardBody"></div>
+    </section>
+  </div>
+
+  <script src="/js/widget-core.js"></script>
+</body>
+</html>

@@ -1,293 +1,401 @@
+<!-- /config-admin/ConfigAdmin.html — Single-column Admin + Dynamic Dashboards (Nov 24, no inline styles) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MSS Widget MT – Advanced Configuration</title>
+  <title>MSS Widget – Config Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Shared MSS design system -->
-  <link id="themeCss" rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
-  <!-- Optional admin-specific tweaks -->
-  <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css">
+  <link rel="stylesheet" href="/themes/ConfigAdmin.css">
 </head>
-<body class="mssVoxAurora">
-  
+<body>
+  <div class="page">
+    <header>
+      <h1>MSS Widget – Config Admin</h1>
+      <div class="subhead">
+        Edit widget <strong>config</strong>, <strong>form</strong>, and
+        <strong>image</strong> settings stored in Postgres.
+      </div>
+      <div class="slug-pill">
+        <span>Slug:</span>
+        <strong id="slugLabel">–</strong>
+      </div>
+    </header>
 
-  <!-- Main layout -->
-  <main class="mss-main">
-    <div class="mss-main-inner">
-      <div class="mss-admin-layout">
-        <!-- LEFT COLUMN: Config sections + Actions -->
-        <div class="mss-config-column">
+    <!-- CONFIG SECTION -->
+    <section class="card">
+      <h2>Widget Config</h2>
 
-          <!-- BRANDING -->
-          <details class="mss-card mss-section" open>
-            <summary>BRANDING</summary>
-            <div class="mss-field-group">
-              <label for="cfgHeadline" class="mss-label">Headline</label>
-              <input id="cfgHeadline" type="text" class="mss-input" />
-            </div>
-
-            <div class="mss-field-group">
-              <label for="cfgPoweredBy" class="mss-label">Powered-by text</label>
-              <input id="cfgPoweredBy" type="text" class="mss-input" />
-              <p class="mss-help-text">
-                Shown under the headline, for example: “Powered by MSS Vox”.
-              </p>
-            </div>
-
-            <div class="mss-field-group">
-  <label class="mss-label">Brand logo (PNG/JPG)</label>
-
-  <div class="mss-file-row">
-    <label for="cfgBrandLogoInput" class="mss-btn-secondary mss-btn-file">
-      Choose file
-    </label>
-    <span id="cfgBrandLogoName" class="mss-file-name mss-muted">
-      No file chosen
-    </span>
-    <input
-      id="cfgBrandLogoInput"
-      type="file"
-      accept="image/*"
-      class="mss-input-file-hidden"
-    />
-  </div>
-
-  <p class="mss-help-text">
-    Base64 is stored in <code>config.brandLogo</code>.
-  </p>
-</div>
-          </details>
-
-          <!-- API & AUTH -->
-          <details class="mss-card mss-section" open>
-            <summary>API &amp; AUTH</summary>
-
-            <div class="mss-field-group mss-field-inline">
-              <label class="mss-checkbox-label">
-                <input id="cfgApiEnabled" type="checkbox" />
-                <span>Enable API</span>
-              </label>
-              <p class="mss-help-text">
-                If disabled, widget records but won't submit.
-              </p>
-            </div>
-
-            <div class="mss-field-group">
-              <label for="cfgAdminKey" class="mss-label">X-ADMIN-KEY</label>
-              <input id="cfgAdminKey" type="text" class="mss-input" />
-              <p class="mss-help-text">
-                Sent as <code>X-ADMIN-KEY</code> header for admin PUT calls.
-              </p>
-            </div>
-
-            <div class="mss-field-group">
-              <label for="cfgApiBaseUrl" class="mss-label">API base URL</label>
-              <input id="cfgApiBaseUrl" type="text" class="mss-input" />
-            </div>
-
-            <div class="mss-field-group mss-field-inline-two">
-              <div>
-                <label for="cfgApiKey" class="mss-label">API key</label>
-                <input id="cfgApiKey" type="text" class="mss-input" />
-              </div>
-              <div>
-                <label for="cfgApiSecret" class="mss-label">API secret</label>
-                <input id="cfgApiSecret" type="text" class="mss-input" />
-              </div>
-            </div>
-          </details>
-
-          <!-- LOGGING & UPLOADS -->
-          <details class="mss-card mss-section" open>
-            <summary>LOGGING &amp; UPLOADS</summary>
-
-            <div class="mss-field-group mss-field-inline">
-              <label class="mss-checkbox-label">
-                <input id="cfgLoggerEnabled" type="checkbox" />
-                <span>Enable logging</span>
-              </label>
-              <label class="mss-checkbox-label">
-                <input id="cfgPermitUpload" type="checkbox" />
-                <span>Allow file upload</span>
-              </label>
-            </div>
-
-            <div class="mss-field-group">
-              <label for="cfgLoggerUrl" class="mss-label">Logger endpoint</label>
-              <input id="cfgLoggerUrl" type="text" class="mss-input" />
-              <p class="mss-help-text">
-                Used for upload + logging, e.g. <code>/log/submission</code>.
-              </p>
-            </div>
-          </details>
-
-          <!-- AUDIO & THEME -->
-          <details class="mss-card mss-section" open>
-            <summary>AUDIO &amp; THEME</summary>
-
-            <div class="mss-field-group mss-field-inline-two">
-              <div>
-                <label for="cfgAudioMin" class="mss-label">Min seconds</label>
-                <input id="cfgAudioMin" type="number" class="mss-input" min="0" />
-              </div>
-              <div>
-                <label for="cfgAudioMax" class="mss-label">Max seconds</label>
-                <input id="cfgAudioMax" type="number" class="mss-input" min="0" />
-              </div>
-            </div>
-
-            <div class="mss-field-group">
-              <label for="cfgTheme" class="mss-label">Theme</label>
-              <select id="cfgTheme" class="mss-input">
-                <option value="apple">Apple</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="system">System</option>
-              </select>
-            </div>
-          </details>
-
-          <!-- LABELS & TEXT -->
-          <details class="mss-card mss-section" open>
-            <summary>LABELS &amp; TEXT</summary>
-
-            <div class="mss-field-group">
-              <label for="cfgRecordLabel" class="mss-label">Record Button</label>
-              <input id="cfgRecordLabel" type="text" class="mss-input" />
-            </div>
-
-            <div class="mss-field-group mss-field-inline-two">
-              <div>
-                <label for="cfgPrevLabel" class="mss-label">Previous</label>
-                <input id="cfgPrevLabel" type="text" class="mss-input" />
-              </div>
-              <div>
-                <label for="cfgNextLabel" class="mss-label">Next</label>
-                <input id="cfgNextLabel" type="text" class="mss-input" />
-              </div>
-            </div>
-
-            <div class="mss-field-group mss-field-inline-two">
-              <div>
-                <label for="cfgUploadLabel" class="mss-label">Upload</label>
-                <input id="cfgUploadLabel" type="text" class="mss-input" />
-              </div>
-              <div>
-                <label for="cfgStopLabel" class="mss-label">Stop</label>
-                <input id="cfgStopLabel" type="text" class="mss-input" />
-              </div>
-            </div>
-
-            <div class="mss-field-group">
-              <label for="cfgNotRecordingLabel" class="mss-label">Not Recording</label>
-              <input id="cfgNotRecordingLabel" type="text" class="mss-input" />
-            </div>
-
-            <div class="mss-field-group">
-              <label for="cfgSubmitLabel" class="mss-label">Submit Button</label>
-              <input id="cfgSubmitLabel" type="text" class="mss-input" />
-            </div>
-          </details>
-
-          <!-- ACTIONS -->
-          <<details class="mss-card mss-section" open>
-  <summary>ACTIONS</summary>
-
-  <div class="mss-actions-row" style="margin-top: 0.75rem;">
-    <!-- Primary action: same look as "Record your response" / "Submit for scoring" -->
-    <button id="saveBtn" class="mss-btn mss-btn-primary">
-      Save config
-    </button>
-
-    <!-- Secondary: same look as "Next MD" -->
-    <button id="reloadBtn" class="mss-btn mss-btn-outline">
-      Reload from server
-    </button>
-  </div>
-
-  <div class="mss-actions-row" style="margin-top: 0.75rem;">
-    <button id="openWidgetBtn" class="mss-btn mss-btn-outline">
-      Open Widget
-    </button>
-    <button id="exportBtn" class="mss-btn mss-btn-outline">
-      Export JSON
-    </button>
-  </div>
-
-  <p id="status" class="mss-help-text" style="margin-top: 0.75rem;">
-    Saved to server (Postgres)
-  </p>
-</details>
+      <div class="field-grid">
+        <div class="field">
+          <label for="cfg-title">Widget Title</label>
+          <input
+            id="cfg-title"
+            type="text"
+            data-section="config"
+            data-key="title"
+            placeholder="MySpeakingScore – Speaking Practice"
+          />
+          <div class="hint">Main heading above the widget.</div>
         </div>
 
-        <!-- RIGHT COLUMN: Live preview only -->
-        <section class="mss-card mss-widget-preview-card">
-  <h2 class="mss-card-title">Live Preview</h2>
-  <p class="mss-help-text">Approximate widget look</p>
+        <div class="field">
+          <label for="cfg-subtitle">Widget Subtitle</label>
+          <input
+            id="cfg-subtitle"
+            type="text"
+            data-section="config"
+            data-key="subtitle"
+            placeholder="Get instant feedback on your speaking"
+          />
+        </div>
 
-  <!-- Header (logo + headline + powered-by) -->
-  <div class="mss-widget-header">
-    <img
-      id="previewLogo"
-      class="mss-widget-logo"
-      alt="Brand logo"
-      style="visibility:hidden;"
-    />
-    <div>
-      <div id="previewHeadline" class="mss-widget-title">CEFR Assessment</div>
-      <div id="previewPowered" class="mss-widget-powered">
-        Powered by MSS Vox
+        <!-- THEME SELECT -->
+        <div class="field">
+          <label for="cfg-themeCss">Theme</label>
+          <select
+            id="cfg-themeCss"
+            data-section="config"
+            data-key="themeCss"
+          >
+            <option value="">Default (MSSStylesheet.css)</option>
+            <option value="themes/MSSStylesheet.css">MSS – Classic</option>
+            <option value="themes/mss-widget-apple.css">MSS – Apple</option>
+            <option value="themes/mss-widget-dark.css">MSS – Dark</option>
+          </select>
+          <div class="hint">
+            Choose the CSS theme used by the widget.
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Allow File Upload</label>
+          <div class="checkbox-row">
+            <input
+              id="cfg-allowUpload"
+              type="checkbox"
+              data-section="config"
+              data-key="allowUpload"
+              data-type="checkbox"
+            />
+            <span class="hint">Enable users to upload an audio file.</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Allow Recording</label>
+          <div class="checkbox-row">
+            <input
+              id="cfg-allowRecording"
+              type="checkbox"
+              data-section="config"
+              data-key="allowRecording"
+              data-type="checkbox"
+            />
+            <span class="hint">Enable in-browser recording.</span>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <!-- Widget layout selector -->
+      <div class="field">
+        <label for="widgetTemplate" class="field-label">Widget layout</label>
+        <select
+          id="widgetTemplate"
+          class="field-input"
+          data-section="config"
+          data-key="widgetUrl"
+        >
+          <option value="">Loading layouts…</option>
+        </select>
+        <p class="field-help">
+          Choose which widget variant this school will use (e.g. Widget.html, WidgetMin.html).
+        </p>
+      </div>
+
+      <!-- DASHBOARD SELECTOR (FULL-WIDTH, SAME COLUMN) -->
+      <div class="field field-dashboard">
+        <label for="dashboardTemplate">Dashboard style</label>
+        <select id="dashboardTemplate"></select>
+        <div class="hint">
+          Choose which dashboard layout students and teachers will see after each submission.
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Dashboard preview</label>
+        <div class="dashboard-preview-frame">
+          <iframe
+            id="dashboardPreview"
+            title="Dashboard preview"
+          ></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- FORM SECTION -->
+    <section class="card">
+      <h2>Form Text & Labels</h2>
+      <div class="field-grid">
+        <!-- BUTTON ROW 1 -->
+        <div class="field">
+          <label for="form-prevButton">Previous Button Label</label>
+          <input
+            id="form-prevButton"
+            type="text"
+            data-section="form"
+            data-key="previousButton"
+            placeholder="Previous"
+          />
+        </div>
+
+        <div class="field">
+          <label for="form-nextButton">Next Button Label</label>
+          <input
+            id="form-nextButton"
+            type="text"
+            data-section="form"
+            data-key="nextButton"
+            placeholder="Next"
+          />
+        </div>
+
+        <!-- BUTTON ROW 2 -->
+        <div class="field">
+          <label for="form-recordButton">Record Button Label</label>
+          <input
+            id="form-recordButton"
+            type="text"
+            data-section="form"
+            data-key="recordButton"
+            placeholder="Record your response"
+          />
+        </div>
+
+        <div class="field">
+          <label for="form-stopButton">Stop Button Label</label>
+          <input
+            id="form-stopButton"
+            type="text"
+            data-section="form"
+            data-key="stopButton"
+            placeholder="Stop"
+          />
+        </div>
+
+        <!-- BUTTON ROW 3 -->
+        <div class="field">
+          <label for="form-uploadButton">Upload Button Label</label>
+          <input
+            id="form-uploadButton"
+            type="text"
+            data-section="form"
+            data-key="uploadButton"
+            placeholder="Choose an audio file"
+          />
+        </div>
+
+        <div class="field">
+          <label for="form-submitButton">Submit Button Label</label>
+          <input
+            id="form-submitButton"
+            type="text"
+            data-section="form"
+            data-key="SubmitForScoringButton"
+            placeholder="Submit for scoring"
+          />
+        </div>
+
+        <!-- STATUS + QUESTION HELP -->
+        <div class="field">
+          <label for="form-readyStatus">Ready Status Text</label>
+          <input
+            id="form-readyStatus"
+            type="text"
+            data-section="form"
+            data-key="readyStatus"
+            placeholder="Ready to record when you are."
+          />
+          <div class="hint">
+            Status line shown when the widget is ready (bottom of card).
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="form-helpButtonLabel">Question Help Button Label</label>
+          <input
+            id="form-helpButtonLabel"
+            type="text"
+            data-section="form"
+            data-key="questionHelpButton"
+            placeholder="Question Help"
+          />
+        </div>
+
+        <!-- After-dashboard experience -->
+       <section class="mss-section">
+  <h2 class="mss-section-title">After-dashboard experience</h2>
+  <p class="hint">
+    Where should students go after seeing their results? Use this to invite them
+    to your signup page and offer a free report.
+  </p>
+
+  <!-- Signup URL field -->
+  <div class="mss-field">
+    <label for="afterDashboard-signupUrl" class="mss-label">Signup page URL</label>
+    <input
+      id="afterDashboard-signupUrl"
+      type="url"
+      class="mss-input"
+      placeholder="https://your-school.com/signup"
+    />
+    <p class="hint">
+      Students will be redirected to this page after the dashboard to sign up
+      and receive their detailed report.
+    </p>
   </div>
 
-  <!-- Question text -->
-  <div id="previewQuestion" class="mss-widget-question">
-    Question preview will appear here.
-  </div>
+  <!-- CTA Message -->
+  <div class="mss-field">
+    <label for="afterDashboard-ctaMessage" class="hint">
+      Message to show with “Get my free report”
+    </label>
+    <textarea
+      id="afterDashboard-ctaMessage"
+      class="mss-textarea"
+      rows="3"
+      placeholder="Get a free, detailed speaking report and advice from one of our teachers."
+    ></textarea>
 
-  <!-- Prev / Next row (non-functional; visual only) -->
-  <div class="mss-nav-row">
-    <button class="mss-btn mss-btn-outline" disabled>Previous</button>
-    <button id="previewNextBtn" class="mss-btn mss-btn-outline">
-      Next
-    </button>
-  </div>
-
-  <!-- Recording / upload controls -->
-  <div class="mss-toolbar-row">
-    <button id="previewRecordBtn" class="mss-btn mss-btn-primary">
-      Record your response
-    </button>
-    <button id="previewStopBtn" class="mss-btn" disabled>Stop</button>
-    <button id="previewUploadBtn" class="mss-btn mss-btn-outline">
-      Choose an audio file
-    </button>
-  </div>
-
-  <!-- Recording status -->
-  <div class="mss-preview-recbar">
-    <span class="mss-preview-dot"></span>
-    <span id="previewNotRecording" class="mss-muted">
-      Not recording
-    </span>
-  </div>
-
-  <!-- Submit row -->
-  <div class="mss-submit-row">
-    <button id="previewSubmitBtn" class="mss-btn mss-btn-primary">
-      Submit for scoring
-    </button>
+    <p class="hint">
+      This message appears on your summary screen or beside the call-to-action in
+      your student flow.
+    </p>
   </div>
 </section>
+        <!-- RECORDING STATE -->
+        <div class="field">
+          <label for="form-notRecordingLabel">Not Recording Label</label>
+          <input
+            id="form-notRecordingLabel"
+            type="text"
+            data-section="form"
+            data-key="NotRecordingLabel"
+            placeholder="Not recording"
+          />
+        </div>
+
+        <!-- HELP SLIDER LABELS -->
+        <div class="field">
+          <label for="form-helpNone">Help Slider – No Help</label>
+          <input
+            id="form-helpNone"
+            type="text"
+            data-section="form"
+            data-key="helpNoneLabel"
+            placeholder="no help"
+          />
+        </div>
+
+        <div class="field">
+          <label for="form-helpSome">Help Slider – A Little Help</label>
+          <input
+            id="form-helpSome"
+            type="text"
+            data-section="form"
+            data-key="helpSomeLabel"
+            placeholder="a little help"
+          />
+        </div>
+
+        <div class="field">
+          <label for="form-helpMax">Help Slider – Lots of Help</label>
+          <input
+            id="form-helpMax"
+            type="text"
+            data-section="form"
+            data-key="helpMaxLabel"
+            placeholder="lots of help"
+          />
+        </div>
+
+        <!-- INSTRUCTIONS / HELP TEXT -->
+        <div class="field">
+          <label for="form-instructions">Instructions (above controls)</label>
+          <textarea
+            id="form-instructions"
+            data-section="form"
+            data-key="instructions"
+            placeholder="You will see one or more speaking questions. Read the prompt carefully, then record or upload your answer."
+          ></textarea>
+          <div class="hint">
+            Can include simple HTML (e.g. &lt;p&gt;, &lt;br&gt;) for paragraphs and line breaks.
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="form-helpText">General Help Text</label>
+          <textarea
+            id="form-helpText"
+            data-section="form"
+            data-key="helpText"
+            placeholder="Speak clearly and naturally. You will have 30–60 seconds to answer."
+          ></textarea>
+          <div class="hint">
+            Optional extra guidance for students (may be shown in help panel or docs).
+          </div>
         </div>
       </div>
-    </div>
-  </main>
+    </section>
 
-  <!-- Config admin script -->
-  <script src="/config-admin/ConfigAdmin.js?v=4"></script>
+    <!-- IMAGE SECTION -->
+    <section class="card">
+      <h2>Widget Image</h2>
+      <div class="field-grid">
+        <!-- Hidden file input, triggered by the button -->
+        <input
+          id="img-file"
+          type="file"
+          accept="image/*"
+          class="hidden-fileInput"
+        />
+
+        <div class="field">
+          <label>Upload Image</label>
+          <div class="hint">
+            Upload a logo or illustration for this widget.
+          </div>
+          <div class="img-upload-row">
+            <button id="img-uploadBtn" type="button" class="primary">
+              Upload Image
+            </button>
+            <span id="img-uploadStatus" class="hint"></span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Preview</label>
+          <div class="img-preview-shell">
+            <img
+              id="img-preview"
+              src=""
+              alt="Widget image preview"
+            />
+            <span id="img-previewPlaceholder" class="hint">
+              No image uploaded yet.
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <div id="status" class="status">Loaded.</div>
+      <button id="saveBtn" class="primary" disabled>Save Changes</button>
+    </div>
+  </div>
+
+  <script src="/config-admin/ConfigAdmin.js"></script>
 </body>
 </html>

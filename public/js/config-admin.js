@@ -1,148 +1,604 @@
+// /config-admin/ConfigAdmin.js — Admin + Image Upload + Dashboards + Widgets
+// Regen Nov 19 2025 – works with /api/admin/widgets & /api/admin/dashboards
+console.log("✅ ConfigAdmin.js loaded");
+
 (function () {
-  function getQueryParam(name) {
-    const url = new URL(window.location.href);
-    return url.searchParams.get(name);
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+
+  const slugLabel = $("slugLabel");
+  const saveBtn   = $("saveBtn");
+  const statusEl  = $("status");
+
+  // Dashboard + widget selectors
+  const dashboardTemplateSelect = $("dashboardTemplate");
+  const dashboardPreviewFrame  = $("dashboardPreview");
+  const widgetTemplateSelect   = $("widgetTemplate");
+
+  // Image / branding elements
+  const imgFileInput          = $("img-file");
+  const imgUploadBtn          = $("img-uploadBtn");
+  const imgUploadStatus       = $("img-uploadStatus");
+  const imgPreview            = $("img-preview");
+  const imgPreviewPlaceholder = $("img-previewPlaceholder");
+
+  let SLUG = null;
+
+  // Single source of truth for admin state
+  const STATE = {
+    config: {},
+    form: {},
+    image: {},
+  };
+
+  let dirty = false;
+
+  // Default values if DB is empty
+  const DEFAULTS = {
+    config: {
+      title: "MySpeakingScore – Speaking Practice",
+      subtitle: "Get instant feedback on your speaking",
+      themeCss: "themes/MSSStylesheet.css",
+      primaryColor: "#1d4ed8",
+      allowUpload: true,
+      allowRecording: true,
+      // baseline defaults
+      dashboardUrl: "/Dashboard.html",
+      widgetUrl: "/widgets/Widget.html",
+    },
+    form: {
+      previousButton: "Previous",
+      nextButton: "Next",
+      recordButton: "Record your response",
+      stopButton: "Stop",
+      uploadButton: "Choose an audio file",
+      SubmitForScoringButton: "Submit for scoring",
+      readyStatus: "Ready to record when you are.",
+      questionHelpButton: "Question Help",
+      NotRecordingLabel: "Not recording",
+      helpNoneLabel: "no help",
+      helpSomeLabel: "a little help",
+      helpMaxLabel: "lots of help",
+      instructions:
+        "You will see one or more speaking questions. Read the prompt carefully, then record or upload your answer.",
+      helpText:
+        "Speak clearly and naturally. Aim for 30–60 seconds when you respond.",
+    },
+    image: {
+      url: "",
+      alt: "Widget image",
+    },
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* INIT                                                               */
+  /* ------------------------------------------------------------------ */
+
+  function init() {
+    console.log("[ConfigAdmin] init() starting");
+    const params = new URLSearchParams(window.location.search);
+    SLUG = params.get("slug") || "mss-demo";
+
+    if (slugLabel) slugLabel.textContent = SLUG;
+
+    wireFormEvents();
+    wireSave();
+    wireImageUpload();
+    wireDashboardSelector();
+    wireWidgetSelector();
+
+    // Load DB settings first, THEN always load dashboards & widgets
+    loadFromServer()
+      .catch((err) => {
+        console.warn("[ConfigAdmin] loadFromServer error, using defaults", err);
+      })
+      .finally(() => {
+        console.log("[ConfigAdmin] loading dashboards + widgets lists");
+        loadDashboardTemplates();
+        loadWidgetTemplates();
+      });
   }
 
-  const slugInput = document.getElementById("schoolSlugInput");
-  const reloadBtn = document.getElementById("reloadBtn");
-  const statusEl = document.getElementById("configStatus");
-  const bodyEl = document.getElementById("configBody");
-  const saveBtn = document.getElementById("saveBtn");
+  /* ------------------------------------------------------------------ */
+  /* LOAD FROM SERVER                                                   */
+  /* ------------------------------------------------------------------ */
 
-  const headlineInput = document.getElementById("headlineInput");
-  const poweredInput = document.getElementById("poweredInput");
-  const questionsInput = document.getElementById("questionsInput");
-  const allowUploadCheckbox = document.getElementById("allowUploadCheckbox");
-  const minSecondsInput = document.getElementById("minSecondsInput");
-  const maxSecondsInput = document.getElementById("maxSecondsInput");
+  async function loadFromServer() {
+    setStatus("Loading settings from server…");
 
-  let currentSlug = null;
-  let currentConfig = {};
-  let currentForm = {};
+    try {
+      const res = await fetch(`/api/admin/widget/${encodeURIComponent(SLUG)}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.warn("No settings found for slug, using defaults only.");
+          STATE.config = { ...DEFAULTS.config };
+          STATE.form   = { ...DEFAULTS.form };
+          STATE.image  = { ...DEFAULTS.image };
+          hydrateFormFromState();
+          setPristine();
+          setStatus("No DB record found; using defaults. Save to create.");
+          return;
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
 
-  function setStatus(msg, ok) {
+      const data = await res.json();
+      const settings = data.settings || {};
+
+      STATE.config = {
+        ...DEFAULTS.config,
+        ...(settings.config || {}),
+      };
+      STATE.form = {
+        ...DEFAULTS.form,
+        ...(settings.form || {}),
+      };
+      STATE.image = {
+        ...DEFAULTS.image,
+        ...(settings.image || {}),
+      };
+
+      hydrateFormFromState();
+      setPristine();
+      setStatus("Loaded from Postgres.");
+      console.log("[ConfigAdmin] Loaded settings from DB:", STATE);
+    } catch (err) {
+      console.error("Error loading settings", err);
+      setStatus(
+        "Error loading settings from server. Check console / network.",
+        true
+      );
+      throw err;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* HYDRATE FORM                                                       */
+  /* ------------------------------------------------------------------ */
+
+  function hydrateFormFromState() {
+    const allFields = document.querySelectorAll("[data-section][data-key]");
+
+    allFields.forEach((el) => {
+      const section = el.getAttribute("data-section");
+      const key     = el.getAttribute("data-key");
+      const type    = el.getAttribute("data-type");
+
+      const sectionObj = STATE[section] || {};
+      const value      = sectionObj[key];
+
+      if (type === "checkbox" || el.type === "checkbox") {
+        el.checked = !!value;
+      } else if (el.tagName === "TEXTAREA" ||
+                 el.tagName === "INPUT" ||
+                 el.tagName === "SELECT") {
+        el.value = value != null ? String(value) : "";
+      }
+    });
+
+    // Dashboard select reflects STATE.config.dashboardUrl
+    if (dashboardTemplateSelect) {
+      const url =
+        STATE.config.dashboardUrl || DEFAULTS.config.dashboardUrl;
+      dashboardTemplateSelect.value = url;
+      updateDashboardPreview();
+    }
+
+    // Widget select reflects STATE.config.widgetUrl
+    if (widgetTemplateSelect) {
+      const wurl =
+        STATE.config.widgetUrl || DEFAULTS.config.widgetUrl;
+      widgetTemplateSelect.value = wurl;
+    }
+
+    syncUploadFieldVisibility();
+    refreshImagePreview();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* FORM EVENTS + DIRTY STATE                                          */
+  /* ------------------------------------------------------------------ */
+
+  function wireFormEvents() {
+    const allFields = document.querySelectorAll("[data-section][data-key]");
+
+    allFields.forEach((el) => {
+      const eventType = el.type === "checkbox" ? "change" : "input";
+      el.addEventListener(eventType, () => {
+        applyFieldToState(el);
+        setDirty();
+      });
+    });
+  }
+
+  function applyFieldToState(el) {
+    const section = el.getAttribute("data-section");
+    const key     = el.getAttribute("data-key");
+    const type    = el.getAttribute("data-type");
+
+    if (!section || !key) return;
+
+    if (type === "checkbox" || el.type === "checkbox") {
+      STATE[section][key] = !!el.checked;
+    } else if (el.type === "number") {
+      const n = el.value.trim();
+      STATE[section][key] = n === "" ? null : Number(n);
+    } else {
+      STATE[section][key] = el.value;
+    }
+
+    if (section === "config" && key === "allowUpload") {
+      syncUploadFieldVisibility();
+    }
+    if (section === "image" && key === "url") {
+      refreshImagePreview();
+    }
+  }
+
+  function setDirty() {
+    dirty = true;
+    if (saveBtn) saveBtn.disabled = false;
+    setStatus("Changes not saved.");
+  }
+
+  function setPristine() {
+    dirty = false;
+    if (saveBtn) saveBtn.disabled = true;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* SAVE TO SERVER                                                     */
+  /* ------------------------------------------------------------------ */
+
+  function wireSave() {
+    if (!saveBtn) return;
+    saveBtn.addEventListener("click", onSaveClick);
+  }
+
+  async function onSaveClick() {
+    if (!dirty) return;
+
+    saveBtn.disabled = true;
+    setStatus("Saving to Postgres…");
+
+    try {
+      const payload = {
+        config: STATE.config || {},
+        form:   STATE.form || {},
+        image:  STATE.image || {},
+      };
+
+      const res = await fetch(
+        `/api/admin/widget/${encodeURIComponent(SLUG)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      if (!data.ok) {
+        console.warn("Save returned non-ok payload:", data);
+      }
+
+      setPristine();
+      setStatus("Saved. Widget will use updated settings on next load.");
+    } catch (err) {
+      console.error("Error saving settings", err);
+      saveBtn.disabled = false;
+      setStatus("Error saving settings. See console / network.", true);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* STATUS HELPER                                                      */
+  /* ------------------------------------------------------------------ */
+
+  function setStatus(msg, isError) {
     if (!statusEl) return;
-    statusEl.textContent = msg || "";
-    statusEl.className = "mss-config-status" + (ok == null ? "" : ok ? " ok" : " err");
+    statusEl.textContent = msg;
+    statusEl.classList.toggle("error", !!isError);
   }
 
-  async function loadForSlug(slug) {
-    if (!slug) {
-      setStatus("Please enter a school slug.", false);
+  /* ------------------------------------------------------------------ */
+  /* DASHBOARD TEMPLATE SELECTOR + PREVIEW                              */
+  /* ------------------------------------------------------------------ */
+
+  function wireDashboardSelector() {
+    if (!dashboardTemplateSelect) return;
+
+    dashboardTemplateSelect.addEventListener("change", () => {
+      const value =
+        dashboardTemplateSelect.value || DEFAULTS.config.dashboardUrl;
+      STATE.config.dashboardUrl = value;
+      updateDashboardPreview();
+      setDirty();
+    });
+  }
+
+  function updateDashboardPreview() {
+    if (!dashboardTemplateSelect || !dashboardPreviewFrame) return;
+
+    const value =
+      dashboardTemplateSelect.value || DEFAULTS.config.dashboardUrl;
+
+    const previewUrl =
+      value + (value.includes("?") ? "&preview=1" : "?preview=1");
+
+    dashboardPreviewFrame.src = previewUrl;
+  }
+
+  async function loadDashboardTemplates() {
+    if (!dashboardTemplateSelect) return;
+
+    try {
+      const res = await fetch("/api/admin/dashboards");
+      if (!res.ok) throw new Error(`dashboards HTTP ${res.status}`);
+
+      const data = await res.json();
+      const list = Array.isArray(data.dashboards) ? data.dashboards : [];
+
+      const current =
+        STATE.config.dashboardUrl || DEFAULTS.config.dashboardUrl;
+
+      dashboardTemplateSelect.innerHTML = "";
+      const seen = new Set();
+
+      function addDashboard(pathOrObj) {
+        if (!pathOrObj) return;
+        let url, filename;
+
+        if (typeof pathOrObj === "string") {
+          url = pathOrObj.startsWith("/") ? pathOrObj : `/${pathOrObj}`;
+          filename = url.split("/").pop() || url;
+        } else {
+          url = pathOrObj.url || pathOrObj.file;
+          if (!url) return;
+          if (!url.startsWith("/")) url = `/${url}`;
+          filename = pathOrObj.file || url.split("/").pop() || url;
+        }
+
+        if (seen.has(url)) return;
+        seen.add(url);
+
+        const opt = document.createElement("option");
+        opt.value = url;
+        opt.textContent = filename;
+        dashboardTemplateSelect.appendChild(opt);
+      }
+
+      list.forEach(addDashboard);
+      addDashboard(DEFAULTS.config.dashboardUrl);
+
+      if (current && !seen.has(current)) addDashboard(current);
+
+      dashboardTemplateSelect.value = current;
+      if (!dashboardTemplateSelect.value && seen.size) {
+        dashboardTemplateSelect.selectedIndex = 0;
+        STATE.config.dashboardUrl = dashboardTemplateSelect.value;
+      }
+
+      updateDashboardPreview();
+    } catch (err) {
+      console.warn("Could not load dashboards; using default", err);
+
+      dashboardTemplateSelect.innerHTML = "";
+      const opt = document.createElement("option");
+      opt.value = DEFAULTS.config.dashboardUrl;
+      opt.textContent = "Dashboard.html";
+      dashboardTemplateSelect.appendChild(opt);
+
+      dashboardTemplateSelect.value =
+        STATE.config.dashboardUrl || DEFAULTS.config.dashboardUrl;
+      updateDashboardPreview();
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* WIDGET TEMPLATE SELECTOR                                           */
+  /* ------------------------------------------------------------------ */
+
+  function wireWidgetSelector() {
+    if (!widgetTemplateSelect) return;
+
+    widgetTemplateSelect.addEventListener("change", () => {
+      const value =
+        widgetTemplateSelect.value || DEFAULTS.config.widgetUrl;
+      STATE.config.widgetUrl = value;
+      setDirty();
+    });
+  }
+
+  async function loadWidgetTemplates() {
+    if (!widgetTemplateSelect) {
+      console.log("[ConfigAdmin] widgetTemplateSelect not found");
       return;
     }
 
-    setStatus("Loading settings…", null);
-    bodyEl.hidden = true;
+    console.log("[ConfigAdmin] loadWidgetTemplates() starting");
 
     try {
-      const res = await fetch(`/api/admin/widget/${encodeURIComponent(slug)}`);
-      const body = await res.json().catch(() => ({}));
+      const res = await fetch("/api/admin/widgets");
+      if (!res.ok) throw new Error(`widgets HTTP ${res.status}`);
 
-      if (!res.ok || !body.ok) {
-        const msg = body.error || body.message || "Could not load settings.";
-        setStatus(msg, false);
-        return;
+      const data = await res.json();
+
+      const list =
+        Array.isArray(data)
+          ? data
+          : Array.isArray(data.widgets)
+          ? data.widgets
+          : Array.isArray(data.files)
+          ? data.files
+          : [];
+
+      console.log("[ConfigAdmin] /api/admin/widgets →", list);
+
+      const defaultWidgetUrl = DEFAULTS.config.widgetUrl || "/widgets/Widget.html";
+      const current =
+        STATE.config.widgetUrl || defaultWidgetUrl;
+
+      widgetTemplateSelect.innerHTML = "";
+      const seen = new Set();
+
+      function addWidget(nameOrPath) {
+        if (!nameOrPath) return;
+        const filename = nameOrPath.split("/").pop();
+        const url = `/widgets/${filename}`;
+        if (seen.has(url)) return;
+        seen.add(url);
+
+        const opt = document.createElement("option");
+        opt.value = url;
+        opt.textContent = filename;
+        widgetTemplateSelect.appendChild(opt);
       }
 
-      currentSlug = body.slug;
-      currentConfig = body.config || {};
-      currentForm = body.form || {};
+      list.forEach(addWidget);
+      addWidget("Widget.html"); // ensure baseline exists
 
-      // Populate fields
-      headlineInput.value = currentForm.headline || "";
-      poweredInput.value = currentForm.poweredByLabel || "Powered by MSS Vox";
+      if (current && !seen.has(current) && current.endsWith(".html")) {
+        const opt = document.createElement("option");
+        opt.value = current;
+        opt.textContent = current.split("/").pop() || current;
+        widgetTemplateSelect.appendChild(opt);
+        seen.add(current);
+      }
 
-      const survey = Array.isArray(currentForm.survey) ? currentForm.survey : [];
-      questionsInput.value = survey.join("\n\n");
+      let target = current;
+      if (!seen.has(target)) {
+        target = "/widgets/Widget.html";
+      }
 
-      const permit =
-        typeof currentConfig.Permitupload === "boolean"
-          ? currentConfig.Permitupload
-          : true;
-      allowUploadCheckbox.checked = permit;
+      widgetTemplateSelect.value = target;
+      if (!widgetTemplateSelect.value && widgetTemplateSelect.options.length) {
+        widgetTemplateSelect.selectedIndex = 0;
+        STATE.config.widgetUrl = widgetTemplateSelect.value;
+      } else {
+        STATE.config.widgetUrl = widgetTemplateSelect.value || target;
+      }
 
-      minSecondsInput.value =
-        currentConfig.audioMinSeconds != null
-          ? String(currentConfig.audioMinSeconds)
-          : "20";
-      maxSecondsInput.value =
-        currentConfig.audioMaxSeconds != null
-          ? String(currentConfig.audioMaxSeconds)
-          : "100";
-
-      bodyEl.hidden = false;
-      setStatus(`Loaded settings for "${body.name}" (slug: ${body.slug}).`, true);
-      slugInput.value = body.slug;
+      console.log(
+        "[ConfigAdmin] widgetTemplateSelect final value:",
+        widgetTemplateSelect.value
+      );
     } catch (err) {
-      console.error("ConfigAdmin load error:", err);
-      setStatus("Network error while loading settings.", false);
+      console.warn("Could not load widgets; using default", err);
+
+      widgetTemplateSelect.innerHTML = "";
+      const opt = document.createElement("option");
+      opt.value = DEFAULTS.config.widgetUrl || "/widgets/Widget.html";
+      opt.textContent = "Widget.html";
+      widgetTemplateSelect.appendChild(opt);
+
+      widgetTemplateSelect.value =
+        STATE.config.widgetUrl ||
+        DEFAULTS.config.widgetUrl ||
+        "/widgets/Widget.html";
+      STATE.config.widgetUrl = widgetTemplateSelect.value;
     }
   }
 
-  async function saveChanges() {
-    if (!currentSlug) {
-      setStatus("No school loaded yet.", false);
-      return;
-    }
+  /* ------------------------------------------------------------------ */
+  /* UPLOAD LABEL VISIBILITY + IMAGE PREVIEW                            */
+  /* ------------------------------------------------------------------ */
 
-    setStatus("Saving…", null);
+  function syncUploadFieldVisibility() {
+    const uploadInput = $("form-uploadButton");
+    if (!uploadInput) return;
 
-    const survey = questionsInput.value
-      .split(/\n{2,}/) // split by blank lines
-      .map((q) => q.trim())
-      .filter(Boolean);
+    const fieldWrapper = uploadInput.closest(".field");
+    const allow = !!(STATE.config && STATE.config.allowUpload);
 
-    currentForm.headline = headlineInput.value.trim();
-    currentForm.poweredByLabel = poweredInput.value.trim() || "Powered by MSS Vox";
-    currentForm.survey = survey;
-
-    const minS = parseInt(minSecondsInput.value, 10);
-    const maxS = parseInt(maxSecondsInput.value, 10);
-
-    currentConfig.Permitupload = !!allowUploadCheckbox.checked;
-    if (!Number.isNaN(minS)) currentConfig.audioMinSeconds = minS;
-    if (!Number.isNaN(maxS)) currentConfig.audioMaxSeconds = maxS;
-
-    try {
-      const res = await fetch(`/api/admin/widget/${encodeURIComponent(currentSlug)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          config: currentConfig,
-          form: currentForm,
-        }),
-      });
-
-      const body = await res.json().catch(() => ({}));
-
-      if (!res.ok || !body.ok) {
-        const msg = body.error || body.message || "Save failed.";
-        setStatus(msg, false);
-        return;
+    if (fieldWrapper) {
+      if (allow) {
+        fieldWrapper.classList.remove("hidden");
+      } else {
+        fieldWrapper.classList.add("hidden");
       }
+    }
+    uploadInput.disabled = !allow;
+  }
 
-      setStatus("Saved successfully.", true);
-    } catch (err) {
-      console.error("ConfigAdmin save error:", err);
-      setStatus("Network error while saving.", false);
+  function refreshImagePreview() {
+    if (!imgPreview || !imgPreviewPlaceholder) return;
+
+    const url = (STATE.image && STATE.image.url) || "";
+    if (url) {
+      imgPreview.src = url;
+      imgPreview.style.display = "block";
+      imgPreviewPlaceholder.style.display = "none";
+    } else {
+      imgPreview.src = "";
+      imgPreview.style.display = "none";
+      imgPreviewPlaceholder.style.display = "inline";
     }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    const initialSlug = getQueryParam("slug") || "widget-academy";
-    if (slugInput) slugInput.value = initialSlug;
-    loadForSlug(initialSlug);
+  /* ------------------------------------------------------------------ */
+  /* IMAGE UPLOAD                                                       */
+  /* ------------------------------------------------------------------ */
 
-    if (reloadBtn) {
-      reloadBtn.addEventListener("click", () => {
-        loadForSlug(slugInput.value.trim());
-      });
-    }
+  function wireImageUpload() {
+    if (!imgUploadBtn || !imgFileInput) return;
 
-    if (saveBtn) {
-      saveBtn.addEventListener("click", saveChanges);
-    }
-  });
+    imgUploadBtn.addEventListener("click", () => {
+      imgFileInput.click();
+    });
+
+    imgFileInput.addEventListener("change", async () => {
+      const file = imgFileInput.files && imgFileInput.files[0];
+      if (!file) return;
+
+      if (imgPreview && imgPreviewPlaceholder) {
+        const localUrl = URL.createObjectURL(file);
+        imgPreview.src = localUrl;
+        imgPreview.style.display = "block";
+        imgPreviewPlaceholder.style.display = "none";
+      }
+
+      if (imgUploadStatus) imgUploadStatus.textContent = "Uploading…";
+
+      try {
+        const formData = new FormData();
+        formData.append("image", file);
+
+        const res = await fetch(
+          `/api/admin/widget/${encodeURIComponent(SLUG)}/image-upload`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        if (!data.ok || !data.url) {
+          throw new Error("Upload response missing url");
+        }
+
+        STATE.image = STATE.image || {};
+        STATE.image.url = data.url;
+
+        refreshImagePreview();
+        setDirty();
+
+        if (imgUploadStatus) {
+          imgUploadStatus.textContent = "Image uploaded. Don't forget to Save.";
+        }
+      } catch (err) {
+        console.error("Image upload error", err);
+        if (imgUploadStatus) {
+          imgUploadStatus.textContent = "Upload failed. See console.";
+        }
+      }
+    });
+  }
+
+  // Kick things off
+  document.addEventListener("DOMContentLoaded", init);
 })();

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Dashboard 3 – Gauge Only</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+ <link rel="stylesheet" href="/themes/MSSStylesheet.css">
+<link rel="stylesheet" href="/themes/Dashboard.css">
+</head>
+<body>
+  <div class="dash-root">
+    <header class="dash-header">
+      <div class="dash-title">Your latest MSS Vox gauge</div>
+      <div class="dash-subtitle">
+        CEFR and MSS score visualised in a single interactive gauge.
+      </div>
+    </header>
+
+    <main>
+      <div class="gauge-shell">
+        <!-- Just the gauge mock, nothing else -->
+        <iframe
+          id="gaugeFrame"
+          class="gauge-frame"
+          src="mocks/gauge-mock.html"
+          title="MSS CEFR gauge"
+        ></iframe>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Optional: if the widget posts MSS results, forward them to the gauge iframe.
+    // gauge-mock.html can choose to listen for this later.
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type !== "mss-results") return;
+
+      const frame = document.getElementById("gaugeFrame");
+      if (!frame || !frame.contentWindow) return;
+
+      // Forward a simple, gauge-friendly payload
+      const body = data.payload || data || {};
+      const cefr =
+        body.cefr ||
+        body.CEFR ||
+        null;
+      const score =
+        body.overall != null
+          ? body.overall
+          : body.score != null
+          ? body.score
+          : null;
+
+      frame.contentWindow.postMessage(
+        {
+          type: "mss:gauge:update",
+          cefr,
+          score,
+          payload: body, // full object if the gauge wants more
+        },
+        "*"
+      );
+    });
+
+    // Preview mode when opened directly: you still get the full interactive mock.
+    // No extra wiring needed here.
+  </script>
+</body>
+</html>

@@ -1,571 +1,1498 @@
-// public/js/widget-core.js
+// MSS Widget Core v1.1 — Nov 19 2025 (REGEN Nov 23 2025)
+// Supports:
+//   • Widget.html      – slider help (MSSHelp overlay)
+//   • WidgetMin.html   – inline MIN-help panel (per-question)
+//   • WidgetMax.html   – READMAX: always-on full model answer panel
 console.log("✅ widget-core.js loaded");
 
+"use strict";
+
+// Simple ID helper
 const $ = (id) => document.getElementById(id);
 
-/* ---------- Global state ---------- */
-let FORM = null;         // widgetForm from DB
-let CONFIG = null;       // widgetConfig from DB
-let SCHOOL_ID = null;    // optional: schoolId from DB bootstrap
+/* -----------------------------------------------------------------------
+   GLOBAL STATE
+   ----------------------------------------------------------------------- */
 
+let FORM = null;
+let CONFIG = null;
+let SCHOOL_ID = null;
+let QUESTIONS = [];
+
+let CURRENT_SLUG = null;
 let idx = 0;
-let mediaRecorder = null;
-let recording = false;
-let chunks = [];
-let blob = null;
-let url = null;
-let uploadedFile = null;
-let t0 = 0;
-let tick = null;
-let submitTimerId = null;
-let submitStart = 0;
+
+let HELP_LEVEL = 0;          // 0 = no help, 1 = min, 2 = max (slider widget)
+let SESSION_LOCKED = false;  // when true, no more record/upload for THIS question
+
+// Widget layout mode: "default" or "readmax" (read-and-record with full model answer)
+let WIDGET_MODE = "default";
+
+// Dashboard popup (fallback)
 let dashboardWindow = null;
 
-/* ---------- Helpers ---------- */
-function mmss(ms) {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-}
+// WAV recording state
+let audioContext = null;
+let micStream = null;
+let inputNode = null;
+let processor = null;
+let recording = false;
+let recordingChunks = [];
+let t0 = 0;
+let tick = null;
 
-function setStatus(msg, ok = true) {
-  const el = $("status");
-  if (!el) return;
-  el.textContent = msg;
-  el.className = "mss-status " + (ok ? "ok" : "warn");
-}
+// Blob / playback state
+let blob = null;
+let blobName = null;
+let objectUrl = null;
 
-/* Duration bounds from CONFIG */
-function getDurationBounds() {
-  const minS = Number(CONFIG?.audioMinSeconds ?? 30);
-  const maxS = Number(CONFIG?.audioMaxSeconds ?? 61);
-  return { minS, maxS };
-}
+// Per-question help cache for WidgetMin + WidgetMax / READMAX
+// questionId -> { min: string, max: string }
+const HELP_CACHE = {};
 
-/* Progress line */
-function startProgress(label = "Processing") {
-  submitStart = performance.now();
-  $("progressText").textContent = `${label}… 0.00s`;
-  $("progressLine").style.width = "5%";
-  submitTimerId = setInterval(() => {
-    const s = ((performance.now() - submitStart) / 1000).toFixed(2);
-    $("progressText").textContent = `${label}… ${s}s`;
-    const w = Math.min(95, 5 + (performance.now() - submitStart) / 60);
-    $("progressLine").style.width = w + "%";
-  }, 120);
-}
+// ---------- Help + variant helpers ----------
 
-function stopProgress(finalLabel = "Done") {
-  if (submitTimerId) {
-    clearInterval(submitTimerId);
-    submitTimerId = null;
-  }
-  const s = ((performance.now() - submitStart) / 1000).toFixed(2);
-  $("progressText").textContent = `${finalLabel} (${s}s)`;
-  $("progressLine").style.width = "100%";
-  setTimeout(() => {
-    const line = $("progressLine");
-    line.style.transition = "none";
-    line.style.width = "0%";
-    $("progressText").textContent = "";
-    void line.offsetWidth;
-    line.style.transition = "width .2s ease";
-  }, 600);
-}
-
-/* WAV transcode helpers */
-async function blobToArrayBuffer(b) {
-  return await b.arrayBuffer();
-}
-
-function encodeWavFromAudioBuffer(abuf) {
-  const chs = abuf.numberOfChannels,
-    rate = abuf.sampleRate,
-    len = abuf.length;
-  const bytesPerSample = 2,
-    blockAlign = chs * bytesPerSample,
-    dataBytes = len * blockAlign;
-  const buf = new ArrayBuffer(44 + dataBytes),
-    v = new DataView(buf);
-
-  const w = (o, s) => {
-    for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
-  };
-  w(0, "RIFF");
-  v.setUint32(4, 36 + dataBytes, true);
-  w(8, "WAVE");
-  w(12, "fmt ");
-  v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true);
-  v.setUint16(22, chs, true);
-  v.setUint32(24, rate, true);
-  v.setUint32(28, rate * blockAlign, true);
-  v.setUint16(32, blockAlign, true);
-  v.setUint16(34, 16, true);
-  w(36, "data");
-  v.setUint32(40, dataBytes, true);
-  const chData = Array.from({ length: chs }, (_, i) => abuf.getChannelData(i));
-  let off = 44;
-  for (let i = 0; i < len; i++) {
-    for (let c = 0; c < chs; c++) {
-      let s = Math.max(-1, Math.min(1, chData[c][i]));
-      v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-      off += 2;
-    }
-  }
-  return new Blob([buf], { type: "audio/wav" });
-}
-
-async function transcodeToWav(origBlob) {
-  const arr = await blobToArrayBuffer(origBlob);
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const abuf = await ctx.decodeAudioData(arr);
-  ctx.close();
-  return encodeWavFromAudioBuffer(abuf);
-}
-
-/* Access check */
-async function checkAccess(baseUrl, key) {
+// 1) Which widget file are we? (Widget, WidgetMin, WidgetMax, etc.)
+function getWidgetVariant() {
   try {
-    const url = baseUrl.replace(/\/+$/, "") + "/api/check-access";
-    const r = await fetch(url, {
-      headers: { "API-KEY": key, Accept: "application/json" },
-    });
-    const body = await r.json().catch(() => ({}));
-    return { ok: r.ok, status: r.status, url, body };
+    const path = window.location.pathname || "";
+    const file = path.split("/").pop() || "Widget.html";
+    // Strip ".html" and return name only
+    return file.replace(/\.html$/i, "");
+  } catch {
+    return "Widget";
+  }
+}
+
+// 2) Where is help being shown? (slider vs dedicated min/max widget)
+function getHelpSurface() {
+  const variant = getWidgetVariant().toLowerCase();
+
+  if (variant.includes("min")) return "min_widget";
+  if (variant.includes("max")) return "max_widget";
+
+  // default widget with slider
+  return "slider";
+}
+
+// 3) Final help level at submit time
+//    - Dedicated min/max widgets force min/max
+//    - Slider uses HELP_LEVEL 0/1/2
+function getHelpLevelForSubmit() {
+  const variant = getWidgetVariant().toLowerCase();
+
+  // Dedicated variants override slider
+  if (variant.includes("min")) return "min";
+  if (variant.includes("max")) return "max";
+
+  // Slider-based widget: map HELP_LEVEL 0/1/2
+  if (typeof HELP_LEVEL === "number") {
+    if (HELP_LEVEL >= 2) return "max";
+    if (HELP_LEVEL >= 1) return "min";
+  }
+  return "none";
+}
+
+// 4) Which dashboard is the student seeing?
+function getDashboardVariant() {
+  try {
+    const path = getDashboardPath(); // no body override needed here
+    if (!path) return "default";
+
+    const file = (path.split("/").pop() || "").toLowerCase();
+    return file.replace(/\.html$/i, "") || "default";
   } catch (e) {
-    return {
-      ok: false,
-      status: 0,
-      url: "(check failed)",
-      body: { error: String(e) },
-    };
+    console.warn("getDashboardVariant error:", e);
+    return "default";
   }
 }
 
-/* UI helpers */
-function hideDebug() {
-  const row = $("debugBtnRow");
-  const wrap = $("debugWrap");
-  const ls = $("logStatus");
-  if (row) row.style.display = "none";
-  if (wrap) wrap.style.display = "none";
-  if (ls) {
-    ls.textContent = "";
-    ls.className = "mss-logstatus";
+// Default dashboard if none is configured
+const DEFAULT_DASHBOARD_PATH = "/dashboards/Dashboard3.html"; // or 4, your call
+
+function getDashboardPath(bodyDashboardUrl) {
+  // 1) ConfigAdmin / DB wins
+  if (CONFIG && (CONFIG.dashboardPath || CONFIG.dashboardUrl)) {
+    return CONFIG.dashboardPath || CONFIG.dashboardUrl;
   }
+
+  // 2) MSS response fallback (remote or legacy config)
+  if (bodyDashboardUrl) return bodyDashboardUrl;
+
+  // 3) Hard-coded default
+  return DEFAULT_DASHBOARD_PATH;
 }
 
-function clearTimer() {
-  if (tick) {
-    clearInterval(tick);
-    tick = null;
-  }
-  const t = $("timer");
-  if (t) t.textContent = "";
-}
+/* -----------------------------------------------------------------------
+   API ENDPOINTS
+   ----------------------------------------------------------------------- */
 
-function stopTracks() {
+const API = {
+  BOOTSTRAP: "/api/widget",        // /api/widget/:slug/bootstrap
+  SUBMIT_FALLBACK: "/api/widget/submit",
+  LOG: "/api/widget/log",
+};
+
+/* -----------------------------------------------------------------------
+   STARTUP
+   ----------------------------------------------------------------------- */
+
+document.addEventListener("DOMContentLoaded", () => {
   try {
-    mediaRecorder?.stream?.getTracks?.().forEach((t) => t.stop());
-  } catch {}
+    initWidget();
+  } catch (err) {
+    console.error("Widget init error:", err);
+    setStatus("Widget failed to initialize. Please refresh and try again.");
+  }
+});
+
+function isLocalHost() {
+  const h = window.location.hostname;
+  return (
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "0.0.0.0" ||
+    h.endsWith(".local")
+  );
 }
 
-function releaseBlobUrl() {
-  if (url) {
-    try {
-      URL.revokeObjectURL(url);
-    } catch {}
-    url = null;
+/* -----------------------------------------------------------------------
+   CORE HELPERS
+   ----------------------------------------------------------------------- */
+
+function setStatus(msg) {
+  const statusEl = $("status");
+  if (statusEl) {
+    statusEl.textContent = msg || "";
+  } else {
+    console.log("STATUS:", msg);
   }
 }
 
-function resetRecordingUI(msg = "Not recording") {
-  recording = false;
-  chunks = [];
-  blob = null;
-  clearTimer();
-  stopTracks();
-  releaseBlobUrl();
+function logEvent(type, payload) {
+  try {
+    const data = {
+      type,
+      slug: CURRENT_SLUG,
+      questionId: currentQuestion()?.id || null,
+      ts: new Date().toISOString(),
+      ...payload,
+    };
 
-  const recBtn = $("recBtn");
-  const stopBtn = $("stopBtn");
+    if (navigator.sendBeacon) {
+      const b = new Blob([JSON.stringify(data)], {
+        type: "application/json",
+      });
+      navigator.sendBeacon(API.LOG, b);
+    } else {
+      fetch(API.LOG, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn("logEvent error:", err);
+  }
+}
+
+function setRecordingUiEnabled(enabled) {
+  const recBtn    = $("recBtn");
+  const stopBtn   = $("stopBtn");
+  const fileInput = $("fileInput");
   const submitBtn = $("submitBtn");
-  const recDot = $("recDot");
-  const recState = $("recState");
-  const playerWrap = $("playerWrap");
-  const p = $("player");
-  const lengthHint = $("lengthHint");
 
-  if (recBtn) recBtn.disabled = !!uploadedFile;
-  if (stopBtn) stopBtn.disabled = true;
+  const disabled = !enabled;
 
-  // Always show the submit button, just disable when empty
-  if (submitBtn) {
-    submitBtn.style.display = "inline-block";
-    submitBtn.disabled = !(uploadedFile || blob);
-  }
-
-  if (recDot) recDot.classList.remove("on");
-  if (recState) recState.textContent = msg;
-
-  if (playerWrap)
-    playerWrap.style.display = uploadedFile || url ? "block" : "none";
-
-  if (!uploadedFile && p) {
-    try {
-      p.pause();
-      p.removeAttribute("src");
-      p.load();
-    } catch {}
-  }
-
-  if (lengthHint) lengthHint.textContent = "";
-  hideDebug();
+  if (recBtn)    recBtn.disabled    = disabled;
+  if (stopBtn)   stopBtn.disabled   = disabled || !recording;
+  if (fileInput) fileInput.disabled = disabled;
+  if (submitBtn) submitBtn.disabled = disabled || !blob;
 }
 
-/* Render the current question */
-function renderQ() {
-  const s = Array.isArray(FORM?.survey) ? FORM.survey : [];
-  const counter = $("counter");
-  const qEl = $("question");
+function getSlugFromUrlOrRoot() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const slugFromQuery = (params.get("slug") || "").trim();
+    if (slugFromQuery) return slugFromQuery;
+  } catch {
+    // ignore
+  }
 
-  if (!s.length) {
-    if (counter) counter.textContent = "";
-    if (qEl) qEl.textContent = "(No questions found)";
+  const root = $("mss-widget-root");
+  if (root && root.dataset && root.dataset.schoolSlug) {
+    return root.dataset.schoolSlug.trim();
+  }
+
+  if (window.mssWidgetSlug) {
+    return String(window.mssWidgetSlug).trim();
+  }
+
+  return "mss-demo";
+}
+
+/* Submit spinner helpers */
+function showSubmitProgress() {
+  const el = $("submitProgress");
+  if (el) el.classList.remove("mss-hidden");
+}
+
+function hideSubmitProgress() {
+  const el = $("submitProgress");
+  if (el) el.classList.add("mss-hidden");
+}
+
+/* Dashboard helpers */
+function collapseDashboard() {
+  const container = $("dashboardContainer");
+  if (!container) return;
+  container.classList.remove("mss-dashboard-visible", "mss-dashboard-expanded");
+  container.classList.add("mss-dashboard-hidden", "mss-dashboard-collapsed");
+}
+
+function expandDashboard(url, sessionId) {
+  const container = $("dashboardContainer");
+  if (!container) return false;
+
+  const bodyEl = $("dashboardBody") || container;
+
+  let iframe = $("dashboardFrame");
+  if (!iframe) {
+    iframe = document.createElement("iframe");
+    iframe.id = "dashboardFrame";
+    iframe.title = "MSS Score Results";
+    iframe.setAttribute("loading", "lazy");
+    iframe.style.width = "100%";
+    iframe.style.height = "100%";
+    iframe.style.border = "0";
+    bodyEl.appendChild(iframe);
+  }
+
+  iframe.src = url;
+
+  container.classList.remove("mss-dashboard-hidden", "mss-dashboard-collapsed");
+  container.classList.add("mss-dashboard-visible", "mss-dashboard-expanded");
+
+  try {
+    logEvent("dashboard_inline_open", { sessionId, url });
+  } catch (_) {}
+
+  return true;
+}
+
+/* Dashboard init: keep panel present but collapsed on load */
+function initDashboardContainer() {
+  const container = $("dashboardContainer");
+  if (!container) return;
+
+  container.classList.add("mss-dashboard-hidden", "mss-dashboard-collapsed");
+
+  const closeBtn = $("dashboardCloseBtn");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      collapseDashboard();
+      try {
+        logEvent("dashboard_closed", {});
+      } catch (_) {}
+    });
+  }
+}
+
+/* -----------------------------------------------------------------------
+   HELP FETCHING (shared for WidgetMin + WidgetMax)
+   ----------------------------------------------------------------------- */
+
+// Fetch min/max help text for a given questionId, cached in HELP_CACHE
+async function fetchHelpForQuestion(questionId) {
+  const qid = Number(questionId);
+  if (!Number.isInteger(qid) || qid <= 0) {
+    return { min: "", max: "" };
+  }
+
+  if (HELP_CACHE[qid]) {
+    return HELP_CACHE[qid];
+  }
+
+  try {
+    const res = await fetch("/api/widget/help", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: CURRENT_SLUG,
+        questionId: qid,
+        level: 2, // ask server for both min & max
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn("fetchHelpForQuestion HTTP", res.status);
+      HELP_CACHE[qid] = { min: "", max: "" };
+      return HELP_CACHE[qid];
+    }
+
+    const json = await res.json();
+    if (!json || json.ok === false) {
+      console.warn("fetchHelpForQuestion response error", json);
+      HELP_CACHE[qid] = { min: "", max: "" };
+      return HELP_CACHE[qid];
+    }
+
+    const min =
+      (json.minhelp || json.min || "").toString().trim();
+    const max =
+      (json.maxhelp || json.max || "").toString().trim();
+
+    HELP_CACHE[qid] = { min, max };
+
+    console.log("[HELP] cache set for qid", qid, {
+      minLen: min.length,
+      maxLen: max.length,
+    });
+
+    return HELP_CACHE[qid];
+  } catch (err) {
+    console.error("fetchHelpForQuestion exception:", err);
+    HELP_CACHE[qid] = { min: "", max: "" };
+    return HELP_CACHE[qid];
+  }
+}
+
+/* -----------------------------------------------------------------------
+   INIT / BOOTSTRAP
+   ----------------------------------------------------------------------- */
+
+function initWidget() {
+  const root = $("mss-widget-root");
+  if (!root) {
+    console.error("No #mss-widget-root found");
     return;
   }
-  idx = Math.max(0, Math.min(idx, s.length - 1));
-  if (counter) counter.textContent = `Question ${idx + 1} of ${s.length}`;
-  if (qEl) qEl.textContent = s[idx];
+
+  CURRENT_SLUG = getSlugFromUrlOrRoot();
+  root.dataset.schoolSlug = CURRENT_SLUG;
+
+  // NEW: read widget mode from data-widget-mode
+  WIDGET_MODE = root.dataset.widgetMode || "default";
+
+  console.log("🎯 Active widget slug:", CURRENT_SLUG, "| mode:", WIDGET_MODE);
+
+  wireUiEvents();
+  bootstrapWidget();
 }
 
-/* ---------- DB-backed widget bootstrap ---------- */
+function bootstrapWidget() {
+  CURRENT_SLUG = getSlugFromUrlOrRoot();
+  console.log("🚀 Bootstrapping widget for slug:", CURRENT_SLUG);
+  setStatus("Loading…");
 
-async function loadAll() {
-  const root = $("mss-widget-root");
-  let slug = "mss-demo";
+  const url = `${API.BOOTSTRAP}/${encodeURIComponent(
+    CURRENT_SLUG
+  )}/bootstrap`;
 
-  if (root) {
-    const params = new URLSearchParams(window.location.search);
-    slug =
-      (params.get("slug") || "").trim() ||
-      root.dataset.schoolSlug ||
-      "mss-demo";
+  fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error(`Bootstrap HTTP ${r.status}`);
+      return r.json();
+    })
+    .then((data) => {
+      FORM = data.form || {};
+      CONFIG = data.config || {};
+      SCHOOL_ID = data.schoolId || data.SCHOOL_ID || null;
+      QUESTIONS = Array.isArray(data.questions) ? data.questions : [];
 
-    // store back into data attribute so the preview iframe & others stay in sync
-    root.dataset.schoolSlug = slug;
+      // imageUrl from bootstrap
+      if (data.image && data.image.url) {
+        CONFIG.imageUrl = data.image.url;
+        if (!CONFIG.imageAlt && data.image.alt) {
+          CONFIG.imageAlt = data.image.alt;
+        }
+      } else if (data.imageUrl) {
+        CONFIG.imageUrl = data.imageUrl;
+      }
+      if (data.imageAlt && !CONFIG.imageAlt) {
+        CONFIG.imageAlt = data.imageAlt;
+      }
+
+      if (data.assessmentId || data.ASSESSMENT_ID) {
+        CONFIG.assessmentId = data.assessmentId || data.ASSESSMENT_ID;
+      }
+
+      console.log("📦 Bootstrapped:", {
+        SCHOOL_ID,
+        ASSESSMENT_ID: CONFIG.assessmentId || null,
+        questionsCount: QUESTIONS.length,
+        config: CONFIG,
+        form: FORM,
+      });
+
+      if (!QUESTIONS.length) {
+        throw new Error("No questions returned from DB.");
+      }
+
+      const hasDbApi =
+        CONFIG.api && CONFIG.api.key && CONFIG.api.secret;
+
+      // Local dev fallback: /config/widget
+      if (!hasDbApi && isLocalHost()) {
+        console.log(
+          "🔎 No API creds in DB config; local dev → fetching /config/widget…"
+        );
+        return fetch("/config/widget")
+          .then((r) => {
+            if (!r.ok) throw new Error(`/config/widget HTTP ${r.status}`);
+            return r.json();
+          })
+          .then((legacyCfg) => {
+            CONFIG.api = CONFIG.api || {};
+
+            if (!CONFIG.api.key && legacyCfg.api?.key) {
+              CONFIG.api.key = legacyCfg.api.key;
+            }
+            if (!CONFIG.api.secret && legacyCfg.api?.secret) {
+              CONFIG.api.secret = legacyCfg.api.secret;
+            }
+            if (!CONFIG.api.baseUrl && legacyCfg.api?.baseUrl) {
+              CONFIG.api.baseUrl = legacyCfg.api.baseUrl;
+            }
+
+            if (!CONFIG.submitUrl && legacyCfg.submitUrl) {
+              CONFIG.submitUrl = legacyCfg.submitUrl;
+            }
+            if (!CONFIG.dashboardUrl && legacyCfg.dashboardUrl) {
+              CONFIG.dashboardUrl = legacyCfg.dashboardUrl;
+            }
+
+            console.log("🔑 API KEY (dev fallback):", CONFIG.api?.key);
+            console.log("🔐 API SECRET (dev fallback):", CONFIG.api?.secret);
+            console.log("🔗 API baseUrl (dev fallback):", CONFIG.api?.baseUrl);
+            console.log("📤 submitUrl (dev fallback):", CONFIG.submitUrl);
+            console.log("📊 dashboardUrl (dev fallback):", CONFIG.dashboardUrl);
+
+            finishBootstrap();
+          })
+          .catch((err) => {
+            console.warn(
+              "Dev /config/widget fallback failed; continuing with DB config:",
+              err
+            );
+            finishBootstrap();
+          });
+      }
+
+      console.log("🔑 API KEY (DB or fallback):", CONFIG.api?.key);
+      console.log("🔐 API SECRET (DB or fallback):", CONFIG.api?.secret);
+      console.log("🔗 API baseUrl (DB or fallback):", CONFIG.api?.baseUrl);
+      console.log("📤 submitUrl (DB or fallback):", CONFIG.submitUrl);
+      console.log("📊 dashboardUrl (DB or fallback):", CONFIG.dashboardUrl);
+
+      finishBootstrap();
+    })
+    .catch((err) => {
+      console.error("Bootstrap error:", err);
+      setStatus("We could not load this widget. Please contact your school.");
+    });
+}
+
+function finishBootstrap() {
+  applyBrandingFromForm();
+  applyFormLabelsFromForm();
+  applyConfigTheme();
+  initDashboardContainer();
+  applyConfigFeatureFlags();
+
+  // honour config.widgetEnabled flag if present
+  if (CONFIG && CONFIG.widgetEnabled === false) {
+    const root = $("mss-widget-root");
+    if (root) root.classList.add("mss-widget-disabled");
+
+    const msg =
+      CONFIG.maintenanceMessage ||
+      "This practice widget is temporarily unavailable. Please check back later or contact your school.";
+    setStatus(msg);
+
+    setRecordingUiEnabled(false);
+    SESSION_LOCKED = true;
+    return;
   }
 
-  const base = (window.SERVICE_BASE || "").replace(/\/+$/, "");
-  const url = `${base}/api/widget/${encodeURIComponent(slug)}/bootstrap`;
+  idx = 0;
+  renderQuestion();
+  setStatus("Ready to record when you are.");
+}
 
+/* -----------------------------------------------------------------------
+   BRANDING / THEME / LABELS
+   ----------------------------------------------------------------------- */
+
+function applyBrandingFromForm() {
+  const brandEl   = $("brand");
+  const poweredEl = $("powered");
+
+  const headline =
+    CONFIG?.title ||
+    FORM?.headline ||
+    FORM?.name ||
+    "MySpeakingScore – Speaking Practice";
+
+  const subtitle =
+    CONFIG?.subtitle ||
+    FORM?.poweredByLabel ||
+    FORM?.description ||
+    "Get instant feedback on your speaking";
+
+  if (brandEl)   brandEl.textContent = headline;
+  if (poweredEl) poweredEl.textContent = subtitle;
+
+  const brandImg =
+    $("brandImg") ||
+    $("brandLogo") ||
+    $("brandLogoImg");
+
+  const brandSrc =
+    CONFIG?.imageUrl ||
+    CONFIG?.image?.url ||
+    CONFIG?.brandDataUrl ||
+    CONFIG?.logoDataUrl ||
+    CONFIG?.brand?.src ||
+    CONFIG?.logo?.src;
+
+  if (brandImg && brandSrc) {
+    if (brandImg.tagName === "IMG") {
+      brandImg.src = brandSrc;
+      brandImg.style.objectFit = "contain";
+    } else {
+      brandImg.style.backgroundImage = `url(${brandSrc})`;
+      brandImg.textContent = "";
+    }
+  }
+
+  const brandAlt =
+    CONFIG?.image?.alt ||
+    CONFIG?.brandAlt ||
+    CONFIG?.imageAlt ||
+    CONFIG?.logoAlt ||
+    FORM?.imageAlt ||
+    "School logo";
+
+  if (brandImg && brandAlt && brandImg.tagName === "IMG") {
+    brandImg.alt = brandAlt;
+  }
+
+  console.log("🧷 branding applied:", {
+    headline,
+    subtitle,
+    brandSrc,
+    brandAlt,
+  });
+}
+
+function applyFormLabelsFromForm() {
+  if (!FORM) return;
+
+  const prevBtn   = $("prevBtn");
+  const nextBtn   = $("nextBtn");
+  const recBtn    = $("recBtn");
+  const stopBtn   = $("stopBtn");
+  const submitBtn = $("submitBtn");
+  const recState  = $("recState");
+
+  if (prevBtn && FORM.previousButton) {
+    prevBtn.textContent = FORM.previousButton;
+  }
+  if (nextBtn && FORM.nextButton) {
+    nextBtn.textContent = FORM.nextButton;
+  }
+  if (recBtn && FORM.recordButton) {
+    recBtn.textContent = FORM.recordButton;
+  }
+  if (stopBtn && FORM.stopButton) {
+    stopBtn.textContent = FORM.stopButton;
+  }
+  if (submitBtn && FORM.SubmitForScoringButton) {
+    submitBtn.textContent = FORM.SubmitForScoringButton;
+  }
+  if (recState && FORM.NotRecordingLabel) {
+    recState.textContent = FORM.NotRecordingLabel;
+  }
+
+  const uploadLabelSpan = document.querySelector(".mss-upload-label span");
+  if (uploadLabelSpan && FORM.uploadButton) {
+    uploadLabelSpan.textContent = FORM.uploadButton;
+  }
+
+  const helpBtn = $("helpBtn");
+  if (helpBtn && FORM.questionHelpButton) {
+    helpBtn.textContent = FORM.questionHelpButton;
+  }
+}
+
+function applyConfigTheme() {
+  if (!CONFIG) return;
+  if (CONFIG.primaryColor || CONFIG.accentColor) {
+    const accent = CONFIG.primaryColor || CONFIG.accentColor;
+    document.documentElement.style.setProperty("--mss-accent", accent);
+  }
+}
+
+/**
+ * Feature flags that depend on CONFIG:
+ * - allowUpload (hide upload row completely when false)
+ * - allowRecording (hide recording controls when false)
+ */
+function applyConfigFeatureFlags() {
+  let uploadFlag;
+  if (typeof CONFIG?.allowUpload === "boolean") {
+    uploadFlag = CONFIG.allowUpload;
+  } else if (typeof CONFIG?.Permitupload === "boolean") {
+    uploadFlag = CONFIG.Permitupload;
+  } else {
+    uploadFlag = true;
+  }
+
+  const allowUpload    = !!uploadFlag;
+  const allowRecording = CONFIG?.allowRecording !== false;
+
+  console.log("📁 upload/record flags:", {
+    allowUpload,
+    rawAllowUpload: CONFIG?.allowUpload,
+    permitUploadLegacy: CONFIG?.Permitupload,
+    allowRecording,
+  });
+
+  const uploadRow = document.querySelector(".mss-upload-row");
+  const fileInput = $("fileInput");
+  const clearBtn  = $("clearFileBtn");
+
+  if (uploadRow) {
+    uploadRow.style.display = allowUpload ? "" : "none";
+  }
+  if (fileInput) {
+    fileInput.disabled = !allowUpload;
+  }
+  if (clearBtn) {
+    clearBtn.disabled = !allowUpload;
+  }
+
+  const recBtn  = $("recBtn");
+  const stopBtn = $("stopBtn");
+
+  if (!allowRecording) {
+    if (recBtn)  recBtn.style.display  = "none";
+    if (stopBtn) stopBtn.style.display = "none";
+  } else {
+    if (recBtn)  recBtn.style.display  = "";
+    if (stopBtn) stopBtn.style.display = "";
+  }
+}
+
+/* -----------------------------------------------------------------------
+   UI EVENT WIRING
+   ----------------------------------------------------------------------- */
+
+function wireUiEvents() {
+  // Nav
+  $("prevBtn")?.addEventListener("click", onPrevQuestion);
+  $("nextBtn")?.addEventListener("click", onNextQuestion);
+
+  // Recording
+  $("recBtn")?.addEventListener("click", onRecordClick);
+  $("stopBtn")?.addEventListener("click", onStopClick);
+
+  // File upload
+  $("fileInput")?.addEventListener("change", onUploadChange);
+  $("clearFileBtn")?.addEventListener("click", onClearFileClick);
+
+  // Submit
+  $("submitBtn")?.addEventListener("click", onSubmitClick);
+
+  // Help slider (baseline widget only – not present in WidgetMin/Max)
+  $("helpSlider")?.addEventListener("input", onHelpSliderChange);
+
+  // Help button:
+  //  - If WidgetMax panel exists → toggle that
+  //  - Else fallback to MSSHelp overlay (Widget.html)
+  $("helpBtn")?.addEventListener("click", () => {
+    const panel = $("maxHelpPanel");
+    if (panel) {
+      const isOpen = !panel.classList.contains("mss-hidden");
+      if (isOpen) {
+        closeMaxHelpPanel();
+      } else {
+        openMaxHelpPanel();
+      }
+      return;
+    }
+
+    // Legacy MSSHelp overlay (Widget.html with slider)
+    if (!window.MSSHelp) return;
+    const q = currentQuestion();
+    if (!q) return;
+
+    const level = HELP_LEVEL || 1;
+    if (window.MSSHelp.setLevel) {
+      window.MSSHelp.setLevel(level, {
+        slug: CURRENT_SLUG,
+        schoolId: SCHOOL_ID,
+        questionId: q.id,
+        questionIndex: idx + 1,
+        totalQuestions: QUESTIONS.length || 1,
+        widgetVariant: CONFIG.widgetVariant || "default",
+      });
+    }
+    if (window.MSSHelp.open) {
+      window.MSSHelp.open({
+        slug: CURRENT_SLUG,
+        schoolId: SCHOOL_ID,
+        questionId: q.id,
+        question: q.question || q.text || "",
+        level,
+      });
+    }
+  });
+
+  // Inline Min Help (WidgetMin only – safe no-op if elements don’t exist)
+  const minHelpToggle = $("minHelpToggle");
+  const minHelpPanel  = $("minHelpPanel");
+
+  if (minHelpToggle && minHelpPanel) {
+    minHelpToggle.addEventListener("click", () => {
+      const isOpen = !minHelpPanel.classList.contains("mss-hidden");
+
+      if (isOpen) {
+        minHelpPanel.classList.add("mss-hidden");
+        minHelpPanel.setAttribute("aria-hidden", "true");
+        minHelpToggle.textContent =
+          FORM?.minHelpToggleLabelShow || "Show help";
+      } else {
+        minHelpPanel.classList.remove("mss-hidden");
+        minHelpPanel.setAttribute("aria-hidden", "false");
+        minHelpToggle.textContent =
+          FORM?.minHelpToggleLabelHide || "Hide help";
+      }
+    });
+  }
+}
+
+/* -----------------------------------------------------------------------
+   QUESTION RENDERING / NAV
+   ----------------------------------------------------------------------- */
+
+function currentQuestion() {
+  if (!QUESTIONS.length) return null;
+  return QUESTIONS[Math.max(0, Math.min(idx, QUESTIONS.length - 1))];
+}
+
+// Inline MIN-help panel (WidgetMin) – per-question MIN help
+function renderMinHelpPanel() {
+  const minHelpPanel  = $("minHelpPanel");
+  const minHelpBody   = $("minHelpBody");
+  const minHelpIntro  = $("minHelpInstructions");
+  const minHelpToggle = $("minHelpToggle");
+
+  if (!minHelpPanel || !minHelpBody) return;
+
+  const q = currentQuestion();
+  if (!q) return;
+
+  // Instructions from ConfigAdmin (FORM.instructions)
+  if (minHelpIntro) {
+    const inst = FORM?.instructions || "";
+    if (inst) {
+      if (/<[a-z][\s\S]*>/i.test(inst)) {
+        minHelpIntro.innerHTML = inst;
+      } else {
+        minHelpIntro.innerHTML = escapeHtml(inst).replace(
+          /\r|\n/g,
+          "<br>"
+        );
+      }
+    } else {
+      minHelpIntro.textContent =
+        "Read this short example before you answer.";
+    }
+  }
+
+  // Start panel collapsed on each new question
+  minHelpPanel.classList.add("mss-hidden");
+  minHelpPanel.setAttribute("aria-hidden", "true");
+
+  if (minHelpToggle) {
+    minHelpToggle.textContent =
+      FORM?.minHelpToggleLabelShow || "Show help";
+  }
+
+  // Now load per-question MIN help from the backend
+  // Prepend any global General Help text from ConfigAdmin
+  const globalHelp = (FORM?.helpText || "").toString().trim();
+
+  fetchHelpForQuestion(q.id)
+    .then(({ min }) => {
+      let html = "";
+
+      if (globalHelp) {
+        if (/<[a-z][\s\S]*>/i.test(globalHelp)) {
+          html += globalHelp;
+        } else {
+          html += escapeHtml(globalHelp).replace(/\r\n|\r|\n/g, "<br>");
+        }
+      }
+
+      if (min) {
+        if (html) {
+          html += "<hr>";
+        }
+        if (/<[a-z][\s\S]*>/i.test(min)) {
+          html += min;
+        } else {
+          html += escapeHtml(min).replace(/\r\n|\r|\n/g, "<br>");
+        }
+      }
+
+      if (!html) {
+        html =
+          "Try giving a clear, simple answer with one or two examples.";
+      }
+
+      minHelpBody.innerHTML = html;
+    })
+    .catch((err) => {
+      console.warn("renderMinHelpPanel help fetch failed:", err);
+      minHelpBody.textContent =
+        "Try giving a clear, simple answer with one or two examples.";
+    });
+}
+
+
+// READMAX variant: always-on full sample answer (Max Help only)
+async function renderReadOnlyMaxHelpPanel() {
+  const panel   = $("maxHelpPanel");
+  const introEl = $("maxHelpIntro");
+  const maxEl   = $("maxHelpMax");
+
+  if (!panel || !maxEl) return;
+
+  const q = currentQuestion();
+  if (!q) return;
+
+  // Instructions from ConfigAdmin (FORM.instructions)
+  if (introEl) {
+    const inst = (FORM?.instructions || "").toString().trim();
+    if (inst) {
+      if (/<[a-z][\s\S]*>/i.test(inst)) {
+        introEl.innerHTML = inst;
+      } else {
+        introEl.innerHTML = escapeHtml(inst).replace(
+          /\r\n|\r|\n/g,
+          "<br>"
+        );
+      }
+    } else {
+      introEl.textContent =
+        "You will see one or more speaking questions. Read the prompt carefully, then record or upload your answer.";
+    }
+  }
+
+  let maxText = "";
   try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`Bootstrap failed: ${res.status}`);
-    const data = await res.json();
-
-    SCHOOL_ID = data.schoolId || null;
-    CONFIG = data.config || {};
-    FORM = data.form || { survey: [] };
-
-    // Branding
-    const brandEl = $("brand");
-    const poweredEl = $("powered");
-    const logoEl = $("logo");
-
-    if (brandEl)
-      brandEl.textContent = FORM.headline || "CEFR Assessment";
-
-    if (poweredEl)
-      poweredEl.textContent =
-        FORM.poweredByLabel || "Powered by MSS Vox";
-
-    if (logoEl && data.imageUrl) {
-      logoEl.src = data.imageUrl;
-    }
-
-    // Buttons & labels
-    const prevBtn = $("prevBtn");
-    const nextBtn = $("nextBtn");
-    const recBtn = $("recBtn");
-    const stopBtn = $("stopBtn");
-    const uploadLabelSpan = document.querySelector("#uploadBtn span");
-    const recState = $("recState");
-    const submitBtn = $("submitBtn");
-
-    if (prevBtn && FORM.previousButton)
-      prevBtn.textContent = FORM.previousButton;
-    if (nextBtn && FORM.nextButton)
-      nextBtn.textContent = FORM.nextButton;
-    if (recBtn && FORM.recordButton)
-      recBtn.textContent = FORM.recordButton;
-    if (stopBtn && FORM.stopButton)
-      stopBtn.textContent = FORM.stopButton;
-    if (uploadLabelSpan && FORM.uploadButton)
-      uploadLabelSpan.textContent = FORM.uploadButton;
-    if (recState && FORM.NotRecordingLabel)
-      recState.textContent = FORM.NotRecordingLabel;
-    if (submitBtn && FORM.SubmitForScoringButton)
-      submitBtn.textContent = FORM.SubmitForScoringButton;
-
-    // Visibility from config.show + Permitupload
-    const showCfg = CONFIG.show || {};
-
-    if (prevBtn) {
-      prevBtn.style.display =
-        showCfg.prevButton === false ? "none" : "inline-flex";
-    }
-    if (nextBtn) {
-      nextBtn.style.display =
-        showCfg.nextButton === false ? "none" : "inline-flex";
-    }
-    if (recBtn) {
-      recBtn.style.display =
-        showCfg.recordButton === false ? "none" : "inline-flex";
-    }
-    if (stopBtn) {
-      stopBtn.style.display =
-        showCfg.stopButton === false ? "none" : "inline-flex";
-    }
-    if (submitBtn) {
-      submitBtn.style.display =
-        showCfg.submitButton === false ? "none" : "inline-flex";
-    }
-    if (recState) {
-      recState.style.display =
-        showCfg.notRecordingLabel === false ? "none" : "inline-block";
-    }
-
-    // Upload allow/deny
-    const uploadRow = document.querySelector(".mss-file-row");
-    const permitUpload =
-      typeof CONFIG.Permitupload === "boolean"
-        ? CONFIG.Permitupload
-        : true;
-
-    if (uploadRow) {
-      uploadRow.style.display = permitUpload ? "inline-flex" : "none";
-    }
-
-    // Finally, show first question & reset recording UI
-    renderQ();
-    resetRecordingUI(
-      FORM.NotRecordingLabel || "Not recording"
-    );
-
-    setStatus("Ready");
-    console.log("Widget bootstrapped from Postgres for school:", slug);
+    const help = await fetchHelpForQuestion(q.id);
+    maxText = (help.max || "").toString().trim();
   } catch (err) {
-    console.error("Widget bootstrap error:", err);
-    setStatus("Failed to load configuration.", false);
+    console.warn("renderReadOnlyMaxHelpPanel help fetch failed:", err);
+  }
+
+  if (maxText) {
+    if (/<[a-z][\s\S]*>/i.test(maxText)) {
+      maxEl.innerHTML = maxText;
+    } else {
+      maxEl.innerHTML = escapeHtml(maxText).replace(
+        /\r\n|\r|\n/g,
+        "<br>"
+      );
+    }
+  } else {
+    maxEl.textContent =
+      "Here would be a full sample answer in 4–6 sentences. When you are ready, read it aloud while you record.";
   }
 }
 
-/* ---------- Recording ---------- */
-async function startRecording() {
-  if (uploadedFile) return;
-  hideDebug();
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    chunks = [];
-    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data && e.data.size) chunks.push(e.data);
-    };
-    mediaRecorder.onstop = finalizeRecording;
+// WidgetMax panel (MIN + MAX) — per-question
+async function openMaxHelpPanel() {
+  const panel    = $("maxHelpPanel");
+  const introEl  = $("maxHelpIntro");
+  const minEl    = $("maxHelpMin");
+  const maxEl    = $("maxHelpMax");
 
+  if (!panel || !minEl || !maxEl) return;
+
+  const q = currentQuestion();
+  if (!q) return;
+
+  // Intro from ConfigAdmin (instructions)
+  if (introEl) {
+    const inst = FORM?.instructions || "";
+    if (inst) {
+      if (/<[a-z][\s\S]*>/i.test(inst)) {
+        introEl.innerHTML = inst;
+      } else {
+        introEl.innerHTML = escapeHtml(inst).replace(
+          /\r|\n/g,
+          "<br>"
+        );
+      }
+    } else {
+      introEl.textContent =
+        "Here is a model answer and some ideas you can use.";
+    }
+  }
+
+  // Get MIN + MAX help from backend
+  let minText = "";
+  let maxText = "";
+  try {
+    const { min, max } = await fetchHelpForQuestion(q.id);
+    minText = min;
+    maxText = max;
+  } catch (err) {
+    console.warn("openMaxHelpPanel help fetch failed:", err);
+  }
+
+  // Section 1: MIN help (bullet-style summary)
+  if (minText) {
+    if (/<[a-z][\s\S]*>/i.test(minText)) {
+      minEl.innerHTML = minText;
+    } else {
+      minEl.innerHTML = escapeHtml(minText).replace(
+        /\r|\n/g,
+        "<br>"
+      );
+    }
+  } else {
+    minEl.textContent =
+      "Use 3–4 short points. Say what, why and give a short example.";
+  }
+
+  // Section 2: MAX help (full 60-second sample)
+  if (maxText) {
+    if (/<[a-z][\s\S]*>/i.test(maxText)) {
+      maxEl.innerHTML = maxText;
+    } else {
+      maxEl.innerHTML = escapeHtml(maxText).replace(
+        /\r|\n/g,
+        "<br>"
+      );
+    }
+  } else {
+    maxEl.textContent =
+      "Here would be a full sample answer in 4–6 sentences, using the same structure as the short points above.";
+  }
+
+  // Open the panel
+  panel.classList.remove("mss-hidden");
+  panel.setAttribute("aria-hidden", "false");
+
+  const closeBtn = $("maxHelpCloseBtn");
+  if (closeBtn && !closeBtn._mssBound) {
+    closeBtn.addEventListener("click", () => {
+      closeMaxHelpPanel();
+    });
+    closeBtn._mssBound = true;
+  }
+
+  logEvent("help_max_open", { questionId: q.id });
+}
+
+function closeMaxHelpPanel() {
+  const panel = $("maxHelpPanel");
+  if (!panel) return;
+  panel.classList.add("mss-hidden");
+  panel.setAttribute("aria-hidden", "true");
+  logEvent("help_max_close", { questionId: currentQuestion()?.id || null });
+}
+
+function isMaxHelpOpen() {
+  const panel = $("maxHelpPanel");
+  return panel && !panel.classList.contains("mss-hidden");
+}
+
+function renderQuestion() {
+  const q = currentQuestion();
+  const questionEl = $("question");
+
+  const rawText = q ? q.question || q.text || "" : "";
+
+  if (questionEl) {
+    if (/<[a-z][\s\S]*>/i.test(rawText)) {
+      questionEl.innerHTML = rawText;
+    } else if (rawText.includes("\n")) {
+      const paras = rawText
+        .split(/\n{2,}/)
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => `<p>${escapeHtml(p)}</p>`)
+        .join("");
+      questionEl.innerHTML = paras || "";
+    } else {
+      questionEl.textContent = rawText;
+    }
+  }
+
+  if ($("counter")) {
+    const total = QUESTIONS.length || 1;
+    $("counter").textContent = `QUESTION ${idx + 1} OF ${total}`;
+  }
+
+  // reset state for new question
+  SESSION_LOCKED = false;
+  HELP_LEVEL = 0;
+
+  const slider = $("helpSlider");
+  if (slider) slider.value = 0;
+
+  const label = $("helpLabel");
+  if (label) label.textContent = "no help";
+
+  if (window.MSSHelp?.hide) {
+    window.MSSHelp.hide();
+  }
+
+  // WidgetMin (if present)
+  renderMinHelpPanel();
+
+  // WidgetMax READMODE: always show max help panel with full model answer
+  const maxPanel = $("maxHelpPanel");
+  if (maxPanel) {
+    if (WIDGET_MODE === "readmax") {
+      maxPanel.classList.remove("mss-hidden");
+      maxPanel.setAttribute("aria-hidden", "false");
+      renderReadOnlyMaxHelpPanel();
+    } else {
+      // other layouts: start closed
+      maxPanel.classList.add("mss-hidden");
+      maxPanel.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  resetRecordingState();
+  setRecordingUiEnabled(true);
+}
+
+function onPrevQuestion() {
+  if (idx > 0) {
+    idx--;
+    collapseDashboard();
+    renderQuestion();
+    logEvent("nav_prev", { idx });
+  }
+}
+
+function onNextQuestion() {
+  if (idx < QUESTIONS.length - 1) {
+    idx++;
+    collapseDashboard();
+    renderQuestion();
+    logEvent("nav_next", { idx });
+  }
+}
+
+/* -----------------------------------------------------------------------
+   HELP SLIDER (baseline Widget only)
+   ----------------------------------------------------------------------- */
+
+function onHelpSliderChange(evt) {
+  const val = Number(evt.target.value || 0);
+  HELP_LEVEL = val;
+
+  const label = $("helpLabel");
+  if (label) {
+    label.textContent =
+      val === 0 ? "no help" : val === 1 ? "a little help" : "lots of help";
+  }
+
+  console.log("[Help] slider -> level", HELP_LEVEL);
+  logEvent("help_slider", { level: HELP_LEVEL });
+
+  if (!window.MSSHelp) return;
+  const q = currentQuestion();
+  if (!q) return;
+
+  if (HELP_LEVEL === 0) {
+    window.MSSHelp.setLevel(0);
+    return;
+  }
+
+  window.MSSHelp.setLevel(HELP_LEVEL, {
+    slug: CURRENT_SLUG,
+    schoolId: SCHOOL_ID,
+    questionId: q.id,
+    questionIndex: idx + 1,
+    totalQuestions: QUESTIONS.length,
+    widgetVariant: CONFIG.widgetVariant || "default",
+  });
+}
+
+/* -----------------------------------------------------------------------
+   RECORDING (WAV)
+   ----------------------------------------------------------------------- */
+
+async function onRecordClick() {
+  try {
+    if (SESSION_LOCKED) {
+      setStatus(
+        "This answer has been submitted with full help. Choose another question to record again."
+      );
+      return;
+    }
+    if (CONFIG && CONFIG.widgetEnabled === false) {
+      const msg =
+        CONFIG.maintenanceMessage ||
+        "This practice widget is currently offline for maintenance.";
+      setStatus(msg);
+      return;
+    }
+    if (recording) return;
+
+    resetPlaybackOnly();
+
+    if (!audioContext) {
+      audioContext = new (window.AudioContext ||
+        window.webkitAudioContext)();
+    }
+
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    inputNode = audioContext.createMediaStreamSource(micStream);
+
+    const bufferSize = 4096;
+    processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+    recordingChunks = [];
     recording = true;
     t0 = performance.now();
-    tick = setInterval(() => {
-      $("timer").textContent = mmss(performance.now() - t0);
-    }, 200);
 
-    $("recBtn").disabled = true;
-    $("stopBtn").disabled = false;
-    $("submitBtn").disabled = true;
-    $("recDot").classList.add("on");
-    $("recState").textContent =
-      FORM?.RecordingLabel || "Recording…";
-    $("playerWrap").style.display = "none";
-
-    mediaRecorder.start();
-    setStatus("Recording started");
-  } catch (err) {
-    setStatus("Microphone permission denied", false);
-  }
-}
-
-function stopRecording() {
-  if (!mediaRecorder || !recording) return;
-  recording = false;
-  try {
-    mediaRecorder.stop();
-  } catch {}
-  stopTracks();
-  clearTimer();
-  $("recDot").classList.remove("on");
-  $("recState").textContent = "Processing…";
-  $("stopBtn").disabled = true;
-}
-
-function finalizeRecording() {
-  blob = new Blob(chunks, { type: "audio/webm" });
-  releaseBlobUrl();
-  url = URL.createObjectURL(blob);
-
-  const p = $("player");
-  const wrap = $("playerWrap");
-
-  if (p && wrap) {
-    p.src = url;
-    wrap.style.display = "block";
-  }
-
-  const recState = $("recState");
-  const recBtn = $("recBtn");
-  const submitBtn = $("submitBtn");
-
-  if (recState)
-    recState.textContent =
-      FORM?.ReadyLabel || "Ready to review or submit";
-  if (recBtn) recBtn.disabled = false;
-  if (submitBtn) submitBtn.disabled = false;
-  setStatus("Recording ready");
-
-  if (p) {
-    p.onloadedmetadata = () => {
-      const d = p.duration || 0;
-      const { minS, maxS } = getDurationBounds();
-      const mins = String(Math.floor(minS / 60)).padStart(2, "0");
-      const secs = String(minS % 60).padStart(2, "0");
-      const maxm = String(Math.floor(maxS / 60)).padStart(2, "0");
-      const maxs = String(maxS % 60).padStart(2, "0");
-      const lh = $("lengthHint");
-      if (lh) {
-        lh.textContent = `Length: ${mmss(
-          d * 1000
-        )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
-      }
+    processor.onaudioprocess = (e) => {
+      if (!recording) return;
+      const input = e.inputBuffer.getChannelData(0);
+      recordingChunks.push(new Float32Array(input));
     };
+
+    inputNode.connect(processor);
+    processor.connect(audioContext.destination);
+
+    startTimer();
+    updateRecUi(true);
+    setRecordingUiEnabled(true);
+
+    setStatus("Recording… speak now.");
+    logEvent("record_start", { questionId: currentQuestion()?.id });
+  } catch (err) {
+    console.error("Record error:", err);
+    setStatus("We could not access your microphone.");
   }
 }
 
-/* ---------- Upload (mutually exclusive) ---------- */
-const fileInputEl = $("fileInput");
-if (fileInputEl) {
-  fileInputEl.addEventListener("change", (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
+function onStopClick() {
+  if (!recording) return;
+  recording = false;
+  stopTimer();
+  updateRecUi(false);
 
-    uploadedFile = f;
-
-    const badge = $("fileBadge");
-    if (badge) {
-      badge.textContent = `Selected: ${f.name} (${(
-        f.size /
-        1024 /
-        1024
-      ).toFixed(2)} MB)`;
+  try {
+    if (processor) {
+      processor.disconnect();
+      processor.onaudioprocess = null;
+      processor = null;
+    }
+    if (inputNode) {
+      inputNode.disconnect();
+      inputNode = null;
+    }
+    if (micStream) {
+      micStream.getTracks().forEach((t) => t.stop());
+      micStream = null;
     }
 
-    const clearBtn = $("clearFileBtn");
-    if (clearBtn) clearBtn.style.display = "inline-block";
+    const durationMs = performance.now() - t0;
+    const durationSec = Math.round(durationMs / 1000);
 
-    const recBtn = $("recBtn");
-    const stopBtn = $("stopBtn");
-    const submitBtn = $("submitBtn");
-    if (recBtn) recBtn.disabled = true;
-    if (stopBtn) stopBtn.disabled = true;
-
-    releaseBlobUrl();
-    url = URL.createObjectURL(f);
-
-    const p = $("player");
-    const wrap = $("playerWrap");
-    if (p && wrap) {
-      p.src = url;
-      wrap.style.display = "block";
+    if (!recordingChunks.length) {
+      setStatus("No audio captured. Please try again.");
+      return;
     }
 
-    if (submitBtn) submitBtn.disabled = false;
+    const wavBlob = encodeWav(
+      recordingChunks,
+      audioContext?.sampleRate || 44100
+    );
+    setNewBlob(wavBlob, "answer.wav", durationSec);
 
-    hideDebug();
+    setStatus(
+      `Recording stopped (${durationSec}s). You can listen and submit your answer.`
+    );
+    logEvent("record_stop", {
+      questionId: currentQuestion()?.id,
+      durationSec,
+    });
+  } catch (err) {
+    console.error("Stop record error:", err);
+    setStatus("We had trouble finishing the recording.");
+  }
+}
 
-    if (p) {
-      p.onloadedmetadata = () => {
-        const d = p.duration || 0;
-        const { minS, maxS } = getDurationBounds();
-        const mins = String(Math.floor(minS / 60)).padStart(2, "0");
-        const secs = String(minS % 60).padStart(2, "0");
-        const maxm = String(Math.floor(maxS / 60)).padStart(2, "0");
-        const maxs = String(maxS % 60).padStart(2, "0");
-        const lh = $("lengthHint");
-        if (lh) {
-          lh.textContent = `Length: ${mmss(
-            d * 1000
-          )} (must be ${mins}:${secs}–${maxm}:${maxs})`;
+function updateRecUi(isRecording) {
+  const recDot   = $("recDot");
+  const recState = $("recState");
+  const recBtn   = $("recBtn");
+  const stopBtn  = $("stopBtn");
+
+  if (recDot) recDot.classList.toggle("on", !!isRecording);
+  if (recState)
+    recState.textContent = isRecording
+      ? "Recording…"
+      : (FORM?.NotRecordingLabel || "Not recording");
+  if (recBtn) recBtn.disabled = !!isRecording;
+  if (stopBtn) stopBtn.disabled = !isRecording;
+}
+
+function encodeWav(chunks, sampleRate) {
+  let length = 0;
+  for (const c of chunks) length += c.length;
+  const pcmData = new Float32Array(length);
+  let offset = 0;
+  for (const c of chunks) {
+    pcmData.set(c, offset);
+    offset += c.length;
+  }
+
+  const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+  const view = new DataView(buffer);
+
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + pcmData.length * 2, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, pcmData.length * 2, true);
+
+  let idx16 = 44;
+  for (let i = 0; i < pcmData.length; i++, idx16 += 2) {
+    let s = Math.max(-1, Math.min(1, pcmData[i]));
+    view.setInt16(idx16, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  return new Blob([view], { type: "audio/wav" });
+}
+
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i));
+  }
+}
+
+/* -----------------------------------------------------------------------
+   FILE UPLOAD
+   ----------------------------------------------------------------------- */
+
+// FILE UPLOAD (WAV or MP3 → always send WAV to backend)
+async function onUploadChange(evt) {
+  if (SESSION_LOCKED) {
+    setStatus(
+      "This answer has been submitted with full help. Choose another question to upload again."
+    );
+    evt.target.value = "";
+    return;
+  }
+
+  if (CONFIG && CONFIG.widgetEnabled === false) {
+    const msg =
+      CONFIG.maintenanceMessage ||
+      "This practice widget is currently offline for maintenance.";
+    setStatus(msg);
+    evt.target.value = "";
+    return;
+  }
+
+  const input = evt.target;
+  const file =
+    input && input.files && input.files.length ? input.files[0] : null;
+  if (!file) return;
+
+  // Stop any in-progress recording state
+  stopTimer();
+  updateRecUi(false);
+
+  if (processor) {
+    processor.disconnect();
+    processor = null;
+  }
+  if (inputNode) {
+    inputNode.disconnect();
+    inputNode = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+  }
+
+  // Decide how to handle the file
+  const lowerName = file.name.toLowerCase();
+  const type = (file.type || "").toLowerCase();
+  const looksWav =
+    type === "audio/wav" ||
+    type === "audio/x-wav" ||
+    lowerName.endsWith(".wav");
+  const looksMp3 =
+    type === "audio/mpeg" ||
+    type === "audio/mp3" ||
+    lowerName.endsWith(".mp3");
+
+  try {
+    if (looksWav) {
+      // ✅ Native WAV, safe to send as-is
+      console.log("📥 Selected WAV upload:", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+
+      setNewBlob(file, file.name, null);
+      setStatus(`File selected: ${file.name}. You can listen and submit it.`);
+    } else if (looksMp3) {
+      // ✅ MP3 → decode → re-encode as WAV using existing encodeWav()
+      console.log("📥 Selected MP3 upload, converting to WAV:", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+
+      setStatus("Processing your audio file…");
+
+      const arrayBuffer = await file.arrayBuffer();
+
+      if (!audioContext) {
+        audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)();
+      }
+
+      // Safari still sometimes uses callback form, so support both
+      const audioBuffer = await new Promise((resolve, reject) => {
+        const done = (buf) => resolve(buf);
+        const fail = (err) => reject(err);
+
+        // Try promise form first
+        const result = audioContext.decodeAudioData(arrayBuffer, done, fail);
+        if (result && typeof result.then === "function") {
+          result.then(resolve).catch(reject);
         }
-      };
+      });
+
+      const channelData = audioBuffer.getChannelData(0); // mono
+      const pcm = new Float32Array(channelData.length);
+      pcm.set(channelData);
+
+      const wavBlob = encodeWav([pcm], audioBuffer.sampleRate);
+      const wavName =
+        file.name.replace(/\.[^.]+$/, "") + ".wav";
+
+      console.log("🎧 MP3 converted to WAV:", {
+        originalName: file.name,
+        wavName,
+        type: wavBlob.type,
+        size: wavBlob.size,
+      });
+
+      setNewBlob(wavBlob, wavName, null);
+      setStatus(
+        `File processed: ${wavName}. You can listen and submit it.`
+      );
+    } else {
+      console.warn("Rejected unsupported audio upload:", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+      setStatus(
+        "Please upload a WAV or MP3 audio file, or record directly in the browser."
+      );
+      input.value = "";
+      return;
     }
-  });
-}
 
-const clearFileBtnEl = $("clearFileBtn");
-if (clearFileBtnEl) {
-  clearFileBtnEl.addEventListener("click", () => {
-    uploadedFile = null;
-    $("fileInput").value = "";
-    $("fileBadge").textContent = "";
-    $("clearFileBtn").style.display = "none";
-    resetRecordingUI(
-      FORM?.FileClearedLabel || "File cleared — ready to record"
-    );
-  });
-}
-
-/* ---------- Submit helpers ---------- */
-function getActiveAudioBlob() {
-  if (uploadedFile) return uploadedFile;
-  if (blob) return blob;
-  return null;
-}
-
-async function submitRecording() {
-  const base = (CONFIG?.api?.baseUrl || "").trim();
-  const key = (CONFIG?.api?.key || "").trim();
-  const secret = (CONFIG?.api?.secret || "").trim();
-
-  if (!key || !secret || !base) {
+    // Log successful selection
+    logEvent("upload_select", {
+      questionId: currentQuestion()?.id,
+      fileName: blobName || file.name,
+      size: blob ? blob.size : file.size,
+      type: blob ? blob.type : file.type,
+    });
+  } catch (err) {
+    console.error("Upload/convert error:", err);
     setStatus(
-      "Missing MSS API configuration (baseUrl / key / secret)",
-      false
+      "We had trouble reading that audio file. Please try another WAV or MP3, or record directly in the browser."
     );
+    input.value = "";
+  }
+}
+function onClearFileClick() {
+  resetRecordingState();
+  setStatus("Cleared. You can record or upload a new file.");
+}
+
+/* -----------------------------------------------------------------------
+   SUBMIT
+   ----------------------------------------------------------------------- */
+
+function onSubmitClick() {
+  const q = currentQuestion();
+  if (!q) {
+    setStatus("There is no question loaded.");
+    return;
+  }
+  if (!blob) {
+    setStatus("Please record or upload an answer before submitting.");
     return;
   }
 
-  const input = getActiveAudioBlob();
-  if (!input) {
-    setStatus("No recording or file to submit", false);
+  if (CONFIG && CONFIG.widgetEnabled === false) {
+    const msg =
+      CONFIG.maintenanceMessage ||
+      "This practice widget is currently offline for maintenance.";
+    setStatus(msg);
     return;
   }
 
-  // Duration validation
-  const p = $("player");
-  const dur = p?.duration || 0;
-  const { minS, maxS } = getDurationBounds();
-  if (!Number.isNaN(dur) && dur > 0 && (dur < minS || dur > maxS)) {
-    setStatus(
-      `Audio must be between ${minS} and ${maxS} seconds. Please try again.`,
-      false
-    );
-    return;
+  showSubmitProgress();
+
+  const rawSubmitUrl =
+    CONFIG?.api?.baseUrl || CONFIG?.submitUrl || API.SUBMIT_FALLBACK;
+
+  let submitUrl;
+  if (/^https?:\/\//i.test(rawSubmitUrl)) {
+    const base = rawSubmitUrl.replace(/\/+$/, "");
+    if (/\/api\/vox($|\/|\?)/.test(base)) {
+      submitUrl = base;
+    } else {
+      submitUrl = `${base}/api/vox`;
+    }
+  } else if (rawSubmitUrl.startsWith("/")) {
+    submitUrl = `${window.location.origin}${rawSubmitUrl}`;
+  } else {
+    submitUrl = `${window.location.origin}/${rawSubmitUrl}`;
   }
 
-  setStatus("Preparing audio…");
-  startProgress("Submitting");
+  console.log("📤 Submitting to:", submitUrl, {
+    rawSubmitUrl,
+    apiBaseUrl: CONFIG?.api?.baseUrl,
+    submitUrlConfig: CONFIG?.submitUrl,
+  });
 
+<<<<<<< HEAD
   let wavBlob;
   try {
     if (uploadedFile && /^audio\/wav/i.test(uploadedFile.type))
@@ -587,204 +1514,447 @@ async function submitRecording() {
   setStatus("Submitting to MSS…");
 
   const endpoint = base.replace(/\/+$/, "") + "/api/vox";
+=======
+>>>>>>> 4b83126 (QA Test for Andrew Nov 24)
   const fd = new FormData();
-  fd.append("file", wavBlob, uploadedFile ? uploadedFile.name : "answer.wav");
 
-  let submitSec = 0;
-  const tStart = performance.now();
-  try {
-    const headers = {
-      "API-KEY": key,
-      "X-API-SECRET": secret,
-      Accept: "application/json",
-    };
-    const res = await fetch(endpoint, { method: "POST", headers, body: fd });
-    submitSec = Math.max(0, (performance.now() - tStart) / 1000);
-    const body = await res.json().catch(() => ({}));
+  // Use the real filename if we have one; fall back to answer.wav
+  const fileNameForUpload = blobName || "answer.wav";
 
-    if (res.ok) {
-      stopProgress("Done");
-      setStatus("Submitted ✅");
+  console.log("📦 Preparing upload blob:", {
+    name: fileNameForUpload,
+    type: blob && blob.type,
+    size: blob && blob.size,
+  });
 
-      $("debugBtnRow").style.display = "flex";
-      const resultsEl = $("results");
-      if (resultsEl) {
-        resultsEl.textContent = JSON.stringify(body, null, 2);
+  fd.append("file", blob, fileNameForUpload);
+  fd.append("questionId", q.id);
+  fd.append("slug", CURRENT_SLUG);
+
+  if (SCHOOL_ID) fd.append("schoolId", SCHOOL_ID);
+  if (CONFIG.assessmentId) fd.append("assessmentId", CONFIG.assessmentId);
+
+  const t0Local = performance.now();
+  setStatus("Submitting your answer…");
+  logEvent("submit_start", { questionId: q.id });
+
+  const headers = {};
+  if (CONFIG?.api) {
+    if (CONFIG.api.key) headers["API-KEY"] = CONFIG.api.key;
+    if (CONFIG.api.secret) headers["X-API-SECRET"] = CONFIG.api.secret;
+  }
+
+  fetch(submitUrl, {
+    method: "POST",
+    headers,
+    body: fd,
+  })
+    .then((r) =>
+      r
+        .json()
+        .catch(() => ({}))
+        .then((body) => ({ ok: r.ok, status: r.status, body }))
+    )
+    .then((res) => {
+      const elapsedSec = ((performance.now() - t0Local) / 1000).toFixed(1);
+      console.log("🎯 Submit response from MSS:", res);
+
+      if (!res.ok) {
+        console.error("❌ Submit error:", res.status, res.body);
+        setStatus("We could not submit your answer. Please try again.");
+        hideSubmitProgress();
+        logEvent("submit_error", {
+          questionId: q.id,
+          status: res.status,
+          body: res.body,
+        });
+        return;
+      }
+
+      const body = res.body || {};
+      const sessionId =
+        body.sessionId || body.session || `local-${Date.now()}`;
+      const msg = body.message || "Answer submitted successfully.";
+
+      // 🔹 Compute help + variant metadata at submit time
+      const help_level = getHelpLevelForSubmit();
+      const help_surface = getHelpSurface();
+      const widget_variant = getWidgetVariant();
+      const dashboard_variant = getDashboardVariant();
+
+      setStatus(`${msg} (in ${elapsedSec}s)`);
+
+      // 🔹 Send full MSS JSON to our own DB endpoint so mss_* columns get filled
+      try {
+        const submission = {
+          slug: CURRENT_SLUG,
+          question: q.question || q.text || "",
+          studentId: body.studentId || null,
+
+          // NEW: help + surface + widget/dash variants
+          help_level,
+          help_surface,
+          widget_variant,
+          dashboard_variant,
+
+          // Full MSS response, enriched with same metadata
+          mss: {
+            ...body,
+            help_level,
+            help_surface,
+            widget_variant,
+            dashboard_variant,
+          },
+
+          // Optional explicit meta block if server uses submission.meta.*
+          meta: {
+            help_level,
+            help_surface,
+            widget_variant,
+            dashboard_variant,
+          },
+        };
+
+        const dbPayload = { submission };
+
+        console.log("/api/widget/submit payload:", dbPayload);
+
+        fetch("/api/widget/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(dbPayload),
+        })
+          .then((r) =>
+            r
+              .json()
+              .catch(() => ({}))
+              .then((b) => ({ ok: r.ok, status: r.status, body: b }))
+          )
+          .then((dbRes) => {
+            if (!dbRes.ok) {
+              console.warn(
+                "⚠️ /api/widget/submit failed:",
+                dbRes.status,
+                dbRes.body
+              );
+            } else {
+              console.log(
+                "💾 /api/widget/submit stored submission:",
+                dbRes.body
+              );
+            }
+          })
+          .catch((err) => {
+            console.warn("⚠️ /api/widget/submit exception:", err);
+          });
+      } catch (e) {
+        console.warn("⚠️ Error preparing DB payload:", e);
+      }
+      // 🔹 END DB BLOCK
+
+      // Lock if full help was used:
+      //  - Slider widget: HELP_LEVEL === 2
+      //  - Max panel was open (but NOT for readmax, where model answer is baseline)
+      const usedFullHelp =
+        HELP_LEVEL === 2 ||
+        (WIDGET_MODE !== "readmax" && isMaxHelpOpen());
+
+      if (usedFullHelp) {
+        SESSION_LOCKED = true;
+        setRecordingUiEnabled(false);
+        setStatus(
+          `${msg} You used full help for this question. Choose another question to record again.`
+        );
       }
 
       try {
         sessionStorage.setItem(
-          "mss-last-results",
+          "mss-widget-latest-result",
           JSON.stringify(body)
         );
-      } catch {}
+        sessionStorage.setItem(
+          `mss-widget-session-${sessionId}`,
+          JSON.stringify(body)
+        );
+      } catch (e) {
+        console.warn("Unable to store results in sessionStorage:", e);
+      }
 
-      openDashboard();
-
+      // fire-and-forget DB logging (legacy CSV + submissions table)
       try {
-        if (dashboardWindow) {
-          dashboardWindow.postMessage(
-            { type: "mss-results", payload: body },
-            "*"
-          );
-        }
-      } catch {}
+        const meta = {
+          ...body,
+          help_level,
+          help_surface,
+          widget_variant,
+          dashboard_variant,
+        };
 
-      // log to CSV/DB
-      const s = Array.isArray(FORM?.survey) ? FORM.survey : [];
-      const question = s[idx] || "";
+        const logPayload = {
+          schoolId: SCHOOL_ID,
+          assessmentId: CONFIG.assessmentId || null,
+          studentId: body.studentId || null,
+          teacherId: body.teacherId || null,
 
-      logResultToCsv(body, {
-        fileName: uploadedFile ? uploadedFile.name : "answer.wav",
-        lengthSec: Math.round(dur || 0),
-        submitTime: Number(submitSec.toFixed(2)),
-        question,
+          timestamp: new Date().toISOString(),
+          fileName: body.fileName || blobName || "answer.wav",
+          lengthSec: safeNum(body.lengthSec),
+          submitTime: elapsedSec,
+
+          toefl: safeNum(body.toefl),
+          ielts: safeNum(body.ielts),
+          pte: safeNum(body.pte),
+          cefr: body.cefr ?? null,
+          question: q.question || q.text || "",
+          transcript: body.transcript || "",
+          wpm: safeNum(body.wpm),
+          recordCount: 1,
+          teacher: body.teacher || "",
+          note: body.note || "",
+          meta,
+        };
+
+        fetch("/log/submission", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(logPayload),
+        }).catch(() => {});
+      } catch (e) {
+        console.warn("DB log submission failed on client side:", e);
+      }
+
+      logEvent("submit_ok", {
+        questionId: q.id,
+        elapsedSec,
+        sessionId,
+        status: res.status,
       });
 
-      $("submitBtn").disabled = false;
-    } else {
-      stopProgress("Failed");
-      setStatus(`Submit failed (${res.status})`, false);
-    }
-  } catch (err) {
-    stopProgress("Failed");
-    setStatus("Network error", false);
-  }
-}
+      hideSubmitProgress();
 
-async function logResultToCsv(mssBody, meta) {
-  const enabled = Boolean(CONFIG?.logger?.enabled);
-  if (!enabled) return;
+          // DASHBOARD
+      const dashPath = getDashboardPath(body.dashboardUrl);
 
-  const base = (window.SERVICE_BASE || "").replace(/\/+$/, "");
-  let url = (CONFIG?.logger?.url || "").trim();
+      if (dashPath) {
+        const u = new URL(dashPath, window.location.origin);
 
-  if (!url || url.endsWith("/log") || url.endsWith("/log/") || url.endsWith("/log.json")) {
-    url = base + "/log/submission";
-  }
+        // 🔹 Make sure we don't carry over any old/legacy "session" query param
+        u.searchParams.delete("session");
 
-  const ipPlaceholder = "";
-  const ts = new Date().toISOString();
+        // 🔹 Always pass the school slug so Dashboard4 can load the right tests
+        if (CURRENT_SLUG) {
+          u.searchParams.set("slug", CURRENT_SLUG);
+        }
 
-  const toefl =
-    mssBody?.elsa_results?.toefl_score ?? mssBody?.toefl_score ?? "";
-  const ielts =
-    mssBody?.elsa_results?.ielts_score ?? mssBody?.ielts_score ?? "";
-  const pte =
-    mssBody?.elsa_results?.pte_score ?? mssBody?.pte_score ?? "";
-  const cefr = (
-    mssBody?.elsa_results?.cefr_level ||
-    mssBody?.cefr_level ||
-    ""
-  )
-    .toString()
-    .toUpperCase();
+        // 🔹 If the backend ever sends back a submissionId on this body,
+        //     pass it through so Dashboard4 can highlight that exact row.
+        if (body.submissionId != null) {
+          u.searchParams.set("submissionId", String(body.submissionId));
+        }
 
-  const transcript = (mssBody?.transcript || "").toString().trim();
-  let wpm = "";
-  try {
-    if (transcript) {
-      const words = transcript.split(/\s+/).filter(Boolean).length;
-      const minutes = Math.max(0.01, (meta.lengthSec || 0) / 60);
-      wpm = Math.round(words / minutes);
-    }
-  } catch {}
+        console.log("📊 Dashboard URL:", u.toString());
 
-  const payload = {
-    timestamp: ts,
-    ip: ipPlaceholder,
-    userId: "",
-    fileName: meta.fileName || "",
-    lengthSec: meta.lengthSec || "",
-    submitTime: meta.submitTime || "",
-    toefl,
-    ielts,
-    pte,
-    cefr,
-    question: meta.question || "",
-    transcript,
-    wpm,
-    schoolId: SCHOOL_ID || null,
-  };
+        const openedInline = expandDashboard(u.toString(), sessionId);
 
-  const statusEl = $("logStatus");
-  if (!statusEl) return;
+        if (openedInline) {
+          const iframe = document.getElementById("dashboardFrame");
+          if (iframe) {
+            const handler = () => {
+              try {
+                if (iframe.contentWindow) {
+                  iframe.contentWindow.postMessage(
+                    { type: "mss-results", payload: body },
+                    "*"
+                  );
+                }
+              } catch (e) {
+                console.warn("dashboard iframe postMessage failed", e);
+              } finally {
+                iframe.removeEventListener("load", handler);
+              }
+            };
+            iframe.addEventListener("load", handler);
+          }
+        } else {
+          console.log("🪟 Opening dashboard popup at:", u.toString());
 
-  try {
-    statusEl.textContent = "Logging…";
-    statusEl.className = "mss-logstatus";
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+          if (!dashboardWindow || dashboardWindow.closed) {
+            dashboardWindow = window.open(u.toString(), "_blank");
+          } else {
+            dashboardWindow.location = u.toString();
+            dashboardWindow.focus();
+          }
+
+          try {
+            logEvent("dashboard_popup_open", {
+              sessionId,
+              url: u.toString(),
+            });
+          } catch (_) {}
+
+          if (dashboardWindow) {
+            const sendToPopup = () => {
+              try {
+                dashboardWindow.postMessage(
+                  { type: "mss-results", payload: body },
+                  "*"
+                );
+              } catch (e) {
+                console.warn("dashboard popup postMessage failed", e);
+              }
+            };
+            setTimeout(sendToPopup, 1000);
+          }
+        }
+      }
+    })
+    .catch((err) => {
+      console.error("Submit fetch error:", err);
+      setStatus(
+        "Network error while submitting. Please check your connection."
+      );
+      hideSubmitProgress();
+      logEvent("submit_exception", {
+        questionId: q.id,
+        error: String(err),
+      });
     });
-    const j = await res.json().catch(() => ({}));
-    if (res.ok && j?.ok) {
-      statusEl.textContent = "Logged ✓";
-      statusEl.className = "mss-logstatus ok";
-    } else {
-      statusEl.textContent = "Log failed";
-      statusEl.className = "mss-logstatus err";
-    }
-  } catch (e) {
-    statusEl.textContent = "Log error";
-    statusEl.className = "mss-logstatus err";
+}
+
+/* -----------------------------------------------------------------------
+   TIMERS / RESET
+   ----------------------------------------------------------------------- */
+
+function startTimer() {
+  const tEl = $("timer");
+  if (!tEl) return;
+
+  tEl.textContent = "0:00";
+  if (tick) clearInterval(tick);
+
+  tick = setInterval(() => {
+    const elapsedMs = performance.now() - t0;
+    const totalSec = Math.floor(elapsedMs / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    tEl.textContent = `${m}:${s.toString().padStart(2, "0")}`;
+  }, 250);
+}
+
+function stopTimer() {
+  if (tick) {
+    clearInterval(tick);
+    tick = null;
   }
 }
 
-/* ---------- Dashboard modal ---------- */
-function openDashboard() {
-  const m = $("dashModal");
-  const f = $("dashFrame");
-  if (!m || !f) return;
+function resetRecordingState() {
+  stopTimer();
+  updateRecUi(false);
 
-  dashboardWindow = f.contentWindow;
-  m.hidden = false;
-  m.style.display = "flex";
+  recordingChunks = [];
+  recording = false;
+
+  if (processor) {
+    processor.disconnect();
+    processor = null;
+  }
+  if (inputNode) {
+    inputNode.disconnect();
+    inputNode = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+  }
+
+  if (objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+    objectUrl = null;
+  }
+  blob = null;
+  blobName = null;
+
+  const tEl = $("timer");
+  if (tEl) tEl.textContent = "";
+
+  if ($("fileInput")) $("fileInput").value = "";
+  if ($("fileBadge")) $("fileBadge").textContent = "";
+
+  const playerWrap = $("playerWrap");
+  const player = $("player");
+  const lengthHint = $("lengthHint");
+  if (player) player.src = "";
+  if (playerWrap) playerWrap.style.display = "none";
+  if (lengthHint) lengthHint.textContent = "";
+
+  const submitBtn = $("submitBtn");
+  if (submitBtn) submitBtn.disabled = true;
 }
 
-function closeDashboard() {
-  const m = $("dashModal");
-  if (!m) return;
-  m.style.display = "none";
-  m.hidden = true;
+function resetPlaybackOnly() {
+  if (objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+    objectUrl = null;
+  }
 }
 
-const closeDashBtn = $("closeDash");
-if (closeDashBtn) {
-  closeDashBtn.addEventListener("click", closeDashboard);
+/* -----------------------------------------------------------------------
+   BLOB / PLAYER
+   ----------------------------------------------------------------------- */
+
+function setNewBlob(newBlob, name, durationSec) {
+  if (objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  blob = newBlob;
+  blobName = name || "answer.wav";
+  objectUrl = URL.createObjectURL(newBlob);
+
+  const playerWrap = $("playerWrap");
+  const player = $("player");
+  const lengthHint = $("lengthHint");
+
+  if (player) player.src = objectUrl;
+  if (playerWrap) playerWrap.style.display = "block";
+
+  if (lengthHint) {
+    if (durationSec != null) {
+      lengthHint.textContent = `Approximate length: ${durationSec}s. Aim for 30–60 seconds.`;
+    } else {
+      const sec = Math.round(newBlob.size / 16000); // rough guess
+      lengthHint.textContent = `Approximate length: ~${sec}s. Aim for 30–60 seconds.`;
+    }
+  }
+
+  if ($("fileBadge")) {
+    const sizeKb = (newBlob.size / 1024).toFixed(1);
+    $("fileBadge").textContent = `${blobName} (${sizeKb} KB)`;
+  }
+
+  const submitBtn = $("submitBtn");
+  if (submitBtn) submitBtn.disabled = false;
 }
-const dashModalEl = $("dashModal");
-if (dashModalEl) {
-  dashModalEl.addEventListener("click", (e) => {
-    if (e.target === dashModalEl) closeDashboard();
-  });
+
+/* -----------------------------------------------------------------------
+   MISC HELPERS
+   ----------------------------------------------------------------------- */
+
+function escapeHtml(str) {
+  // Simple, safe HTML escaping for text-based help/question content
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-/* ---------- Wire up on DOMContentLoaded ---------- */
-window.addEventListener("DOMContentLoaded", async () => {
-  await loadAll();
-
-  $("recBtn")?.addEventListener("click", startRecording);
-  $("stopBtn")?.addEventListener("click", stopRecording);
-  $("submitBtn")?.addEventListener("click", submitRecording);
-
-  $("prevBtn")?.addEventListener("click", () => {
-    idx--;
-    renderQ();
-    resetRecordingUI(
-      FORM?.NotRecordingLabel || "Not recording"
-    );
-    hideDebug();
-  });
-  $("nextBtn")?.addEventListener("click", () => {
-    idx++;
-    renderQ();
-    resetRecordingUI(
-      FORM?.NotRecordingLabel || "Not recording"
-    );
-    hideDebug();
-  });
+function safeNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
   $("toggleDebug")?.addEventListener("click", () => {
     const w = $("debugWrap");
@@ -792,3 +1962,5 @@ window.addEventListener("DOMContentLoaded", async () => {
     w.style.display = w.style.display === "block" ? "none" : "block";
   });
 });
+
+// EOF — MSS Widget Core v1.1 (Nov 23 2025 REGEN) – WidgetMin + WidgetMax / READMAX with help/dash metadata

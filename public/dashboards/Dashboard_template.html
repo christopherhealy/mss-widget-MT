@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Score Results</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Shared MSS design system -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css">
+
+
+</head>
+
+<body class="mss-root">
+  <div class="mss-shell mss-dashboard-shell">
+    <section class="mss-card">
+      <!-- Header: title + tag -->
+      <div class="mss-dashboard-header-row">
+        <div class="mss-stack-tight">
+          <div class="mss-card-title">
+            Speaking Score Report
+          </div>
+          <div id="dashQuestion" class="mss-card-subtitle">
+            Latest response summary
+          </div>
+        </div>
+
+        <div class="mss-dashboard-score-badge">
+          <span id="dashCefr">CEFR —</span>
+        </div>
+      </div>
+
+      <!-- Grid: scores + chart -->
+      <div class="mss-dashboard-grid" style="margin-top: 16px;">
+        <!-- LEFT: main scores -->
+        <div>
+          <div class="mss-dashboard-metrics">
+            <div class="mss-dashboard-metric-card">
+              <div class="mss-dashboard-metric-label">TOEFL (speaking est.)</div>
+              <div id="scoreToefl" class="mss-dashboard-metric-value">—</div>
+              <div class="mss-dashboard-metric-sub">Out of 30</div>
+            </div>
+
+            <div class="mss-dashboard-metric-card">
+              <div class="mss-dashboard-metric-label">IELTS (speaking est.)</div>
+              <div id="scoreIelts" class="mss-dashboard-metric-value">—</div>
+              <div class="mss-dashboard-metric-sub">Band score</div>
+            </div>
+
+            <div class="mss-dashboard-metric-card">
+              <div class="mss-dashboard-metric-label">PTE (speaking est.)</div>
+              <div id="scorePte" class="mss-dashboard-metric-value">—</div>
+              <div class="mss-dashboard-metric-sub">Out of 90</div>
+            </div>
+
+            <div class="mss-dashboard-metric-card">
+              <div class="mss-dashboard-metric-label">Words per minute</div>
+              <div id="scoreWpm" class="mss-dashboard-metric-value">—</div>
+              <div class="mss-dashboard-metric-sub">Fluency estimate</div>
+            </div>
+          </div>
+
+          <div class="mss-dashboard-transcript">
+            <div class="mss-muted">
+              Transcript (auto-captured)
+            </div>
+            <pre id="dashTranscript"></pre>
+          </div>
+
+          <div class="mss-dashboard-meta">
+            <span id="dashTimestamp">Time: —</span>
+            <span id="dashFile">File: —</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: simple bar chart -->
+        <div class="mss-dashboard-chart-card">
+          <div class="mss-card-title" style="font-size:0.92rem;">
+            Skill profile
+          </div>
+          <div class="mss-card-subtitle">
+            Relative strength of each estimated score
+          </div>
+
+          <div class="mss-dashboard-chart-bars" style="margin-top:10px;">
+            <div class="mss-dashboard-chart-row">
+              <div class="mss-dashboard-chart-label">TOEFL</div>
+              <div class="mss-dashboard-chart-track">
+                <div id="barToefl" class="mss-dashboard-chart-fill"></div>
+              </div>
+              <div id="barToeflScore" class="mss-dashboard-chart-score">—</div>
+            </div>
+
+            <div class="mss-dashboard-chart-row">
+              <div class="mss-dashboard-chart-label">IELTS</div>
+              <div class="mss-dashboard-chart-track">
+                <div id="barIelts" class="mss-dashboard-chart-fill"></div>
+              </div>
+              <div id="barIeltsScore" class="mss-dashboard-chart-score">—</div>
+            </div>
+
+            <div class="mss-dashboard-chart-row">
+              <div class="mss-dashboard-chart-label">PTE</div>
+              <div class="mss-dashboard-chart-track">
+                <div id="barPte" class="mss-dashboard-chart-fill"></div>
+              </div>
+              <div id="barPteScore" class="mss-dashboard-chart-score">—</div>
+            </div>
+
+            <div class="mss-dashboard-chart-row">
+              <div class="mss-dashboard-chart-label">WPM</div>
+              <div class="mss-dashboard-chart-track">
+                <div id="barWpm" class="mss-dashboard-chart-fill"></div>
+              </div>
+              <div id="barWpmScore" class="mss-dashboard-chart-score">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Single shared script for all dashboards -->
+  <script src="/js/dashboard-core.js?v=3"></script>
+</body>
+</html>

@@ -1,28 +1,595 @@
-// Updated Nov 14 7:45 AM - QH version //
-// server.js (ESM, works with "type": "module")
+// server.js — ESM version for "type": "module" (Nov 18 12:50 PM 2025 )
+
+
+
 import express from "express";
-import pkg from "pg";
-import { insertSubmission } from "./db.js";
 import cors from "cors";
-import fs from "fs/promises";
 import path from "path";
+import fs from "fs/promises";
+import * as fsSync from "fs";
+import pkg from "pg";
+import dotenv from "dotenv";
 import { fileURLToPath } from "url";
+import multer from "multer";
+
+dotenv.config();
 
 const { Pool } = pkg;
 
-// Postgres pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-
-// Basic path setup
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+
+
+// --- Widget image uploads ---
+const uploadDir = path.join(__dirname, "uploads", "widget-images");
+
+// ----- Core app / paths -----
+
+const PORT = process.env.PORT || 3000;
+
+const app = express();
+
 const ROOT = __dirname;
 const SRC_DIR = path.join(ROOT, "src");
 const PUBLIC_DIR = path.join(ROOT, "public");
 const THEMES_DIR = path.join(ROOT, "themes");
+
+// ----- Postgres pool -----
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, cb) => {
+      const slug = req.params.slug || "default";
+      const ext = path.extname(file.originalname) || ".png";
+      cb(null, `${slug}-${Date.now()}${ext}`);
+    },
+  }),
+});
+
+fsSync.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const slug = (req.params.slug || "widget").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const ext = path.extname(file.originalname) || ".png";
+    const ts = Date.now();
+    cb(null, `${slug}-${ts}${ext}`);
+  },
+});
+
+const imageUpload = multer({ storage });
+
+// Helper for submission logging into DB
+async function insertSubmission(sub) {
+  const sql = `
+    INSERT INTO submissions (
+      school_id,
+      assessment_id,
+      student_id,
+      teacher_id,
+      ip,
+      record_count,
+      file_name,
+      length_sec,
+      submit_time,
+      toefl,
+      ielts,
+      pte,
+      cefr,
+      question,
+      transcript,
+      wpm,
+      meta
+    )
+    VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
+    )
+  `;
+
+  const values = [
+    sub.school_id ?? null,
+    sub.assessment_id ?? null,
+    sub.student_id ?? null,
+    sub.teacher_id ?? null,
+    sub.ip ?? null,
+    sub.record_count ?? null,
+    sub.file_name ?? null,
+    sub.length_sec ?? null,
+    sub.submit_time ?? null,
+    sub.toefl ?? null,
+    sub.ielts ?? null,
+    sub.pte ?? null,
+    sub.cefr ?? null,
+    sub.question ?? null,
+    sub.transcript ?? null,
+    sub.wpm ?? null,
+    sub.meta ? JSON.stringify(sub.meta) : null,
+  ];
+
+  await pool.query(sql, values);
+}
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// === ADMIN: list available widgets (public/widgets/*.html) ============
+app.get("/api/admin/widgets", async (req, res) => {
+  try {
+    const widgetsDir = path.join(PUBLIC_DIR, "widgets");
+
+    // fs is fs/promises, so we await it
+    const files = await fs.readdir(widgetsDir);
+
+    const htmlFiles = files.filter((f) =>
+      f.toLowerCase().endsWith(".html")
+    );
+
+    // Return simple list of filenames – ConfigAdmin.js expects { widgets: [...] }
+    res.json({ widgets: htmlFiles });
+  } catch (err) {
+    console.error("Error reading widgets dir:", err);
+    res.json({ widgets: [] });
+  }
+});
+
+// Helper: normalize transcript text into a clean single-line string
+
+
+// ---------------------------------------------------------------------
+// Helper: cleanTranscriptText
+//  - accepts whatever MSS sends (string or object)
+//  - strips HTML tags/span styling
+//  - decodes basic HTML entities
+//  - normalizes whitespace
+// ---------------------------------------------------------------------
+function cleanTranscriptText(raw) {
+  if (!raw) return null;
+
+  // If MSS ever sends an object, prefer text/raw fields
+  if (typeof raw === "object") {
+    if (raw.text) raw = raw.text;
+    else if (raw.raw) raw = raw.raw;
+    else raw = JSON.stringify(raw);
+  }
+
+  let s = String(raw);
+
+  // Normalize common HTML line breaks to spaces/newlines *before* stripping
+  s = s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<p[^>]*>/gi, "");
+
+  // Strip specific noisy spans/divs, then any remaining tags
+  s = s
+    .replace(/<\/?span[^>]*>/gi, "")
+    .replace(/<\/?div[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, ""); // any remaining tags
+
+  // Decode numeric entities like &#201; → É
+  s = s.replace(/&#(\d+);/g, (match, num) => {
+    const code = parseInt(num, 10);
+    if (!Number.isFinite(code)) return match;
+    try {
+      return String.fromCharCode(code);
+    } catch {
+      return match;
+    }
+  });
+
+  // Decode a few common named entities
+  s = s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  // Collapse whitespace
+  s = s.replace(/\s+/g, " ").trim();
+
+  return s || null;
+}
+/* ------------------------------------------------------------------
+   REAL submit handler: store MSS scores in `submissions`
+   ------------------------------------------------------------------ */
+app.post("/api/widget/submit", async (req, res) => {
+  console.log("🎧 /api/widget/submit hit");
+  console.log("Raw body type:", typeof req.body);
+  console.log("Body keys:", Object.keys(req.body || {}));
+
+  try {
+    // ACCEPT BOTH SHAPES:
+    //   A) { slug, question, studentId, mss, ... }
+    //   B) { submission: { slug, question, studentId, mss, ... } }
+    const payload =
+      (req.body && (req.body.submission || req.body)) || {};
+
+    console.log("Payload keys:", Object.keys(payload));
+
+    const slug = payload.slug;
+    if (!slug) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_slug",
+        message: "slug is required on widget submit",
+      });
+    }
+
+    // 1) Find school via slug (grab settings so we can read dashboardPath)
+    const schoolRes = await pool.query(
+      `SELECT id, settings
+         FROM schools
+        WHERE slug = $1
+        LIMIT 1`,
+      [slug]
+    );
+    if (!schoolRes.rowCount) {
+      return res.status(404).json({
+        ok: false,
+        error: "school_not_found",
+        message: `No school found for slug ${slug}`,
+      });
+    }
+
+    const school   = schoolRes.rows[0];
+    const schoolId = school.id;
+    const settings = school.settings || {};
+    const schoolConfig =
+      settings.config || settings.widgetConfig || {};
+
+    // 2) Basic context from the widget
+    const studentId =
+      payload.studentId ||
+      payload.student_id ||
+      null;
+
+    const questionTxt =
+      payload.question ||
+      payload.questionText ||
+      payload.prompt ||
+      null;
+
+    // 3) MSS result payload (flexible – string or object)
+    let mssRaw =
+      payload.mss ||
+      payload.results ||
+      payload.mssResult ||
+      payload.meta ||
+      null;
+
+    if (typeof mssRaw === "string") {
+      try {
+        mssRaw = JSON.parse(mssRaw);
+      } catch (e) {
+        console.warn(
+          "⚠️ Could not JSON.parse mss/results string, using raw:",
+          e
+        );
+      }
+    }
+    const mss = mssRaw || {};
+
+    console.log("🔎 mss top-level keys:", Object.keys(mss));
+
+    // 3b) Help + variant meta from the widget
+    const help_level =
+      payload.help_level ||
+      payload.helpLevel ||
+      null;
+
+    const help_surface =
+      payload.help_surface ||
+      payload.helpSurface ||
+      null;
+
+    const widget_variant =
+      payload.widget_variant ||
+      payload.widgetVariant ||
+      null;
+
+    const dashboard_variant =
+      payload.dashboard_variant ||
+      payload.dashboardVariant ||
+      null;
+
+    // 4) Vox score + transcript
+    const voxScore =
+      typeof mss.score === "number" ? mss.score : null;
+
+    const transcriptRaw =
+      mss.transcript ||
+      payload.transcript ||
+      null;
+
+    const transcriptClean = cleanTranscriptText(transcriptRaw);
+
+    // 5) Elsa / MSS results – match MSS docs
+    const elsa = mss.elsa_results || {};
+
+    const mss_fluency    = elsa.fluency ?? null;
+    const mss_grammar    = elsa.grammar ?? null;
+    const mss_pron       = elsa.pronunciation ?? null;
+    const mss_vocab      = elsa.vocabulary ?? null;
+    const mss_cefr       = elsa.cefr_level ?? null;
+    const mss_toefl      = elsa.toefl_score ?? null;
+    const mss_ielts      = elsa.ielts_score ?? null;
+    const mss_pte        = elsa.pte_score ?? null;
+
+    // No explicit overall from Elsa in docs yet
+    const mss_overall = null;
+
+    // Legacy columns
+    const toefl = mss_toefl;
+    const ielts = mss_ielts;
+    const pte   = mss_pte;
+    const cefr  = mss_cefr;
+
+    // 6) Meta JSON – keep full raw MSS response
+    const meta = mss;
+
+    // 7) Insert into submissions
+    const insertSql = `
+      INSERT INTO submissions (
+        school_id,
+        question,
+        student_id,
+        toefl,
+        ielts,
+        pte,
+        cefr,
+        transcript,
+        meta,
+        mss_overall,
+        mss_fluency,
+        mss_grammar,
+        mss_pron,
+        mss_vocab,
+        mss_cefr,
+        mss_toefl,
+        mss_ielts,
+        mss_pte,
+        vox_score,
+        transcript_clean,
+        help_level,
+        help_surface,
+        widget_variant,
+        dashboard_variant
+      )
+      VALUES (
+        $1,$2,$3,
+        $4,$5,$6,$7,$8,$9,
+        $10,$11,$12,$13,$14,
+        $15,$16,$17,$18,
+        $19,$20,
+        $21,$22,$23,$24
+      )
+      RETURNING id
+    `;
+
+    const params = [
+      schoolId,          // 1
+      questionTxt,       // 2
+      studentId,         // 3
+      toefl,             // 4
+      ielts,             // 5
+      pte,               // 6
+      cefr,              // 7
+      transcriptRaw,     // 8
+      meta,              // 9
+      mss_overall,       // 10
+      mss_fluency,       // 11
+      mss_grammar,       // 12
+      mss_pron,          // 13
+      mss_vocab,         // 14
+      mss_cefr,          // 15
+      mss_toefl,         // 16
+      mss_ielts,         // 17
+      mss_pte,           // 18
+      voxScore,          // 19
+      transcriptClean,   // 20
+      help_level,        // 21
+      help_surface,      // 22
+      widget_variant,    // 23
+      dashboard_variant, // 24
+    ];
+
+    const result = await pool.query(insertSql, params);
+    const submissionId = result.rows[0].id;
+
+    // 🔍 Resolve dashboard path from school config (respect ConfigAdmin)
+    let dashboardPath = "/dashboards/Dashboard3.html";
+
+    try {
+      if (schoolConfig) {
+        dashboardPath =
+          schoolConfig.dashboardPath ||
+          schoolConfig.dashboardUrl ||
+          dashboardPath;
+      }
+
+      // Normalise to a clean /dashboards/ path
+      if (!dashboardPath.startsWith("/")) {
+        dashboardPath = `/dashboards/${dashboardPath.replace(/^\/+/, "")}`;
+      }
+      if (dashboardPath === "/dashboards/Dashboard_template.html") {
+        dashboardPath = "/dashboards/Dashboard3.html";
+      }
+    } catch (e) {
+      console.warn("dashboardPath resolution failed, using default:", e);
+      dashboardPath = "/dashboards/Dashboard3.html";
+    }
+
+    // NOTE: we include slug + submissionId here; widget-core will
+    // happily add its own `session` param on top.
+    const dashboardUrl = `${dashboardPath}?slug=${encodeURIComponent(
+      slug
+    )}&submissionId=${submissionId}`;
+
+    console.log("✅ submission stored with id", submissionId, {
+      schoolId,
+      mss_cefr,
+      mss_toefl,
+      mss_ielts,
+      mss_pte,
+      voxScore,
+      help_level,
+      help_surface,
+      widget_variant,
+      dashboard_variant,
+      dashboardUrl,
+    });
+
+    return res.json({
+      ok: true,
+      submissionId,
+      dashboardUrl,
+    });
+  } catch (err) {
+    console.error("❌ /api/widget/submit error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "submit_failed",
+      message: err.message || "Error while storing submission",
+    });
+  }
+});
+// POST image upload for widget branding
+app.post(
+  "/api/admin/widget/:slug/image-upload",
+  imageUpload.single("image"),
+  (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ ok: false, error: "No file uploaded" });
+      }
+
+      // This path is relative to the static 'public' root
+      const relUrl = `/uploads/widget-images/${req.file.filename}`;
+
+      return res.json({
+        ok: true,
+        url: relUrl,
+      });
+    } catch (err) {
+      console.error("Image upload error:", err);
+      return res.status(500).json({ ok: false, error: "Server error" });
+    }
+  }
+);
+
+/* ---------------------------------------------------------------
+   Reports endpoint for School Portal (uses vw_widget_reports)
+   --------------------------------------------------------------- */
+app.get("/api/admin/reports/:slug", async (req, res) => {
+  try {
+    const slug = req.params.slug;
+    const limit = Number(req.query.limit || 500);
+
+    const sql = `
+      SELECT *
+      FROM vw_widget_reports
+      WHERE school_slug = $1
+      ORDER BY submitted_at DESC
+      LIMIT $2
+    `;
+
+    const result = await pool.query(sql, [slug, limit]);
+
+    return res.json({
+      ok: true,
+      tests: result.rows
+    });
+
+  } catch (err) {
+    console.error("❌ /api/admin/reports error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "reports_failed",
+      message: err.message
+    });
+  }
+});
+/* ------------------------------------------------------------------
+   DEV: simple log endpoint for widget events
+   ------------------------------------------------------------------ */
+app.post("/api/widget/log", (req, res) => {
+  try {
+    console.log("📝 widget log event:", req.body || {});
+  } catch (e) {
+    console.error("log parse error:", e);
+  }
+  res.json({ ok: true });
+});
+
+// ---------- QUESTIONS SCHEMA HELPER ----------
+
+let questionsSchemaCache = null;
+
+async function getQuestionsSchema() {
+  if (questionsSchemaCache) return questionsSchemaCache;
+
+  const { rows } = await pool.query(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name   = 'questions'
+    `
+  );
+
+  const cols = rows.map((r) => r.column_name);
+
+  const assessmentCol = cols.includes("assessment_id")
+    ? "assessment_id"
+    : cols.includes("assessmentid")
+    ? "assessmentid"
+    : null;
+
+  const schoolCol = cols.includes("school_id") ? "school_id" : null;
+
+  const questionCol = cols.includes("question")
+    ? "question"
+    : cols.includes("question_text")
+    ? "question_text"
+    : cols.includes("prompt")
+    ? "prompt"
+    : null;
+
+  const orderCol = cols.includes("position")
+    ? "position"
+    : cols.includes("sort_order")
+    ? "sort_order"
+    : null;
+
+  if (!assessmentCol || !questionCol) {
+    throw new Error(
+      `Unsupported questions schema: assessmentCol=${assessmentCol}, questionCol=${questionCol}`
+    );
+  }
+
+  questionsSchemaCache = {
+    cols,
+    assessmentCol,
+    schoolCol,
+    questionCol,
+    orderCol,
+  };
+
+  console.log("✅ questions schema:", questionsSchemaCache);
+  return questionsSchemaCache;
+}
 
 // CSV log in /tmp (ephemeral on free Render)
 const LOG_CSV = "/tmp/msswidget-log.csv";
@@ -45,9 +612,78 @@ const LOG_HEADERS = [
   "note",
 ];
 
-const app = express();
-const PORT = process.env.PORT || 3000;
 
+/* ------------------------------------------------------------------
+   Dashboard data – use vw_widget_reports (includes transcript_clean)
+   GET /api/dashboard/submissions?slug=mss-demo&limit=50
+   ------------------------------------------------------------------ */
+app.get("/api/dashboard/submissions", async (req, res) => {
+  try {
+    const rawSlug = (req.query.slug || "mss-demo").trim();
+    const slug = rawSlug || "mss-demo";
+    const limit = Math.min(Number(req.query.limit) || 50, 1000);
+
+    if (!slug) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_slug",
+        message: "slug is required",
+      });
+    }
+
+        const sql = `
+      SELECT
+        id,
+        submitted_at,
+        slug,
+        question,
+
+        vox_score,
+        toefl,
+        ielts,
+        pte,
+        cefr,
+        mss_fluency,
+        mss_grammar,
+        mss_pron,
+        mss_vocab,
+        mss_cefr,
+        mss_toefl,
+        mss_ielts,
+        mss_pte,
+
+        help_level,
+        help_surface,
+        widget_variant,
+        dashboard_variant,
+        transcript_clean,
+
+        student_id,
+        student_name,
+        student_email
+      FROM v_submission_scores
+      WHERE slug = $1
+      ORDER BY submitted_at DESC
+      LIMIT $2
+    `;
+
+    const { rows } = await pool.query(sql, [slug, limit]);
+
+    return res.json({
+      ok: true,
+      slug,
+      count: rows.length,
+      rows,
+    });
+  } catch (err) {
+    console.error("❌ /api/dashboard/submissions error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "dashboard_query_failed",
+      message: err.message || "Error loading dashboard data",
+    });
+  }
+});
 /* ---------- QUESTION HELP DEFAULT PROMPT ---------- */
 
 const DEFAULT_HELP_PROMPT = `
@@ -77,10 +713,8 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve signup page explicitly (so /signup and /signup/ both work)
-app.get("/signup", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "signup", "index.html"));
-});
+// Serve uploaded widget images from /uploads/widget-images/...
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Static files
 app.use(express.static(PUBLIC_DIR));
@@ -121,9 +755,6 @@ async function loadDefaultWidgetConfigAndForm() {
 async function getUniqueSlug(client, baseSlug) {
   let slug = baseSlug;
   let counter = 1;
-  // loop until we find a free slug
-  // using the same client so it works inside a transaction
-  /* eslint-disable no-constant-condition */
   while (true) {
     const { rows } = await client.query(
       "SELECT 1 FROM schools WHERE slug = $1",
@@ -151,6 +782,42 @@ async function writeJson(rel, obj) {
   await ensureSrcDir();
   const full = path.join(SRC_DIR, rel);
   await fs.writeFile(full, JSON.stringify(obj ?? {}, null, 2), "utf8");
+}
+
+// ---------- Helper: derive Vox score from row ----------
+function deriveVoxScore(row) {
+  // Prefer explicit numeric columns
+  if (row.toefl != null) return Number(row.toefl);
+  if (row.pte != null) return Number(row.pte);
+  if (row.ielts != null) return Number(row.ielts);
+
+  // Fallback: look into meta JSON for voxScore / vox_score / vox
+  const meta = row.meta;
+  if (!meta) return null;
+
+  let m = meta;
+  try {
+    if (typeof meta === "string") {
+      m = JSON.parse(meta);
+    }
+  } catch {
+    // bad JSON – ignore
+    return null;
+  }
+
+  const raw =
+    m.voxScore !== undefined
+      ? m.voxScore
+      : m.vox_score !== undefined
+      ? m.vox_score
+      : m.vox !== undefined
+      ? m.vox
+      : null;
+
+  if (raw == null || raw === "") return null;
+
+  const n = Number(raw);
+  return Number.isNaN(n) ? null : n;
 }
 
 /* ---------- defaults (legacy) ---------- */
@@ -198,7 +865,7 @@ function checkAdminKey(req, res) {
   return false;
 }
 
-/* ---------- LEGACY FILE-BASED CONFIG ROUTES (still usable by ConfigAdmin) ---------- */
+/* ---------- LEGACY FILE-BASED CONFIG ROUTES ---------- */
 app.get("/config/forms", async (req, res) => {
   try {
     const data = await readJson("form.json", defaultForm);
@@ -206,6 +873,30 @@ app.get("/config/forms", async (req, res) => {
   } catch (e) {
     console.error("GET /config/forms error:", e);
     res.status(500).json({ error: "failed to read forms" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// LIST DASHBOARDS IN /public/dashboards
+// GET /api/admin/dashboards
+// ---------------------------------------------------------------------------
+app.get("/api/admin/dashboards", async (req, res) => {
+  try {
+    const folder = path.join(PUBLIC_DIR, "dashboards");
+
+    const files = await fs.readdir(folder);
+    const htmlFiles = files
+      .filter(f => f.toLowerCase().endsWith(".html"))
+      .map(f => ({
+        name: f,
+        url: `/dashboards/${f}`,
+        preview: `/dashboards/${f}?preview=1`
+      }));
+
+    res.json({ ok: true, dashboards: htmlFiles });
+  } catch (err) {
+    console.error("Error listing dashboards:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 
@@ -262,46 +953,137 @@ app.put("/config/images", async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------
+   DB-BACKED WIDGET BOOTSTRAP (used by widget-core.js)
+   GET /api/widget/:slug/bootstrap
+   ------------------------------------------------------------------ */
 
-/* ---------- NEW: DB-BACKED WIDGET BOOTSTRAP ROUTES ---------- */
-
-// Returns widgetConfig + widgetForm + logo URL for a school slug
 app.get("/api/widget/:slug/bootstrap", async (req, res) => {
   const { slug } = req.params;
 
   try {
-    const result = await pool.query(
-      `
-      SELECT
-        s.id,
-        s.slug,
-        s.settings,
-        EXISTS (
-          SELECT 1
-          FROM school_assets a
-          WHERE a.school_id = s.id
-            AND a.kind = 'widget-logo'
-        ) AS has_logo
-      FROM schools s
-      WHERE s.slug = $1
-      `,
-      [slug]
-    );
+    // 1) School + settings
+    // 1) Find school via slug (include settings so we can read dashboardPath)
+const schoolRes = await pool.query(
+  `SELECT id, settings
+     FROM schools
+    WHERE slug = $1
+    LIMIT 1`,
+  [slug]
+);
 
-    if (result.rowCount === 0) {
+    if (!schoolRes.rowCount) {
       return res.status(404).json({ error: "School not found" });
     }
 
-    const row = result.rows[0];
-    const settings = row.settings || {};
+    const school   = schoolRes.rows[0];
+    const settings = school.settings || {};
 
-    res.json({
-      schoolId: row.slug, // NOTE: slug used by widget
-      config: settings.widgetConfig || {},
-      form: settings.widgetForm || {},
-      imageUrl: row.has_logo
-        ? `/api/widget/${encodeURIComponent(row.slug)}/image/widget-logo`
-        : null,
+    // --- CONFIG: settings.config / settings.widgetConfig over defaultConfig ---
+    const rawConfig =
+      settings.config || settings.widgetConfig || {};
+    const config = {
+      ...defaultConfig,
+      ...rawConfig,
+    };
+
+    // --- FORM: settings.form / settings.widgetForm over defaultForm ---
+    const rawForm =
+      settings.form || settings.widgetForm || {};
+    const form = {
+      ...defaultForm,
+      ...rawForm,
+    };
+
+    // 2) Default assessment for this school (create if missing)
+    let assessmentId;
+    const assessRes = await pool.query(
+      `
+        SELECT id
+        FROM assessments
+        WHERE school_id = $1
+        ORDER BY id ASC
+        LIMIT 1
+      `,
+      [school.id]
+    );
+
+    if (assessRes.rowCount) {
+      assessmentId = assessRes.rows[0].id;
+    } else {
+      const insertRes = await pool.query(
+        `
+          INSERT INTO assessments (school_id, name)
+          VALUES ($1, $2)
+          RETURNING id
+        `,
+        [school.id, "Default Speaking Assessment"]
+      );
+      assessmentId = insertRes.rows[0].id;
+    }
+
+    // 3) Questions for that assessment
+    const qRes = await pool.query(
+      `
+        SELECT
+          id,
+          question,
+          COALESCE(position, sort_order, id) AS ord
+        FROM questions
+        WHERE assessment_id = $1
+        ORDER BY ord ASC, id ASC
+      `,
+      [assessmentId]
+    );
+
+    const questions = qRes.rows.map((r) => ({
+      id: r.id,
+      question: r.question,
+      slug: String(r.id),
+    }));
+
+    // 4) Image:
+    const uploadedImageUrl =
+      settings.image && typeof settings.image.url === "string"
+        ? settings.image.url
+        : null;
+
+    let imageUrl = uploadedImageUrl;
+
+    if (!imageUrl) {
+      const logoRes = await pool.query(
+        `
+          SELECT 1
+          FROM school_assets a
+          WHERE a.school_id = $1
+            AND a.kind = 'widget-logo'
+          LIMIT 1
+        `,
+        [school.id]
+      );
+
+      if (logoRes.rowCount > 0) {
+        imageUrl = `/api/widget/${encodeURIComponent(
+          slug
+        )}/image/widget-logo`;
+      }
+    }
+
+    // Helpful logging while we QA labels
+    console.log("📦 /bootstrap form/config for slug", slug, {
+      config,
+      form,
+    });
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId: school.id,
+      assessmentId,
+      form,
+      config,
+      questions,
+      imageUrl,
     });
   } catch (err) {
     console.error("Error in /api/widget/:slug/bootstrap", err);
@@ -309,7 +1091,6 @@ app.get("/api/widget/:slug/bootstrap", async (req, res) => {
   }
 });
 
-// Serves logo (and later other assets) from school_assets
 app.get("/api/widget/:slug/image/:kind", async (req, res) => {
   const { slug, kind } = req.params;
 
@@ -330,10 +1111,7 @@ app.get("/api/widget/:slug/image/:kind", async (req, res) => {
     }
 
     const row = result.rows[0];
-    res.setHeader(
-      "Content-Type",
-      row.mime_type || "application/octet-stream"
-    );
+    res.setHeader("Content-Type", row.mime_type || "application/octet-stream");
     res.send(row.data);
   } catch (err) {
     console.error("Error in /api/widget/:slug/image/:kind", err);
@@ -341,215 +1119,1037 @@ app.get("/api/widget/:slug/image/:kind", async (req, res) => {
   }
 });
 
-/* ---------- CONFIG ADMIN: PER-SCHOOL WIDGET SETTINGS ---------- */
+/* ---------- ASSESSMENTS / QUESTIONS FOR WIDGETSURVEY ---------- */
 
-// GET current widget config/form/billing for a school (by slug)
-// GET current widget config/form/billing for a school (by slug)
-app.get("/api/admin/widget/:slug", async (req, res) => {
-  const { slug } = req.params;
+app.get("/api/assessments/:assessmentId/questions", async (req, res) => {
+  const assessmentId = Number(req.params.assessmentId);
+  if (!Number.isFinite(assessmentId)) {
+    return res
+      .status(400)
+      .json({ questions: [], error: "Invalid assessmentId" });
+  }
 
   try {
-    const { rows, rowCount } = await pool.query(
-      `SELECT id, settings FROM schools WHERE slug = $1`,
-      [slug]
-    );
+    const sql = `
+      SELECT
+        q.id,
+        q.question,
+        q.position AS sort_order,
+        EXISTS (
+          SELECT 1
+          FROM questions_help h
+          WHERE h.question_id = q.id
+        ) AS has_help
+      FROM questions q
+      WHERE q.assessment_id = $1
+      ORDER BY q.position, q.id
+    `;
 
-    if (!rowCount) {
-      // no row yet – serve defaults so admin can still work
-      const { config: defaultCfg, form: defaultFrm } =
-        await loadDefaultWidgetConfigAndForm();
+    const { rows } = await pool.query(sql, [assessmentId]);
 
-      return res.json({
-        ok: false,
-        source: "defaults_no_school",
-        schoolId: null,
-        slug,
-        config: defaultCfg,
-        form: defaultFrm,
-        billing: {
-          dailyLimit: 50,
-          notifyOnLimit: true,
-          emailOnLimit: "",
-          autoBlockOnLimit: true,
-        },
-      });
-    }
-
-    const school = rows[0];
-    const settings = school.settings || {};
-
-    // Fallback to JSON defaults for any missing parts
-    const { config: defaultCfg, form: defaultFrm } =
-      await loadDefaultWidgetConfigAndForm();
-
-    const config = settings.widgetConfig || defaultCfg;
-    const form = settings.widgetForm || defaultFrm;
-    const billing =
-      settings.billing || {
-        dailyLimit: 50,
-        notifyOnLimit: true,
-        emailOnLimit: "",
-        autoBlockOnLimit: true,
-      };
-
-    return res.json({
-      ok: true,
-      source: "db",
-      schoolId: school.id,
-      slug,
-      config,
-      form,
-      billing,
+    res.json({
+      questions: rows.map((r) => ({
+        id: r.id,
+        question: r.question,
+        sort_order: r.sort_order,
+        hasHelp: r.has_help,
+      })),
     });
   } catch (err) {
-    console.error("GET /api/admin/widget/:slug error:", err);
-
-    // As a last resort, still serve defaults instead of a hard 500
-    try {
-      const { config: defaultCfg, form: defaultFrm } =
-        await loadDefaultWidgetConfigAndForm();
-
-      return res.json({
-        ok: false,
-        source: "defaults_db_error",
-        slug,
-        config: defaultCfg,
-        form: defaultFrm,
-        billing: {
-          dailyLimit: 50,
-          notifyOnLimit: true,
-          emailOnLimit: "",
-          autoBlockOnLimit: true,
-        },
-      });
-    } catch (err2) {
-      console.error(
-        "GET /api/admin/widget/:slug fallback error:",
-        err2
-      );
-      return res
-        .status(500)
-        .json({ ok: false, error: "server_error" });
-    }
+    console.error("GET /api/assessments/:assessmentId/questions failed", err);
+    res.status(500).json({ questions: [], error: "Internal server error" });
   }
 });
 
-// UPDATE logo for a school (by slug) from a data:URL
-app.put("/api/admin/widget/:slug/logo", async (req, res) => {
-  const { slug } = req.params;
-  const body = req.body || {};
-  const dataUrl = (body.dataUrl || "").trim();
-
-  if (!dataUrl) {
+app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
+  const assessmentId = Number(req.params.assessmentId);
+  if (!Number.isFinite(assessmentId)) {
     return res
       .status(400)
-      .json({ ok: false, error: "missing_logo_data", message: "dataUrl is required" });
+      .json({ success: false, error: "Invalid assessmentId" });
   }
 
-  // Expect data: MIME;base64,ENCODED or just base64 string
-  let mimeType = "image/png";
-  let base64Part = dataUrl;
-  const match = dataUrl.match(/^data:(.+);base64,(.+)$/);
-  if (match) {
-    mimeType = match[1] || "image/png";
-    base64Part = match[2] || "";
-  }
-
-  let buf;
-  try {
-    buf = Buffer.from(base64Part, "base64");
-  } catch (e) {
+  const questions = Array.isArray(req.body.questions) ? req.body.questions : [];
+  if (!questions.length) {
     return res
       .status(400)
-      .json({ ok: false, error: "invalid_base64", message: "Could not decode logo data" });
+      .json({ success: false, error: "No questions provided" });
   }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    const schoolRes = await client.query(
-      "SELECT id FROM schools WHERE slug = $1",
-      [slug]
+    // Get school for this assessment (needed for inserts)
+    const assessRow = await client.query(
+      `SELECT school_id FROM assessments WHERE id = $1`,
+      [assessmentId]
     );
-    if (!schoolRes.rowCount) {
-      await client.query("ROLLBACK");
-      return res
-        .status(404)
-        .json({ ok: false, error: "school_not_found" });
+    if (!assessRow.rowCount) {
+      throw new Error(`Assessment ${assessmentId} not found`);
+    }
+    const schoolId = assessRow.rows[0].school_id;
+
+    // IDs coming in from client (existing questions only)
+    const incomingIds = questions
+      .map((q) => q.id)
+      .filter((id) => id != null);
+
+    // 1) Update existing questions
+    for (let idx = 0; idx < questions.length; idx++) {
+      const q = questions[idx];
+      if (!q.id) continue;
+
+      const text = (q.question || "").toString().trim();
+      const order = idx + 1;
+
+      await client.query(
+        `
+        UPDATE questions
+        SET position   = $1,
+            sort_order = $1,
+            question   = $2,
+            updated_at = NOW()
+        WHERE id = $3 AND assessment_id = $4
+        `,
+        [order, text, q.id, assessmentId]
+      );
     }
 
-    const schoolId = schoolRes.rows[0].id;
+    // 2) Insert new questions
+    for (let idx = 0; idx < questions.length; idx++) {
+      const q = questions[idx];
+      if (q.id) continue; // already handled
 
-    // Remove any existing logo
-    await client.query(
-      "DELETE FROM school_assets WHERE school_id = $1 AND kind = $2",
-      [schoolId, "widget-logo"]
+      const text = (q.question || "").toString().trim();
+      if (!text) continue;
+
+      const order = idx + 1;
+
+      await client.query(
+        `
+        INSERT INTO questions (school_id, assessment_id, position, sort_order, question, is_active)
+        VALUES ($1, $2, $3, $3, $4, TRUE)
+        `,
+        [schoolId, assessmentId, order, text]
+      );
+    }
+
+    // 3) Delete questions that are no longer present
+    const existingRes = await client.query(
+      `SELECT id FROM questions WHERE assessment_id = $1`,
+      [assessmentId]
+    );
+    const existingIds = existingRes.rows.map((r) => r.id);
+
+    const idsToDelete = existingIds.filter(
+      (id) => !incomingIds.includes(id)
     );
 
-    // Insert new one
-    await client.query(
-      `
-        INSERT INTO school_assets (school_id, kind, mime_type, data)
-        VALUES ($1, $2, $3, $4)
-      `,
-      [schoolId, "widget-logo", mimeType, buf]
-    );
+    if (idsToDelete.length) {
+      // First delete any help rows for those questions
+      await client.query(
+        `DELETE FROM questions_help WHERE question_id = ANY($1::int[])`,
+        [idsToDelete]
+      );
+
+      // Then delete the questions themselves
+      await client.query(
+        `DELETE FROM questions WHERE id = ANY($1::int[]) AND assessment_id = $2`,
+        [idsToDelete, assessmentId]
+      );
+    }
 
     await client.query("COMMIT");
-    res.json({ ok: true });
+    res.json({ success: true });
   } catch (err) {
-    console.error("PUT /api/admin/widget/:slug/logo error:", err);
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-    res.status(500).json({ ok: false, error: "server_error" });
+    await client.query("ROLLBACK");
+    console.error("PUT /api/assessments/:assessmentId/questions failed", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
   } finally {
     client.release();
   }
 });
 
-// UPDATE widget config/form/billing for a school (by slug)
-// UPDATE widget config/form/billing for a school (by slug)
+/* ---------- ADMIN: ASSESSMENT FROM SLUG ---------- */
+
+app.get("/api/admin/assessments/:slug", async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const schoolRes = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1`,
+      [slug]
+    );
+    if (!schoolRes.rowCount) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+    const schoolId = schoolRes.rows[0].id;
+
+    const assessRes = await pool.query(
+      `
+        SELECT id, school_id, name
+        FROM assessments
+        WHERE school_id = $1
+        ORDER BY id ASC
+        LIMIT 1
+      `,
+      [schoolId]
+    );
+
+    let assessment;
+    if (assessRes.rowCount) {
+      assessment = assessRes.rows[0];
+    } else {
+      const insertRes = await pool.query(
+        `
+          INSERT INTO assessments (school_id, name)
+          VALUES ($1, $2)
+          RETURNING id, school_id, name
+        `,
+        [schoolId, "Default Speaking Assessment"]
+      );
+      assessment = insertRes.rows[0];
+    }
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      assessmentId: assessment.id,
+      assessment,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/assessments/:slug error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/* ---------- ADMIN: WIDGET DASHBOARD LIST ----------
+   GET /api/admin/dashboards  -> { ok, dashboards: [ {file,url,label} ] }
+--------------------------------------------------------------------- */
+
+app.get("/api/admin/dashboards", async (req, res) => {
+  const dashboardsDir = path.join(PUBLIC_DIR, "dashboards");
+
+  try {
+    const entries = await fs.readdir(dashboardsDir, { withFileTypes: true });
+
+    const dashboards = entries
+      .filter(
+        (d) =>
+          d.isFile() && d.name.toLowerCase().endsWith(".html")
+      )
+      .map((d) => {
+        const file = d.name;
+        const url = `/dashboards/${file}`;
+
+        const base = file.replace(/\.html$/i, "");
+        let label = base
+          .replace(/^dashboard[-_]*/i, "") // strip leading "Dashboard"
+          .replace(/[-_]+/g, " ")
+          .trim();
+
+        if (!label) label = "Dashboard";
+
+        label = label.replace(/\b\w/g, (c) => c.toUpperCase());
+
+        return { file, url, label };
+      });
+
+    res.json({ ok: true, dashboards });
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      // Folder not created yet – safe empty list
+      return res.json({ ok: true, dashboards: [] });
+    }
+    console.error("Error reading dashboards dir:", err);
+    res.status(500).json({ ok: false, error: "LIST_FAILED" });
+  }
+});
+
+/* ---------- ADMIN: WIDGET CONFIG (config + form + image) ---------- */
+
+// GET full widget state for ConfigAdmin (config + form + image)
+// GET /api/admin/widget/:slug
+app.get("/api/admin/widget/:slug", async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, slug, settings
+         FROM schools
+        WHERE slug = $1`,
+      [slug]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    const row = rows[0];
+    const settings = row.settings || {};
+    const config = settings.config || {};
+    const form = settings.form || {};
+    const image = settings.image || {};
+
+    // ---- NORMALISE URL/PATH KEYS ----
+    const normalisedConfig = { ...config };
+
+    // prefer widgetPath/dashboardPath but fall back to *Url
+    const widgetPath =
+      normalisedConfig.widgetPath ||
+      normalisedConfig.widgetUrl ||
+      "/widgets/Widget.html";
+
+    const dashboardPath =
+      normalisedConfig.dashboardPath ||
+      normalisedConfig.dashboardUrl ||
+      "/dashboards/Dashboard3.html";
+
+    normalisedConfig.widgetPath = widgetPath;
+    normalisedConfig.widgetUrl = widgetPath; // keep both for now
+
+    normalisedConfig.dashboardPath = dashboardPath;
+    normalisedConfig.dashboardUrl = dashboardPath; // keep both for now
+
+    return res.json({
+      ok: true,
+      school: {
+        id: row.id,
+        slug: row.slug,
+        name: row.name || row.slug,
+      },
+      settings: {
+        config: normalisedConfig,
+        form,
+        image,
+      },
+      config: normalisedConfig,
+      form,
+      image,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/widget error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+// PUT full widget state from ConfigAdmin (config + form + image)
+// PUT /api/admin/widget/:slug
+// PUT full widget state from ConfigAdmin (config + form + image)
+// PUT /api/admin/widget/:slug
 app.put("/api/admin/widget/:slug", async (req, res) => {
   const { slug } = req.params;
-  const body = req.body || {};
-  const config = body.config || {};
-  const form = body.form || {};
-  const billing = body.billing || {};
+  let { config = {}, form = {}, image = {} } = req.body || {};
+
+  try {
+    // Ensure plain objects
+    config = config || {};
+    form   = form   || {};
+    image  = image  || {};
+
+    // 🔹 Normalise widget/dashboard paths and keep both keys
+    if (config.widgetUrl && !config.widgetPath) {
+      config.widgetPath = config.widgetUrl;
+    }
+    if (config.widgetPath && !config.widgetUrl) {
+      config.widgetUrl = config.widgetPath;
+    }
+
+    if (config.dashboardUrl && !config.dashboardPath) {
+      config.dashboardPath = config.dashboardUrl;
+    }
+    if (config.dashboardPath && !config.dashboardUrl) {
+      config.dashboardUrl = config.dashboardPath;
+    }
+
+    // 🔹 Normalise afterDashboard block (new)
+    const after = config.afterDashboard || {};
+    const signupUrl = (after.signupUrl || "").trim();
+    const ctaMessage = (after.ctaMessage || "").trim();
+
+    config.afterDashboard = {
+      signupUrl,
+      ctaMessage,
+    };
+
+    // 🔹 Stringify for jsonb parameters
+    const jsonConfig = JSON.stringify(config);
+    const jsonForm   = JSON.stringify(form);
+    const jsonImage  = JSON.stringify(image);
+
+    const { rows } = await pool.query(
+      `
+      UPDATE schools
+         SET settings = jsonb_set(
+                          jsonb_set(
+                            jsonb_set(
+                              COALESCE(settings, '{}'::jsonb),
+                              '{config}', $1::jsonb, true
+                            ),
+                            '{form}',   $2::jsonb, true
+                          ),
+                          '{image}',    $3::jsonb, true
+                        )
+       WHERE slug = $4
+       RETURNING settings
+      `,
+      [jsonConfig, jsonForm, jsonImage, slug]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    return res.json({ ok: true, settings: rows[0].settings });
+  } catch (err) {
+    console.error("PUT /api/admin/widget error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+// === FORM-ONLY endpoints used by WidgetSurvey =======================
+
+// GET just the form JSON for this slug
+// GET /api/admin/widget/:slug
+app.get("/api/admin/widget/:slug", async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, slug, settings
+         FROM schools
+        WHERE slug = $1`,
+      [slug]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    const row = rows[0];
+    const settings = row.settings || {};
+    const config = settings.config || {};
+    const form = settings.form || {};
+    const image = settings.image || {};
+
+    // ---- NORMALISE URL/PATH KEYS ----
+    const normalisedConfig = { ...config };
+
+    const widgetPath =
+      normalisedConfig.widgetPath ||
+      normalisedConfig.widgetUrl ||
+      "/widgets/Widget.html";
+
+    const dashboardPath =
+      normalisedConfig.dashboardPath ||
+      normalisedConfig.dashboardUrl ||
+      "/dashboards/Dashboard3.html";
+
+    normalisedConfig.widgetPath = widgetPath;
+    normalisedConfig.widgetUrl  = widgetPath;
+
+    normalisedConfig.dashboardPath = dashboardPath;
+    normalisedConfig.dashboardUrl  = dashboardPath;
+
+    // ✅ Ensure afterDashboard shape is always present
+    const after = normalisedConfig.afterDashboard || {};
+    normalisedConfig.afterDashboard = {
+      signupUrl:  after.signupUrl  || "",
+      ctaMessage: after.ctaMessage || "",
+    };
+
+    return res.json({
+      ok: true,
+      school: {
+        id: row.id,
+        slug: row.slug,
+        name: row.name || row.slug,
+      },
+      settings: {
+        config: normalisedConfig,
+        form,
+        image,
+      },
+      config: normalisedConfig,
+      form,
+      image,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/widget error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+// PUT just the form JSON (WidgetSurvey writes here)
+app.put("/api/admin/widget/:slug/form", async (req, res) => {
+  if (!checkAdminKey(req, res)) return; // same behaviour as other admin writes
+
+  const { slug } = req.params;
+  const form = req.body || {};
+  const jsonForm = JSON.stringify(form);
 
   try {
     const { rowCount } = await pool.query(
       `
       UPDATE schools
-      SET settings =
-        jsonb_set(
-          jsonb_set(
-            jsonb_set(
-              COALESCE(settings, '{}'::jsonb),
-              '{widgetConfig}', $2::jsonb, true
-            ),
-            '{widgetForm}', $3::jsonb, true
-          ),
-          '{billing}', $4::jsonb, true
-        )
+      SET settings = jsonb_set(
+            COALESCE(settings, '{}'::jsonb),
+            '{form}',
+            $2::jsonb,
+            true
+          )
       WHERE slug = $1
       `,
-      [slug, config, form, billing]
+      [slug, jsonForm]
     );
 
     if (!rowCount) {
+      return res.status(404).json({ ok: false, error: "school_not_found" });
+    }
+
+    res.json({ ok: true, form });
+  } catch (err) {
+    console.error("PUT /api/admin/widget/:slug/form error:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+/* ---------- ADMIN: QUESTION HELP (GET / PUT) ---------- */
+
+app.get("/api/admin/help/:slug/:questionId", async (req, res) => {
+  const { slug, questionId } = req.params;
+  const qid = Number(questionId);
+
+  if (!Number.isInteger(qid) || qid <= 0) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "invalid_question_id" });
+  }
+
+  try {
+    const schoolResult = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1`,
+      [slug]
+    );
+    if (!schoolResult.rowCount) {
       return res
         .status(404)
         .json({ ok: false, error: "school_not_found" });
     }
+    const schoolId = schoolResult.rows[0].id;
 
-    return res.json({ ok: true, source: "db" });
+    const helpResult = await pool.query(
+      `
+        SELECT maxhelp, minhelp, prompt
+        FROM questions_help
+        WHERE school_id = $1 AND question_id = $2
+        LIMIT 1
+      `,
+      [schoolId, qid]
+    );
+
+    if (helpResult.rowCount) {
+      const row = helpResult.rows[0];
+      return res.json({
+        ok: true,
+        slug,
+        schoolId,
+        questionId: qid,
+        maxhelp: row.maxhelp || "",
+        minhelp: row.minhelp || "",
+        prompt: row.prompt || DEFAULT_HELP_PROMPT,
+        exists: true,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      questionId: qid,
+      maxhelp: "",
+      minhelp: "",
+      prompt: DEFAULT_HELP_PROMPT,
+      exists: false,
+    });
   } catch (err) {
-    console.error("PUT /api/admin/widget/:slug error:", err);
+    console.error("GET /api/admin/help/:slug/:questionId error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+app.put("/api/admin/help/:slug/:questionId", async (req, res) => {
+  if (!checkAdminKey(req, res)) return;
+
+  const { slug, questionId } = req.params;
+  const qid = Number(questionId);
+
+  if (!Number.isInteger(qid) || qid <= 0) {
     return res
-      .status(500)
-      .json({ ok: false, error: "server_error" });
+      .status(400)
+      .json({ ok: false, error: "invalid_question_id" });
+  }
+
+  const body = req.body || {};
+  const maxhelp = (body.maxhelp || "").toString();
+  const minhelp = (body.minhelp || "").toString();
+  const prompt = (body.prompt || DEFAULT_HELP_PROMPT).toString();
+
+  try {
+    const schoolResult = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1`,
+      [slug]
+    );
+    if (!schoolResult.rowCount) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "school_not_found" });
+    }
+    const schoolId = schoolResult.rows[0].id;
+
+    const upsertResult = await pool.query(
+      `
+        INSERT INTO questions_help (school_id, question_id, maxhelp, minhelp, prompt)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (school_id, question_id)
+        DO UPDATE SET
+          maxhelp   = EXCLUDED.maxhelp,
+          minhelp   = EXCLUDED.minhelp,
+          prompt    = EXCLUDED.prompt,
+          updated_at = NOW()
+        RETURNING id, maxhelp, minhelp, prompt, created_at, updated_at
+      `,
+      [schoolId, qid, maxhelp, minhelp, prompt]
+    );
+
+    const record = upsertResult.rows[0];
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      questionId: qid,
+      help: record,
+    });
+  } catch (err) {
+    console.error("PUT /api/admin/help/:slug/:questionId error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// HELP: return min/max help text for a question
+// POST /api/widget/help  { slug, questionId, level }
+// ---------------------------------------------------------------------------
+app.post("/api/widget/help", async (req, res) => {
+  const { slug, questionId, level } = req.body || {};
+
+  if (!slug || !questionId) {
+    return res.status(400).json({
+      ok: false,
+      error: "MISSING_PARAMS",
+      message: "slug and questionId are required",
+    });
+  }
+
+  const qid = Number(questionId);
+  if (!Number.isInteger(qid) || qid <= 0) {
+    return res.status(400).json({
+      ok: false,
+      error: "INVALID_QUESTION_ID",
+      message: "questionId must be a positive integer",
+    });
+  }
+
+  try {
+    const schoolRes = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!schoolRes.rowCount) {
+      return res.status(404).json({
+        ok: false,
+        error: "SCHOOL_NOT_FOUND",
+      });
+    }
+    const schoolId = schoolRes.rows[0].id;
+
+    const { rows } = await pool.query(
+      `
+        SELECT minhelp, maxhelp, prompt
+        FROM questions_help
+        WHERE school_id = $1 AND question_id = $2
+        LIMIT 1
+      `,
+      [schoolId, qid]
+    );
+
+    if (!rows.length) {
+      console.log("[HELP] No help rows for", { slug, schoolId, questionId: qid });
+      return res.json({
+        ok: true,
+        exists: false,
+        min: "",
+        max: "",
+        minhelp: "",
+        maxhelp: "",
+      });
+    }
+
+    const row = rows[0];
+    const minhelp = row.minhelp || "";
+    const maxhelp = row.maxhelp || "";
+
+    console.log("[HELP] Found help row:", {
+      slug,
+      schoolId,
+      questionId: qid,
+      minLen: minhelp.length,
+      maxLen: maxhelp.length,
+    });
+
+    return res.json({
+      ok: true,
+      exists: true,
+      min: minhelp,
+      max: maxhelp,
+      minhelp,
+      maxhelp,
+    });
+  } catch (err) {
+    console.error("HELP endpoint error:", err);
+    res.status(500).json({
+      ok: false,
+      error: "HELP_INTERNAL",
+      message: err.message || "Server error",
+    });
+  }
+});
+
+// ---------- ADMIN LOGIN API ----------
+app.post("/api/login", async (req, res) => {
+  const body = req.body || {};
+  const email = (body.email || "").trim();
+  const password = (body.password || "").trim();
+
+  if (!email || !password) {
+    return res.status(400).json({
+      ok: false,
+      error: "missing_credentials",
+      message: "Email and password are required.",
+    });
+  }
+
+  try {
+    const { rows, rowCount } = await pool.query(
+      `
+      SELECT
+        a.id AS admin_id,
+        a.full_name,
+        a.email,
+        a.password_hash,
+        a.is_active,
+        s.id AS school_id,
+        s.slug
+      FROM admins a
+      JOIN schools s ON s.id = a.school_id
+      WHERE a.email = $1
+      LIMIT 1
+      `,
+      [email]
+    );
+
+    if (!rowCount) {
+      return res.status(401).json({
+        ok: false,
+        error: "invalid_login",
+        message: "Invalid email or password.",
+      });
+    }
+
+    const admin = rows[0];
+
+    if (admin.is_active === false) {
+      return res.status(403).json({
+        ok: false,
+        error: "admin_inactive",
+        message: "This admin account is inactive.",
+      });
+    }
+
+    if (admin.password_hash !== password) {
+      return res.status(401).json({
+        ok: false,
+        error: "invalid_login",
+        message: "Invalid email or password.",
+      });
+    }
+
+    return res.json({
+      ok: true,
+      adminId: admin.admin_id,
+      schoolId: admin.school_id,
+      slug: admin.slug,
+      name: admin.full_name,
+    });
+  } catch (err) {
+    console.error("POST /api/login error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Could not log in. Please try again.",
+    });
+  }
+});
+
+// --------------------------------------------------------------
+// Student enrollment from school landing page / embedded app
+// POST /api/student/enroll
+// Body: { slug, submissionId, name, email }
+// --------------------------------------------------------------
+app.post("/api/student/enroll", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const slug = (body.slug || "").trim();
+    const submissionId = Number(body.submissionId);
+    const name = (body.name || "").trim();
+    const email = (body.email || "").trim().toLowerCase();
+
+    if (!slug || !email || !Number.isInteger(submissionId)) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_params",
+        message: "slug, submissionId, name and email are required",
+      });
+    }
+
+    // 1) Look up school
+    const schoolRes = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!schoolRes.rowCount) {
+      return res.status(404).json({
+        ok: false,
+        error: "school_not_found",
+        message: `No school found for slug ${slug}`,
+      });
+    }
+    const schoolId = schoolRes.rows[0].id;
+
+    // 2) Upsert student on (school_id, email)
+    const studentRes = await pool.query(
+      `
+        INSERT INTO students (school_id, email, full_name)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (school_id, email)
+        DO UPDATE SET
+          full_name = COALESCE(EXCLUDED.full_name, students.full_name),
+          updated_at = NOW()
+        RETURNING id
+      `,
+      [schoolId, email, name || null]
+    );
+
+    const studentId = studentRes.rows[0].id;
+
+    // 3) Attach this student to the submission row
+    const updateRes = await pool.query(
+      `
+        UPDATE submissions
+           SET student_id = $1
+         WHERE id = $2
+           AND school_id = $3
+        RETURNING id
+      `,
+      [studentId, submissionId, schoolId]
+    );
+
+    if (!updateRes.rowCount) {
+      // No submission found for this id+school – still return studentId
+      return res.status(404).json({
+        ok: false,
+        error: "submission_not_found",
+        message: `No submission ${submissionId} found for this school`,
+        studentId,
+      });
+    }
+
+    console.log("✅ student enrolled + linked:", {
+      slug,
+      schoolId,
+      studentId,
+      submissionId,
+      email,
+      name,
+    });
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      studentId,
+      submissionId,
+    });
+  } catch (err) {
+    console.error("❌ /api/student/enroll error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "enroll_failed",
+      message: err.message || "Error enrolling student",
+    });
+  }
+});
+
+/* ------------------------------------------------------------------
+   STUDENT ENROLLMENT
+   POST /api/student/enroll
+   Body: { slug, submissionId, name?, full_name?, email }
+   - Finds school by slug
+   - Upserts student (students table, UNIQUE (school_id,email))
+   - Links submission to student (submissions.student_id)
+   - Enriches submissions.meta->student with basic info
+   ------------------------------------------------------------------ */
+app.post("/api/student/enroll", async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    const slug          = (body.slug || "").trim();
+    const submissionRaw = body.submissionId ?? body.submission_id;
+    const fullNameRaw   = body.full_name || body.name || "";
+    const emailRaw      = body.email || "";
+
+    const email = emailRaw.trim().toLowerCase();
+    const fullName = fullNameRaw.trim();
+    const submissionId = Number(submissionRaw);
+
+    // --- Basic validation ----------------------------------------------------
+    if (!slug) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_slug",
+        message: "slug is required",
+      });
+    }
+
+    if (!Number.isInteger(submissionId) || submissionId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "invalid_submission_id",
+        message: "submissionId must be a positive integer",
+      });
+    }
+
+    if (!email) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_email",
+        message: "email is required",
+      });
+    }
+
+    if (!fullName) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_name",
+        message: "full name is required",
+      });
+    }
+
+    // --- 1) Look up school by slug ------------------------------------------
+    const schoolRes = await pool.query(
+      `SELECT id
+         FROM schools
+        WHERE slug = $1
+        LIMIT 1`,
+      [slug]
+    );
+
+    if (!schoolRes.rowCount) {
+      return res.status(404).json({
+        ok: false,
+        error: "school_not_found",
+        message: `No school found for slug ${slug}`,
+      });
+    }
+
+    const schoolId = schoolRes.rows[0].id;
+
+    // --- 2) Upsert student in students table --------------------------------
+    const studentRes = await pool.query(
+      `
+      INSERT INTO students (school_id, email, full_name)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (school_id, email)
+      DO UPDATE SET
+        full_name  = EXCLUDED.full_name,
+        updated_at = NOW()
+      RETURNING
+        id,
+        school_id,
+        email,
+        full_name,
+        created_at,
+        updated_at
+      `,
+      [schoolId, email, fullName]
+    );
+
+    const student = studentRes.rows[0];
+
+    // --- 3) Link submission to this student ---------------------------------
+    const submissionUpdateRes = await pool.query(
+      `
+      UPDATE submissions
+         SET student_id = $3,
+             updated_at = NOW(),
+             meta = COALESCE(meta, '{}'::jsonb) || jsonb_build_object(
+                      'student',
+                      jsonb_build_object(
+                        'id',        $3,
+                        'full_name', $4,
+                        'email',     $5
+                      )
+                    )
+       WHERE id = $2
+         AND school_id = $1
+       RETURNING id
+      `,
+      [schoolId, submissionId, student.id, student.full_name, student.email]
+    );
+
+    if (!submissionUpdateRes.rowCount) {
+      return res.status(404).json({
+        ok: false,
+        error: "submission_not_found",
+        message:
+          "Submission not found for this school. It may belong to a different slug or be missing.",
+      });
+    }
+
+    const updatedSubmissionId = submissionUpdateRes.rows[0].id;
+
+    // --- 4) Success ----------------------------------------------------------
+    return res.json({
+      ok: true,
+      schoolId,
+      submissionId: updatedSubmissionId,
+      student: {
+        id: student.id,
+        email: student.email,
+        full_name: student.full_name,
+        created_at: student.created_at,
+        updated_at: student.updated_at,
+      },
+    });
+  } catch (err) {
+    console.error("❌ POST /api/student/enroll error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "enroll_failed",
+      message: err.message || "Server error while enrolling student",
+    });
   }
 });
 
@@ -591,20 +2191,16 @@ function parseCsvLine(line) {
   return out;
 }
 
-// APPEND new log (widget uses this)
-// Also mirrors into Postgres (multi-tenant DB) when DATABASE_URL is set
 app.post("/log/submission", async (req, res) => {
   try {
     const body = req.body || {};
     const headers = LOG_HEADERS;
 
-    // best-effort IP capture
     const rawIp =
       (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "") + "";
     const ip = rawIp.split(",")[0].trim();
     body.ip = ip;
 
-    // --- write to CSV (for existing report UI) ---
     const rowValues = headers.map((h) => body[h] ?? "");
     const line = rowValues.map(csvEscape).join(",") + "\n";
 
@@ -612,52 +2208,20 @@ app.post("/log/submission", async (req, res) => {
     try {
       await fs.access(LOG_CSV);
     } catch {
-      // file doesn’t exist yet → write header row
       prefix = headers.join(",") + "\n";
     }
     await fs.appendFile(LOG_CSV, prefix + line, "utf8");
 
-    // --- ALSO write to Postgres (non-fatal if it fails) ---
-    let dbOk = false;
-    let dbError = null;
+    // 👇 IMPORTANT CHANGE: no more DB insert here
+    const dbOk = false;
+    const dbError = "DB logging disabled (using /api/widget/submit instead)";
 
-    if (process.env.DATABASE_URL) {
-      try {
-        await insertSubmission({
-          school_id: body.schoolId || 1, // demo school for now
-          assessment_id: body.assessmentId || null,
-          student_id: body.studentId || null,
-          teacher_id: body.teacherId || null,
-          ip,
-          record_count: body.recordCount ?? null,
-          file_name: body.fileName ?? null,
-          length_sec: body.lengthSec ?? null,
-          submit_time: body.submitTime ?? null,
-          toefl: body.toefl ?? null,
-          ielts: body.ielts ?? null,
-          pte: body.pte ?? null,
-          cefr: body.cefr ?? null,
-          question: body.question ?? null,
-          transcript: body.transcript ?? null,
-          wpm: body.wpm ?? null,
-          meta: body.meta || null,
-        });
-        dbOk = true;
-      } catch (err) {
-        console.error("DB insert error:", err);
-        dbError = err.message || String(err);
-      }
-    }
-
-    // tell the client what happened
     res.json({ ok: true, dbOk, dbError });
   } catch (e) {
     console.error("POST /log/submission error:", e);
     res.status(500).json({ ok: false, error: "log failed" });
   }
 });
-
-// UPDATE a single CSV row (used by Report UI when teacher edits notes)
 app.put("/log/submission", async (req, res) => {
   try {
     const body = req.body || {};
@@ -711,7 +2275,6 @@ app.put("/log/submission", async (req, res) => {
       rowObj[h] = targetCols[i] ?? "";
     });
 
-    // apply updates only for known headers
     Object.entries(updates).forEach(([key, val]) => {
       if (headers.includes(key)) {
         rowObj[key] = val == null ? "" : String(val);
@@ -722,7 +2285,7 @@ app.put("/log/submission", async (req, res) => {
     parsedRows[id] = updatedCols;
 
     const outLines = [
-      headers.join(","), // keep existing header
+      headers.join(","),
       ...parsedRows.map((cols) => cols.map(csvEscape).join(",")),
     ];
 
@@ -742,7 +2305,6 @@ app.get("/health", (req, res) => {
 
 // ---------- EMBED CHECK & EVENTS ----------
 
-// Simple helper to get billing + usage for a school
 async function getSchoolBillingStatus(schoolId) {
   const id = Number(schoolId);
   if (!Number.isInteger(id) || id <= 0) {
@@ -792,12 +2354,10 @@ async function getSchoolBillingStatus(schoolId) {
   };
 }
 
-// GET /api/embed-check?schoolId=1
 app.get("/api/embed-check", async (req, res) => {
   try {
     const status = await getSchoolBillingStatus(req.query.schoolId);
     if (status.ok === false && !("blocked" in status)) {
-      // invalid_school_id or school_not_found
       return res.status(400).json(status);
     }
     res.json(status);
@@ -807,12 +2367,10 @@ app.get("/api/embed-check", async (req, res) => {
   }
 });
 
-// POST /api/embed-event  (log embed blocked/errors, etc.)
 app.post("/api/embed-event", async (req, res) => {
   try {
     const body = req.body || {};
     console.log("📘 embed-event:", body);
-    // Later: insert into a table embed_events(school_id, type, message, created_at)
     res.json({ ok: true });
   } catch (err) {
     console.error("POST /api/embed-event error:", err);
@@ -845,14 +2403,13 @@ app.post("/api/signup", async (req, res) => {
     const baseSlug = slugifySchoolName(schoolName);
     const slug = await getUniqueSlug(client, baseSlug);
 
-    // Load default widget config/form for new school
     const { config, form } = await loadDefaultWidgetConfigAndForm();
 
     const settings = {
       widgetConfig: config,
       widgetForm: form,
       billing: {
-        dailyLimit: 50, // sensible default for demos; adjust later
+        dailyLimit: 50,
         notifyOnLimit: true,
         emailOnLimit: adminEmail,
         autoBlockOnLimit: true,
@@ -867,9 +2424,7 @@ app.post("/api/signup", async (req, res) => {
     );
     const schoolId = schoolRes.rows[0].id;
 
-    // For now, store password as clear text / simple hash.
-    // Later you can swap to bcrypt.
-    const passwordHash = adminPassword; // TODO: hash
+    const passwordHash = adminPassword; // TODO: hash for production
 
     await client.query(
       `INSERT INTO admins
@@ -878,7 +2433,6 @@ app.post("/api/signup", async (req, res) => {
       [schoolId, adminEmail, adminName, passwordHash]
     );
 
-    // Optional: store website in branding/settings for later use
     if (schoolWebsite) {
       await client.query(
         `UPDATE schools
@@ -921,265 +2475,361 @@ app.get("/admin-login", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "admin-login", "index.html"));
 });
 
-/* ---------- ADMIN: QUESTIONS LIST (per school) ---------- */
+/* ---------- ADMIN: WIDGET CONFIG BY SLUG (DB-backed) ----------
+   GET  /api/config/:slug   -> read settings.widgetConfig
+   POST /api/config/:slug   -> upsert settings.widgetConfig
+----------------------------------------------------------------- */
 
-// Return all questions for a school, by slug.
-// NOTE: adjust "question_text" below to your actual column name
-// (e.g. "prompt", "text", etc.) if needed.
-app.get("/api/admin/questions/:slug", async (req, res) => {
+app.get("/api/config/:slug", async (req, res) => {
   const { slug } = req.params;
 
   try {
-    const schoolResult = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1`,
+    const schoolRes = await pool.query(
+      `SELECT id, settings
+       FROM schools
+       WHERE slug = $1
+       LIMIT 1`,
       [slug]
     );
 
-    if (!schoolResult.rowCount) {
+    if (!schoolRes.rowCount) {
       return res
         .status(404)
         .json({ ok: false, error: "school_not_found" });
     }
 
-    const schoolId = schoolResult.rows[0].id;
-
-    const questionsResult = await pool.query(
-      `
-        SELECT
-          id,
-          question_text -- TODO: change to your real column, e.g. "prompt"
-        FROM questions
-        WHERE school_id = $1
-        ORDER BY id ASC
-      `,
-      [schoolId]
-    );
-
-    const questions = questionsResult.rows.map((row) => ({
-      id: row.id,
-      text: row.question_text,
-    }));
+    const row = schoolRes.rows[0];
+    const settings = row.settings || {};
+    const config = settings.widgetConfig || defaultConfig;
 
     return res.json({
       ok: true,
       slug,
-      schoolId,
-      questions,
+      schoolId: row.id,
+      config,
     });
   } catch (err) {
-    console.error("GET /api/admin/questions/:slug error:", err);
-    return res.status(500).json({ ok: false, error: "server_error" });
+    console.error("GET /api/config/:slug error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: "server_error" });
   }
 });
-/* ---------- ADMIN: QUESTION HELP (GET) ---------- */
 
-app.get("/api/admin/help/:slug/:questionId", async (req, res) => {
-  const { slug, questionId } = req.params;
-  const qid = Number(questionId);
-
-  if (!Number.isInteger(qid) || qid <= 0) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "invalid_question_id" });
-  }
+app.post("/api/config/:slug", async (req, res) => {
+  const { slug } = req.params;
+  const body = req.body || {};
+  const incomingConfig = body.config || body || {};
 
   try {
-    // Find school by slug
-    const schoolResult = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1`,
+    const schoolRes = await pool.query(
+      `SELECT id, settings
+       FROM schools
+       WHERE slug = $1
+       LIMIT 1`,
       [slug]
     );
-    if (!schoolResult.rowCount) {
+
+    if (!schoolRes.rowCount) {
       return res
         .status(404)
         .json({ ok: false, error: "school_not_found" });
     }
-    const schoolId = schoolResult.rows[0].id;
 
-    // Try to load existing help record
-    const helpResult = await pool.query(
+    const school = schoolRes.rows[0];
+
+    const jsonConfig = JSON.stringify(incomingConfig);
+
+    const updateRes = await pool.query(
       `
-        SELECT maxhelp, minhelp, prompt
-        FROM questions_help
-        WHERE school_id = $1 AND question_id = $2
-        LIMIT 1
+        UPDATE schools
+        SET settings = jsonb_set(
+          COALESCE(settings, '{}'::jsonb),
+          '{widgetConfig}',
+          $2::jsonb,
+          true
+        )
+        WHERE slug = $1
+        RETURNING id, settings
       `,
-      [schoolId, qid]
+      [slug, jsonConfig]
     );
 
-    if (helpResult.rowCount) {
-      const row = helpResult.rows[0];
-      return res.json({
-        ok: true,
-        slug,
-        schoolId,
-        questionId: qid,
-        maxhelp: row.maxhelp || "",
-        minhelp: row.minhelp || "",
-        prompt: row.prompt || DEFAULT_HELP_PROMPT,
-        exists: true,
+    const updated = updateRes.rows[0];
+    const settings = updated.settings || {};
+    const savedConfig = settings.widgetConfig || {};
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId: updated.id,
+      config: savedConfig,
+    });
+  } catch (err) {
+    console.error("POST /api/config/:slug error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: "server_error" });
+  }
+});
+
+// ---------------------------------------------------------------------
+// ADMIN PORTAL – DUMMY ENDPOINTS (for local testing)
+// ---------------------------------------------------------------------
+
+// Stats for the Activity Snapshot card
+app.get("/api/admin/stats/:slug", (req, res) => {
+  const { slug } = req.params;
+  const range = req.query.range || "today";
+
+  // For now, just send hard-coded dummy data
+  res.json({
+    slug,
+    range,
+    from: "2025-11-18",
+    to: "2025-11-20",
+    totalTests: 42,
+    topQuestion: {
+      id: 1,
+      text: "What is on your bucket list?"
+    },
+    highestCEFR: "C1",
+    lowestCEFR: "A2",
+    avgCEFR: "B2"
+  });
+});
+
+/* ---------------------------------------------------------------
+   Tests list for School Portal – uses vw_widget_reports
+   --------------------------------------------------------------- */
+app.get("/api/admin/tests", async (req, res) => {
+  try {
+    const { slug, from, to } = req.query;
+    if (!slug) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_slug",
+        message: "slug is required",
       });
     }
 
-    // No record yet – return defaults (do NOT insert)
-    return res.json({
-      ok: true,
-      slug,
-      schoolId,
-      questionId: qid,
-      maxhelp: "",
-      minhelp: "",
-      prompt: DEFAULT_HELP_PROMPT,
-      exists: false,
-    });
-  } catch (err) {
-    console.error("GET /api/admin/help/:slug/:questionId error:", err);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
+    const params = [slug];
+    const where = ["school_slug = $1"];
+    let idx = 2;
 
-/* ---------- ADMIN: QUESTION HELP (PUT) ---------- */
-
-app.put("/api/admin/help/:slug/:questionId", async (req, res) => {
-  if (!checkAdminKey(req, res)) return;
-
-  const { slug, questionId } = req.params;
-  const qid = Number(questionId);
-
-  if (!Number.isInteger(qid) || qid <= 0) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "invalid_question_id" });
-  }
-
-  const body = req.body || {};
-  const maxhelp = (body.maxhelp || "").toString();
-  const minhelp = (body.minhelp || "").toString();
-  const prompt = (body.prompt || DEFAULT_HELP_PROMPT).toString();
-
-  try {
-    // Find school by slug
-    const schoolResult = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1`,
-      [slug]
-    );
-    if (!schoolResult.rowCount) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "school_not_found" });
+    if (from) {
+      where.push(`submitted_at::date >= $${idx++}`);
+      params.push(from);
     }
-    const schoolId = schoolResult.rows[0].id;
+    if (to) {
+      where.push(`submitted_at::date <= $${idx++}`);
+      params.push(to);
+    }
 
-    // Upsert help record
-    const upsertResult = await pool.query(
-      `
-        INSERT INTO questions_help (school_id, question_id, maxhelp, minhelp, prompt)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (school_id, question_id)
-        DO UPDATE SET
-          maxhelp   = EXCLUDED.maxhelp,
-          minhelp   = EXCLUDED.minhelp,
-          prompt    = EXCLUDED.prompt,
-          updated_at = NOW()
-        RETURNING id, maxhelp, minhelp, prompt, created_at, updated_at
-      `,
-      [schoolId, qid, maxhelp, minhelp, prompt]
-    );
-
-    const record = upsertResult.rows[0];
-
-    return res.json({
-      ok: true,
-      slug,
-      schoolId,
-      questionId: qid,
-      help: record,
-    });
-  } catch (err) {
-    console.error("PUT /api/admin/help/:slug/:questionId error:", err);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
-
-// ---------- ADMIN LOGIN API ----------
-app.post("/api/login", async (req, res) => {
-  const body = req.body || {};
-  const email = (body.email || "").trim();
-  const password = (body.password || "").trim();
-
-  if (!email || !password) {
-    return res.status(400).json({
-      ok: false,
-      error: "missing_credentials",
-      message: "Email and password are required."
-    });
-  }
-
-  try {
-    const { rows, rowCount } = await pool.query(
-      `
+            const sql = `
       SELECT
-        a.id AS admin_id,
-        a.full_name,
-        a.email,
-        a.password_hash,
-        a.is_active,
-        s.id AS school_id,
-        s.slug
-      FROM admins a
-      JOIN schools s ON s.id = a.school_id
-      WHERE a.email = $1
-      LIMIT 1
-      `,
-      [email]
-    );
+        id,
+        school_slug,
+        submitted_at,
+        question,
 
-    if (!rowCount) {
-      return res.status(401).json({
-        ok: false,
-        error: "invalid_login",
-        message: "Invalid email or password."
-      });
-    }
+        student_id,
+        student_name,
+        student_email,
 
-    const admin = rows[0];
+        toefl,
+        ielts,
+        pte,
+        cefr,
+        vox_score,
+        mss_fluency,
+        mss_grammar,
+        mss_pron,
+        mss_vocab,
+        mss_cefr,
+        mss_toefl,
+        mss_ielts,
+        mss_pte,
 
-    if (admin.is_active === false) {
-      return res.status(403).json({
-        ok: false,
-        error: "admin_inactive",
-        message: "This admin account is inactive."
-      });
-    }
+        help_level,
+        help_surface,
+        widget_variant,
+        dashboard_variant,
+        transcript_clean
+      FROM vw_widget_reports
+      WHERE ${where.join(" AND ")}
+      ORDER BY submitted_at DESC
+      LIMIT 2000
+    `;
+    const result = await pool.query(sql, params);
 
-    // For now, simple plain-text comparison (since we store plain text)
-    if (admin.password_hash !== password) {
-      return res.status(401).json({
-        ok: false,
-        error: "invalid_login",
-        message: "Invalid email or password."
-      });
-    }
-
-    // 🚨 NOTE: for production you’d issue a session/JWT here.
-    // For now we just return the slug and let the frontend redirect.
     return res.json({
       ok: true,
-      adminId: admin.admin_id,
-      schoolId: admin.school_id,
-      slug: admin.slug,
-      name: admin.full_name
+      tests: result.rows,
     });
   } catch (err) {
-    console.error("POST /api/login error:", err);
+    console.error("❌ /api/admin/tests error:", err);
     return res.status(500).json({
       ok: false,
-      error: "server_error",
-      message: "Could not log in. Please try again."
+      error: "tests_failed",
+      message: err.message || "Error fetching tests",
+    });
+  }
+});
+/* ---------------------------------------------------------------
+   CSV export – all columns from vw_widget_reports
+   --------------------------------------------------------------- */
+app.get("/api/admin/tests/export", async (req, res) => {
+  try {
+    const { slug, from, to } = req.query;
+    if (!slug) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_slug",
+        message: "slug is required",
+      });
+    }
+
+    const params = [slug];
+    const where = ["school_slug = $1"];
+    let idx = 2;
+
+    if (from) {
+      where.push(`submitted_at::date >= $${idx++}`);
+      params.push(from);
+    }
+    if (to) {
+      where.push(`submitted_at::date <= $${idx++}`);
+      params.push(to);
+    }
+
+        const sql = `
+      SELECT
+        id,
+        school_slug,
+        submitted_at,
+        question,
+
+        student_id,
+        student_name,
+        student_email,
+
+        toefl,
+        ielts,
+        pte,
+        cefr,
+        vox_score,
+        mss_fluency,
+        mss_grammar,
+        mss_pron,
+        mss_vocab,
+        mss_cefr,
+        mss_toefl,
+        mss_ielts,
+        mss_pte,
+
+        help_level,
+        help_surface,
+        widget_variant,
+        dashboard_variant,
+        transcript_clean
+      FROM vw_widget_reports
+      WHERE ${where.join(" AND ")}
+      ORDER BY submitted_at DESC
+    `;
+    const result = await pool.query(sql, params);
+    const rows = result.rows || [];
+
+    // CSV helpers
+          const headers = [
+      "id",
+      "school_slug",
+      "submitted_at",
+      "question",
+
+      "student_id",
+      "student_name",
+      "student_email",
+
+      "toefl",
+      "ielts",
+      "pte",
+      "cefr",
+      "vox_score",
+      "mss_fluency",
+      "mss_grammar",
+      "mss_pron",
+      "mss_vocab",
+      "mss_cefr",
+      "mss_toefl",
+      "mss_ielts",
+      "mss_pte",
+
+      "help_level",
+      "help_surface",
+      "widget_variant",
+      "dashboard_variant",
+      "transcript_clean",
+    ];
+    const csvEscape = (val) => {
+      if (val === null || val === undefined) return "";
+      const s = String(val);
+      if (/[",\n\r]/.test(s)) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+
+    const lines = [];
+    lines.push(headers.join(",")); // header row
+
+    for (const row of rows) {
+      const line = headers
+        .map((h) => csvEscape(row[h]))
+        .join(",");
+      lines.push(line);
+    }
+
+    const filename = `mss-tests-${slug}-${from || "all"}-to-${to || "today"}.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+    res.send(lines.join("\n"));
+  } catch (err) {
+    console.error("❌ /api/admin/tests/export error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "export_failed",
+      message: err.message || "Error exporting CSV",
     });
   }
 });
 
+app.delete("/api/admin/reports/delete", express.json(), async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ ok: false, error: "No ids provided" });
+    }
+
+    // If submissions.id is INT
+    await pool.query(
+      `UPDATE submissions
+       SET deleted_at = NOW()
+       WHERE id = ANY($1::int[])`,
+      [ids]
+    );
+
+    res.json({ ok: true, deleted: ids.length });
+  } catch (err) {
+    console.error("Error deleting submissions:", err);
+    res.status(500).json({ ok: false, error: "Failed to delete submissions" });
+  }
+});
 /* ---------- start ---------- */
 app.listen(PORT, () => {
   console.log(`✅ MSS Widget service listening on port ${PORT}`);

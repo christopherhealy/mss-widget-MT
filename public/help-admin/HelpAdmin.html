@@ -7,114 +7,132 @@
 
   <!-- Shared MSS design system -->
   <link id="themeCss" rel="stylesheet" href="/themes/MSSStylesheet.css?v=1" />
+  <!-- Admin-specific layout (same as ConfigAdmin) -->
   <link rel="stylesheet" href="/themes/mss-config-admin.css?v=1" />
 </head>
 <body class="mssVoxAurora">
+  <!-- Top header, same style as ConfigAdmin -->
   <header class="mss-top">
     <div class="mss-top-inner">
-      <div class="mss-row mss-top-row">
+      <div class="mss-row">
         <div class="mss-stack-tight">
           <div class="mss-pill">MSS WIDGET MT</div>
-          <div class="mss-title">Question Help Editor</div>
+          <div class="mss-titlesm">Question Help Editor</div>
         </div>
-        <div class="mss-stack-tight mss-top-meta">
+      </div>
+      <div class="mss-row">
+        <div class="mss-stack-tight" style="text-align:right;">
           <div id="slugDisplay" class="mss-muted">slug=…</div>
-          <div id="meta" class="mss-meta"></div>
+          <div id="meta" class="mss-meta">Source: — • Loading…</div>
         </div>
       </div>
     </div>
   </header>
 
-  <main class="mss-main">
-    <div class="mss-main-inner">
-      <div class="mss-admin-layout">
-        <div class="mss-config-column">
-          <section class="mss-card">
-            <h2 class="mss-card-title">Select question</h2>
-            <div class="mss-field-group">
-              <label for="questionSelect" class="mss-label">
-                Question
-              </label>
-              <select id="questionSelect" class="mss-input">
-                <option value="">Loading questions…</option>
+  <!-- MAIN: single column -->
+  <main class="mss-shell">
+    <div class="mss-layout" style="grid-template-columns: 1fr;">
+      <section aria-label="Question help editor">
+
+        <!-- Select Question -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">Select question</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field">
+              <label class="mss-label" for="questionSelect">Question</label>
+              <select id="questionSelect" class="mss-select">
+                <option>Loading questions…</option>
               </select>
-              <p class="mss-help-text">
+              <div class="mss-help">
                 Choose a question to edit its MaxHelp / MinHelp text.
-              </p>
+              </div>
             </div>
-          </section>
+          </div>
+        </details>
 
-          <section class="mss-card">
-            <h2 class="mss-card-title">Prompt for AI</h2>
-            <div class="mss-field-group">
-              <label for="qhPrompt" class="mss-label">Prompt</label>
-              <textarea
-                id="qhPrompt"
-                class="mss-input"
-                rows="8"
-              ></textarea>
-              <p class="mss-help-text">
-                Copy this prompt into ChatGPT or your favourite AI app. Then paste
-                the long answer into MaxHelp and the summary into MinHelp.
-              </p>
+        <!-- Prompt for AI -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">Prompt for AI</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field">
+              <label class="mss-label" for="promptTextarea">Prompt</label>
+              <textarea id="promptTextarea" class="mss-textarea"></textarea>
+              <div class="mss-help">
+                Copy this prompt into ChatGPT or your favourite AI app.
+                Paste the long passage into MaxHelp and the bullet points into MinHelp.
+              </div>
             </div>
-          </section>
+          </div>
+        </details>
 
-          <section class="mss-card">
-            <h2 class="mss-card-title">MaxHelp – reading passage</h2>
-            <div class="mss-field-group">
-              <label for="qhMaxHelp" class="mss-label">
+        <!-- MaxHelp -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">MaxHelp — reading passage</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field">
+              <label class="mss-label" for="maxHelpTextarea">
                 MaxHelp (≈ 60 seconds of reading)
               </label>
-              <textarea
-                id="qhMaxHelp"
-                class="mss-input"
-                rows="10"
-              ></textarea>
+              <textarea id="maxHelpTextarea" class="mss-textarea"></textarea>
             </div>
-          </section>
+          </div>
+        </details>
 
-          <section class="mss-card">
-            <h2 class="mss-card-title">MinHelp – point summary</h2>
-            <div class="mss-field-group">
-              <label for="qhMinHelp" class="mss-label">
-                MinHelp (point-by-point summary)
+        <!-- MinHelp -->
+        <details class="mss-section" open>
+          <summary class="mss-section-header">
+            <span class="mss-pill">MinHelp — summary</span>
+          </summary>
+
+          <div class="mss-section-body">
+            <div class="mss-field">
+              <label class="mss-label" for="minHelpTextarea">
+                MinHelp (bullet summary)
               </label>
-              <textarea
-                id="qhMinHelp"
-                class="mss-input"
-                rows="8"
-              ></textarea>
+              <textarea id="minHelpTextarea" class="mss-textarea"></textarea>
             </div>
-          </section>
+          </div>
+        </details>
 
-          <section class="mss-card">
-            <h2 class="mss-card-title">Actions</h2>
-            <div class="mss-actions-row" style="margin-top:0.75rem;">
-              <button id="saveBtn" class="mss-btn mss-btn-primary">
-                Save help
-              </button>
-              <button id="reloadBtn" class="mss-btn mss-btn-outline">
-                Reload from server
-              </button>
-            </div>
-            <p id="status" class="mss-help-text" style="margin-top:0.75rem;">
-              Ready
-            </p>
-          </section>
+        <!-- Actions -->
+        <div class="mss-admin-actions" style="margin-top: 20px;">
+          <button id="saveBtn" class="mss-btn mss-btn-primary">
+            Save help
+          </button>
+          <button id="reloadBtn" class="mss-btn mss-btn-outline">
+            Reload from server
+          </button>
+          <span id="status" class="mss-help-text" style="margin-left: 10px;">
+            Ready
+          </span>
         </div>
 
-        <!-- Right column could be future preview; for now, empty -->
-        <div class="mss-preview-column">
-          <section class="mss-card">
+        <!-- Notes Block -->
+        <aside class="mss-card" style="margin-top: 24px;">
+          <div class="mss-card-body">
             <h2 class="mss-card-title">Notes</h2>
-            <p class="mss-help-text">
-              This page lets you attach MaxHelp / MinHelp content to each
-              question for the current school (by slug).
+            <p class="mss-card-subtitle">
+              Attach MaxHelp / MinHelp content to each question for the selected school (by slug).
             </p>
-          </section>
-        </div>
-      </div>
+
+            <p class="mss-help-text" style="margin-top:10px;">
+              • <b>Prompt</b>: Instructions to generate the help text.<br />
+              • <b>MaxHelp</b>: A ~60-second reading passage.<br />
+              • <b>MinHelp</b>: Short bullet summary.<br />
+              • Help is optional — but recommended for every question.
+            </p>
+          </div>
+        </aside>
+      </section>
     </div>
   </main>
 

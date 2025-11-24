@@ -1,0 +1,333 @@
+<!DOCTYPE html Nov 19 AM>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Dashboard 2 – CEFR Overview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/themes/MSSStylesheet.css">
+<link rel="stylesheet" href="/themes/Dashboard.css">
+  
+</head>
+<body>
+  <div class="dash-root">
+    <header class="dash-header">
+      <div>
+        <div class="dash-title">Your latest MSS Vox results</div>
+        <div class="dash-subtitle">
+          Interactive gauge driven by CEFR level and overall MSS score.
+        </div>
+      </div>
+      <div class="dash-meta">
+        <div>
+          Session:
+          <span id="sessionIdLabel">–</span>
+        </div>
+        <div>
+          <span>Source: MSS API</span>
+          <span class="pill">
+            <span class="pill-dot"></span>
+            Live
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="dash-grid">
+        <!-- Gauge -->
+        <div>
+          <div class="viz-shell">
+            <div class="viz-caption">
+              CEFR OVERVIEW
+            </div>
+            <iframe
+              id="cefrGauge"
+              class="viz-frame"
+              src="mocks/mss-gauge1.html?preview=1"
+              title="CEFR gauge"
+            ></iframe>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div>
+          <div class="summary-card">
+            <div class="summary-row">
+              <div class="summary-label">Overall MSS score</div>
+              <div class="summary-value" id="overallScore">–.–</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-label">CEFR level</div>
+              <div class="summary-value" id="cefrLevel">–</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-label">TOEFL / IELTS / PTE</div>
+              <div class="summary-value" id="testEquivalencies">–</div>
+            </div>
+            <div class="summary-sub" id="lengthInfo">
+              Length: –
+            </div>
+            <div class="summary-badges" id="summaryBadges">
+              <span class="badge">Waiting for results…</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Transcript panel -->
+      <section class="panel" style="margin-top: 18px;">
+        <div class="panel-header">
+          <div class="panel-title">Transcript</div>
+          <div class="panel-tools" id="wpmInfo">–</div>
+        </div>
+        <div id="transcriptBody" class="panel-body empty">
+          Transcript will appear here once your answer has been processed.
+        </div>
+      </section>
+
+      <!-- Notes / teacher comment -->
+      <section class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Teacher notes / meta</div>
+        </div>
+        <div id="notesBody" class="panel-body empty">
+          Any teacher notes or meta information returned by MSS will appear
+          here.
+        </div>
+      </section>
+
+      <!-- Debug JSON -->
+      <section class="debug-panel">
+        <div
+          id="debugToggle"
+          class="debug-toggle"
+          role="button"
+          aria-expanded="false"
+        >
+          <span class="chevron">▶</span>
+          <span>Debug: MSS JSON payload (hidden from students)</span>
+        </div>
+        <div id="debugContent" class="debug-content" aria-hidden="true"></div>
+        <div style="margin-top:4px;">
+          Values shown here come from the MSS API response. The full JSON is logged separately for reporting.
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    let latestResults = null;
+
+    function setText(id, value, emptyLabel) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent =
+        value == null || value === ""
+          ? emptyLabel != null
+            ? emptyLabel
+            : "–"
+          : value;
+    }
+
+    function fmtScore(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "–.–";
+      return n.toFixed(2);
+    }
+
+function cleanHtmlToText(html) {
+  if (!html) return "";
+  // Normalise a few common line-break tags to real newlines
+  let src = String(html)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n");
+
+  const tmp = document.createElement("div");
+  tmp.innerHTML = src;
+
+  let text = tmp.textContent || tmp.innerText || "";
+  // Collapse crazy spacing from inline spans etc.
+  text = text.replace(/\s+\n/g, "\n").replace(/\n\s+/g, "\n");
+  text = text.replace(/[ \t\u2000-\u200B]+/g, " "); // thin spaces → normal space
+
+  return text.trim();
+}
+    function buildBadges(r) {
+      const container = document.getElementById("summaryBadges");
+      if (!container) return;
+      container.innerHTML = "";
+
+      if (!r) {
+        const span = document.createElement("span");
+        span.className = "badge";
+        span.textContent = "Waiting for results…";
+        container.appendChild(span);
+        return;
+      }
+
+      const add = (label, kind) => {
+        const span = document.createElement("span");
+        span.className = "badge" + (kind ? " " + kind : "");
+        span.textContent = label;
+        container.appendChild(span);
+      };
+
+      if (r.toefl) add("TOEFL " + r.toefl, "good");
+      if (r.ielts) add("IELTS " + r.ielts, "good");
+      if (r.pte) add("PTE " + r.pte, "good");
+      if (r.cefr) add("CEFR " + r.cefr, "good");
+
+      if (r.wpm != null) {
+        const wpm = Number(r.wpm);
+        if (wpm < 80) add("Try speaking a bit faster", "warn");
+        else if (wpm > 180) add("Try slowing down slightly", "warn");
+        else add("Nice pacing", "good");
+      }
+
+      if (!container.children.length) {
+        add("No standardized score mapping available", "");
+      }
+    }
+
+    function updateGauge(r) {
+      const iframe = document.getElementById("cefrGauge");
+      if (!iframe || !iframe.contentWindow) return;
+
+      const cefr = r && r.cefr ? r.cefr : null;
+      const score =
+        r && r.overall != null
+          ? r.overall
+          : r && r.score != null
+          ? r.score
+          : null;
+
+      iframe.contentWindow.postMessage(
+        {
+          type: "mss:gauge:update",
+          cefr,
+          score,
+        },
+        "*"
+      );
+    }
+
+    function applyResults(r) {
+      latestResults = r;
+
+      const sessionId = r.sessionId || r.session || "–";
+      setText("sessionIdLabel", sessionId);
+
+      const overall =
+        r.overall != null
+          ? r.overall
+          : r.score != null
+          ? r.score
+          : null;
+      setText("overallScore", fmtScore(overall));
+
+      setText("cefrLevel", r.cefr || "–");
+
+      const eqParts = [];
+      if (r.toefl) eqParts.push("TOEFL " + r.toefl);
+      if (r.ielts) eqParts.push("IELTS " + r.ielts);
+      if (r.pte) eqParts.push("PTE " + r.pte);
+      setText("testEquivalencies", eqParts.join(" · ") || "–");
+
+      if (r.lengthSec != null) {
+        const sec = Math.round(Number(r.lengthSec) || 0);
+        setText("lengthInfo", "Length: " + sec + "s");
+      } else {
+        setText("lengthInfo", "Length: –");
+      }
+
+      if (r.wpm != null) {
+        const n = Math.round(Number(r.wpm) || 0);
+        setText("wpmInfo", n + " words per minute");
+      } else {
+        setText("wpmInfo", "–");
+      }
+      buildBadges(r);
+
+      const transcriptEl = document.getElementById("transcriptBody");
+if (transcriptEl) {
+  const raw = r.transcript || "";
+  const cleaned = cleanHtmlToText(raw);
+
+  if (cleaned) {
+    transcriptEl.textContent = cleaned;
+    transcriptEl.classList.remove("empty");
+  } else {
+    transcriptEl.textContent =
+      "Transcript not available for this answer.";
+    transcriptEl.classList.add("empty");
+  }
+}
+
+      const notesEl = document.getElementById("notesBody");
+      if (notesEl) {
+        const note = r.note || r.teacher || "";
+        if (note && String(note).trim()) {
+          notesEl.textContent = String(note).trim();
+          notesEl.classList.remove("empty");
+        } else {
+          notesEl.textContent =
+            "No teacher notes were returned for this answer.";
+          notesEl.classList.add("empty");
+        }
+      }
+
+      // Debug JSON
+      const debugEl = document.getElementById("debugContent");
+      if (debugEl) {
+        debugEl.textContent = JSON.stringify(r, null, 2);
+      }
+
+      // Update CEFR gauge iframe
+      updateGauge(r);
+    }
+
+    // Debug toggle
+    (function setupDebugToggle() {
+      const toggle = document.getElementById("debugToggle");
+      const content = document.getElementById("debugContent");
+      if (!toggle || !content) return;
+
+      toggle.addEventListener("click", () => {
+        const isOpen = content.classList.toggle("show");
+        toggle.classList.toggle("open", isOpen);
+        toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        content.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      });
+    })();
+
+    // Listen for results from parent (Widget)
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type !== "mss-results") return;
+      const payload = data.payload || {};
+      applyResults(payload);
+    });
+
+    // Preview mode when opened directly with ?preview=1
+    (function initPreview() {
+      const params = new URLSearchParams(window.location.search || "");
+      if (params.get("preview") === "1") {
+        const sample = {
+          sessionId: "demo-preview",
+          overall: 3.15,
+          cefr: "B2",
+          toefl: 95,
+          ielts: 7.0,
+          pte: 65,
+          lengthSec: 43,
+          wpm: 140,
+          transcript:
+            "This is a sample transcript. When you record an answer in the widget, your words will be shown here so you can review your performance.",
+          note: "Preview mode only – these values are not stored.",
+        };
+        applyResults(sample);
+      }
+    })();
+  </script>
+</body>
+</html>

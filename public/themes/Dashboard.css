@@ -1,0 +1,618 @@
+/* /themes/Dashboard.css — shared styles for MSS dashboards
+   Created Nov 23 2025
+*/
+
+/* ---------- Tokens / base ---------- */
+:root {
+  --dash-bg: var(--mss-bg, #f3f4f6);
+  --dash-surface: var(--mss-surface, #ffffff);
+  --dash-border: var(--mss-border, #e5e7eb);
+  --dash-text: var(--mss-text, #111827);
+  --dash-muted: var(--mss-muted, #6b7280);
+  --dash-primary: var(--mss-primary, #1d4ed8);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Optional: if you want a shared body class across dashboards,
+   set <body class="mss-dashboard"> and these will apply.
+*/
+body.mss-dashboard {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at top, #e5edff, var(--dash-bg));
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: var(--dash-text);
+  padding: 16px;
+}
+
+/* ===================================================================
+   DASHBOARD 4 – AFTER-DASHBOARD EXPERIENCE
+   (Was inline <style> in Dashboard4.html)
+   =================================================================== */
+
+body.dash4-page {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at top, #e5edff, var(--dash-bg));
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: var(--dash-text);
+  padding: 16px;
+}
+
+.dash4-shell {
+  width: 100%;
+  max-width: 640px;
+  background: var(--dash-surface);
+  border-radius: 24px;
+  border: 1px solid var(--dash-border);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  padding: 24px 24px 20px;
+}
+
+.dash4-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.dash4-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.dash4-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--dash-muted);
+}
+
+.dash4-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dash4-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr);
+  gap: 24px;
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .dash4-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.dash4-score-card {
+  text-align: center;
+  padding-right: 8px;
+}
+
+.dash4-score-label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--dash-muted);
+  margin-bottom: 8px;
+}
+
+.dash4-score-circle {
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 10px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 20%, #ffffff, #dbeafe);
+  border: 1px solid #bfdbfe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dash4-score-letter {
+  font-size: 64px;
+  font-weight: 700;
+  color: var(--dash-primary);
+}
+
+.dash4-score-desc {
+  font-size: 13px;
+  color: var(--dash-muted);
+}
+
+.dash4-question {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--dash-muted);
+}
+
+.dash4-question strong {
+  color: var(--dash-text);
+}
+
+.dash4-cta {
+  border-left: 1px solid var(--dash-border);
+  padding-left: 16px;
+}
+
+@media (max-width: 720px) {
+  .dash4-cta {
+    border-left: none;
+    border-top: 1px solid var(--dash-border);
+    padding-left: 0;
+    padding-top: 16px;
+    margin-top: 4px;
+  }
+}
+
+.dash4-cta-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dash4-cta-text {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--dash-muted);
+  white-space: pre-line;
+}
+
+.dash4-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.dash4-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--dash-primary);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.35);
+}
+
+.dash4-primary-btn[disabled] {
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+.dash4-secondary-link {
+  font-size: 13px;
+  color: var(--dash-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.dash4-cta-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dash-muted);
+}
+
+.dash4-footer {
+  margin-top: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--dash-muted);
+}
+
+.dash4-error {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+/* ===================================================================
+   DASHBOARD 1 / 2 / 3 / _TEMPLATE
+   Paste their existing inline <style> blocks into the sections
+   below, preserving the selectors. This keeps everything in one
+   place and lets all dashboards share tokens above.
+   =================================================================== */
+
+/* Dashboard1.html styles
+-------------------------------------------------- */
+/* (paste existing Dashboard1 <style> content here) */
+
+
+/* Dashboard2.html styles
+-------------------------------------------------- */
+/* (paste existing Dashboard2 <style> content here) */
+
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --edge: #e5e7eb;
+      --edge-subtle: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --heading: #0f172a;
+      --accent: #1a5cff;
+      --accent-soft: #eff6ff;
+      --good: #16a34a;
+      --warn: #f97316;
+      --bad: #b91c1c;
+      --pill-bg: #eef2ff;
+      --pill-text: #3730a3;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow-x: hidden; /* 👈 no horizontal scroll */
+      font-family: -apple-system, system-ui, "Segoe UI", Roboto, Helvetica,
+        Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .dash-root {
+      width: 100%;
+      max-width: 980px;           /* 👈 cap width */
+      margin: 12px auto 20px;
+      padding: 0 12px 20px;
+    }
+
+    .dash-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .dash-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--heading);
+    }
+
+    .dash-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .dash-meta {
+      text-align: right;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--pill-bg);
+      color: var(--pill-text);
+      font-size: 11px;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+
+    .pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--pill-text);
+    }
+
+    .dash-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 800px) {
+      .dash-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .dash-meta {
+        text-align: left;
+      }
+    }
+
+    /* Gauge card is provided by mocks/mss-gauge1.html in an iframe */
+    .viz-shell {
+      border-radius: 18px;
+      background: var(--card);
+      border: 1px solid var(--edge);
+      padding: 14px 16px 18px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    .viz-caption {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .viz-frame {
+      width: 100%;
+      border: 0;
+      height: 260px;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    /* Score summary card */
+    .summary-card {
+      border-radius: 18px;
+      background: var(--card);
+      border: 1px solid var(--edge);
+      padding: 14px 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 13px;
+    }
+
+    .summary-label {
+      color: var(--muted);
+    }
+
+    .summary-value {
+      font-weight: 600;
+      color: var(--heading);
+    }
+
+    .summary-sub {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .summary-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .badge {
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 10px;
+      border: 1px solid var(--edge-subtle);
+      background: #f9fafb;
+      color: var(--muted);
+    }
+
+    .badge.good {
+      border-color: rgba(22, 163, 74, 0.25);
+      background: #ecfdf3;
+      color: #166534;
+    }
+
+    .badge.warn {
+      border-color: rgba(245, 158, 11, 0.3);
+      background: #fffbeb;
+      color: #92400e;
+    }
+
+    .badge.bad {
+      border-color: rgba(248, 113, 113, 0.4);
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+
+    /* Transcript + notes */
+    .panel {
+      margin-top: 16px;
+      border-radius: 16px;
+      background: var(--card);
+      border: 1px solid var(--edge);
+      padding: 12px 14px 10px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--heading);
+    }
+
+    .panel-tools {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .panel-body {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .panel-body.empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    /* Debug JSON */
+    .debug-panel {
+      margin-top: 12px;
+      border-radius: 14px;
+      background: #f9fafb;
+      border: 1px dashed var(--edge);
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .debug-toggle {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      user-select: none;
+    }
+
+    .debug-toggle span.chevron {
+      font-size: 10px;
+      transition: transform 0.15s ease-out;
+    }
+
+    .debug-toggle.open span.chevron {
+      transform: rotate(90deg);
+    }
+
+    .debug-content {
+      margin-top: 6px;
+      font-family: var(--mono);
+      white-space: pre-wrap;
+      max-height: 220px;
+      overflow: auto;
+      display: none;
+      background: #111827;
+      color: #e5e7eb;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #030712;
+    }
+
+    .debug-content.show {
+      display: block;
+    }
+
+/* Dashboard3.html styles
+-------------------------------------------------- */
+/* (paste existing Dashboard3 <style> content here) */
+ 
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --edge: #e5e7eb;
+      --heading: #0f172a;
+      --muted: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow-x: hidden; /* no sideways scroll */
+      font-family: -apple-system, system-ui, "Segoe UI", Roboto, Helvetica,
+        Arial, sans-serif;
+      background: var(--bg);
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .dash-root {
+      width: 100%;
+      max-width: 980px;
+      margin: 12px auto 24px;
+      padding: 0 12px;
+    }
+
+    .dash-header {
+      margin-bottom: 8px;
+    }
+
+    .dash-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--heading);
+    }
+
+    .dash-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .gauge-shell {
+      border-radius: 18px;
+      background: var(--card);
+      border: 1px solid var(--edge);
+      padding: 10px 0 12px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }
+
+    .gauge-frame {
+      width: 100%;
+      border: 0;
+      height: 330px; /* tuned for gauge-mock */
+      display: block;
+    }
+
+    @media (max-width: 700px) {
+      .gauge-frame {
+        height: 360px;
+      }
+    }
+
+
+/* Dashboard_template.html styles
+-------------------------------------------------- */
+/* (paste existing Dashboard_template <style> content here) */

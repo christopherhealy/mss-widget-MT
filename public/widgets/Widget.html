@@ -1,0 +1,206 @@
+<! -- Version 1.0 Nov 19 2025 -->
+<!DOCTYPE html>
+<!-- MSS Speaking Widget – Baseline Nov 18 PM -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Speaking Widget</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Main visual theme (colors, typography, layout) -->
+  <link
+    id="themeCss"
+    rel="stylesheet"
+    href="../themes/MSSStylesheet.css"
+  />
+
+  <!-- Shared widget chrome (help modal, dashboard, submit spinner) -->
+  <link
+    rel="stylesheet"
+    href="../themes/MSSWidgetCore.css"
+  />
+</head>
+<body>
+  <!-- ROOT ------------------------------------------------------------- -->
+  <div id="mss-widget-root" data-school-slug="">
+    <!-- HEADER / BRANDING --------------------------------------------- -->
+    <header class="mss-header">
+      <div class="mss-header-left">
+        <div id="logoWrap" class="mss-logo-wrap">
+          <!-- ID matches widget-core.js (brandLogo) -->
+          <img id="brandLogo" alt="Brand logo" class="mss-logo" />
+        </div>
+        <div class="mss-title-block">
+          <div id="brand" class="mss-brand">
+            Practice TOEFL® Speaking with MSS Vox
+          </div>
+          <div id="powered" class="mss-powered">
+            Instant scoring powered by MSS Vox
+          </div>
+        </div>
+      </div>
+
+      <div class="mss-header-right">
+        <span id="counter" class="mss-counter">QUESTION 1 OF 1</span>
+      </div>
+    </header>
+
+    <!-- QUESTION TEXT -------------------------------------------------- -->
+    <main class="mss-main">
+      <section class="mss-question-card">
+        <p id="question" class="mss-question-text">
+          Loading question…
+        </p>
+      </section>
+
+      <!-- CONTROLS ---------------------------------------------------- -->
+      <section class="mss-controls">
+        <div class="mss-nav-row">
+          <button id="prevBtn" type="button" class="mss-btn mss-btn-ghost">
+            Previous
+          </button>
+          <button id="nextBtn" type="button" class="mss-btn mss-btn-ghost">
+            Next
+          </button>
+        </div>
+
+        <div class="mss-record-row">
+          <button id="recBtn" type="button" class="mss-btn mss-btn-primary">
+            Record your response
+          </button>
+          <button id="stopBtn" type="button" class="mss-btn mss-btn-secondary">
+            Stop
+          </button>
+        </div>
+
+        <div class="mss-upload-row">
+          <label class="mss-upload-label">
+            <span>Choose an audio file</span>
+            <input
+              id="fileInput"
+              type="file"
+              accept="audio/*"
+              class="mss-file-input"
+            />
+          </label>
+          <button
+            id="clearFileBtn"
+            type="button"
+            class="mss-btn mss-btn-ghost mss-clear-file"
+          >
+            Clear file
+          </button>
+          <span id="fileBadge" class="mss-file-badge"></span>
+        </div>
+
+        <div class="mss-timer-row">
+          <div class="mss-rec-indicator">
+            <span id="recDot" class="mss-rec-dot"></span>
+            <span id="recState" class="mss-rec-state">Not recording</span>
+          </div>
+          <div id="timer" class="mss-timer"></div>
+        </div>
+
+        <div id="playerWrap" class="mss-player-wrap" style="display:none;">
+          <audio id="player" controls class="mss-player"></audio>
+          <div id="lengthHint" class="mss-length-hint"></div>
+        </div>
+
+        <div class="mss-submit-row">
+          <button
+            id="submitBtn"
+            type="button"
+            class="mss-btn mss-btn-primary"
+            disabled
+          >
+            Submit for scoring
+          </button>
+        </div>
+      </section>
+
+      <!-- HELP SLIDER + BUTTON ---------------------------------------- -->
+      <section class="mss-help-row">
+        <div class="mss-help-left">
+          <span class="mss-help-label-prefix">Help:</span>
+          <input
+            id="helpSlider"
+            type="range"
+            min="0"
+            max="2"
+            step="1"
+            value="0"
+            class="mss-help-slider"
+          />
+          <span id="helpLabel" class="mss-help-label">no help</span>
+        </div>
+        <div class="mss-help-right">
+          <button
+            id="helpBtn"
+            type="button"
+            class="mss-btn mss-btn-ghost mss-help-btn"
+          >
+            Question Help
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- STATUS LINE ---------------------------------------------------- -->
+    <footer class="mss-footer">
+      <div id="status" class="mss-status">
+        Ready to record when you are.
+      </div>
+    </footer>
+  </div>
+
+  <!-- SUBMIT PROGRESS ------------------------------------------------- -->
+  <div id="submitProgress" class="mss-submit-progress mss-hidden">
+    <div class="mss-progress-bar"></div>
+    <span class="mss-progress-text">Submitting your answer…</span>
+  </div>
+
+  <!-- INLINE DASHBOARD CONTAINER -------------------------------------- -->
+  <div id="dashboardContainer" class="mss-dashboard mss-dashboard-hidden">
+    <div class="mss-dashboard-header">
+      <span class="mss-dashboard-title">Your latest results</span>
+      <button
+        id="dashboardCloseBtn"
+        type="button"
+        class="mss-dashboard-close"
+        aria-label="Close results"
+      >
+        ×
+      </button>
+    </div>
+    <div id="dashboardBody" class="mss-dashboard-body">
+      <!-- iframe is injected here after submit -->
+    </div>
+  </div>
+
+  <!-- SINGLE HELP OVERLAY (used by help-core.js) ---------------------- -->
+  <div id="helpOverlay" class="mss-help-overlay" hidden></div>
+
+  <div id="helpModal" class="mss-help-modal" hidden>
+    <div class="mss-help-card">
+      <div class="mss-help-header">
+        <div id="helpTitle" class="mss-help-title">Question Help</div>
+        <button
+          id="helpCloseBtn"
+          type="button"
+          class="mss-help-close"
+          aria-label="Close help"
+        >
+          ×
+        </button>
+      </div>
+      <div id="helpBody" class="mss-help-body">
+        <!-- help-core.js will inject min/max HTML here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS --------------------------------------------------------- -->
+  <script src="../js/widget-core.js"></script>
+  <script src="../js/help-core.js"></script>
+</body>
+</html>

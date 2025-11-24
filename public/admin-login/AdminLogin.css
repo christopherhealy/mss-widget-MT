@@ -1,0 +1,91 @@
+/* /admin-login/AdminLogin.css — extracted from AdminLogin.html */
+
+/* Centered page shell */
+body {
+  background: #f3f4f6;
+  font-family: -apple-system, Inter, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px;
+  margin: 0;
+}
+
+.admin-login-shell {
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+}
+
+.admin-login-logo {
+  width: 360px;
+  margin: 0 auto 18px auto;
+  display: block;
+}
+
+.admin-login-tagline {
+  color: #6b7280;
+  font-size: 1rem;
+  margin-bottom: 40px;
+}
+
+.admin-login-card {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+  text-align: left;
+}
+
+.admin-login-card h2 {
+  margin-top: 0;
+  margin-bottom: 6px;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.admin-login-card p {
+  margin-top: 0;
+  margin-bottom: 22px;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* Input global style reused */
+.mss-input {
+  width: 100%;
+  margin-top: 6px;
+  margin-bottom: 18px;
+}
+
+/* Jonny Ive button */
+.admin-login-btn {
+  display: inline-block;
+  width: 100%;
+  padding: 10px;
+  background: var(--mss-primary, #1d4ed8);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.2s ease;
+}
+
+.admin-login-btn:hover {
+  opacity: 0.88;
+}
+
+/* Footer */
+footer {
+  margin-top: 32px;
+  font-size: 0.8rem;
+  color: #6b7280;
+}

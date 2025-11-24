@@ -1,0 +1,228 @@
+/* ================================================================
+   MSSWidgetCore.css
+   Shared widget chrome (help modal, dashboard, submit progress)
+   For: all MSS Speaking Widgets (Widget.html, WidgetMin, WidgetMax, etc.)
+   Version 1.0 – Nov 19 2025
+   ================================================================ */
+
+/* ------------------------------------------------------
+   Help panel width alignment with widget card
+   ------------------------------------------------------ */
+
+#helpPanel,
+.mss-help-panel,
+.help-panel {
+  max-width: 980px !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box !important;
+}
+
+#helpRoot,
+.mss-help-root {
+  display: flex !important;
+  justify-content: center !important;
+}
+
+#helpRoot > #helpPanel,
+.mss-help-root > .mss-help-panel,
+.mss-help-root > .help-panel {
+  max-width: 980px !important;
+  width: 100% !important;
+}
+
+/* ------------------------------------------------------
+   MSS Help Modal – widget-aligned styles
+   ------------------------------------------------------ */
+
+#helpOverlay[hidden],
+#helpModal[hidden],
+[hidden] {
+  display: none !important;
+}
+
+#helpOverlay.mss-help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(15, 23, 42, 0.30);
+  backdrop-filter: blur(2px);
+}
+
+/* Centered modal, same width as widget (980px max) */
+#helpModal.mss-help-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+
+  width: 100%;
+  max-width: 980px;
+  max-height: 80vh;
+
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.mss-help-card {
+  width: 100%;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.22);
+  padding: 18px 22px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mss-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+
+.mss-help-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: #111827;
+}
+
+.mss-help-close {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #4b5563;
+}
+
+.mss-help-close:hover {
+  background: #e5e7eb;
+}
+
+.mss-help-body {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #111827;
+  overflow-y: auto;
+  max-height: calc(80vh - 60px);
+}
+
+/* ------------------------------------------------------
+   Dashboard + Submit Progress
+   ------------------------------------------------------ */
+
+.mss-dashboard {
+  margin-top: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--mss-border, #e5e7eb);
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.mss-dashboard-hidden,
+.mss-dashboard-collapsed {
+  display: none;
+}
+
+.mss-dashboard-visible,
+.mss-dashboard-expanded {
+  display: block;
+}
+
+.mss-dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--mss-border-subtle, #e5e7eb);
+  font-size: 14px;
+  color: #111827;
+}
+
+.mss-dashboard-title {
+  font-weight: 600;
+}
+
+.mss-dashboard-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #6b7280;
+}
+
+.mss-dashboard-close:hover {
+  background: #f3f4f6;
+}
+
+.mss-dashboard-body {
+  height: 420px;
+  max-height: 420px;
+  overflow: hidden;
+}
+
+.mss-dashboard-body iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.mss-dashboard iframe {
+  width: 100%;
+  min-height: 360px;
+  border: 0;
+}
+
+/* Submit progress row under widget */
+.mss-submit-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.mss-submit-progress.mss-hidden {
+  display: none;
+}
+
+.mss-progress-bar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid #dbe1ea;
+  border-top-color: #1a5cff;
+  animation: mss-spin 0.8s linear infinite;
+}
+
+@keyframes mss-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------
+   Small layout tweaks
+   ------------------------------------------------------ */
+
+.mss-btn {
+  text-align: center;
+  justify-content: center;
+}

@@ -1,0 +1,548 @@
+/* /themes/SchoolPortal.css
+   Portal-only layout overrides
+   Loaded AFTER MSSStylesheet.css on SchoolPortal.html
+*/
+
+/* On the School Portal, we want the right column (Activity Snapshot)
+   to stack UNDER the main Widget/Reports area, not sit side-by-side.
+   MSSStylesheet.css defines .mss-layout as a 2-column grid by default.
+   We override that here to 1 column.
+*/
+
+.mss-layout {
+  /* Force single column layout on this page only */
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* Optional: a bit more vertical breathing room between stacked cards */
+.mss-layout > .mss-card + .mss-card {
+  margin-top: 16px;
+}
+
+/* ---------- Prompt overlay ---------- */
+
+.mss-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  z-index: 9997;
+}
+
+/* Global [hidden] rule in MSSStylesheet will hide it when needed */
+
+/* ---------- Prompt modal ---------- */
+
+.mss-prompt-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, 94vw);
+  max-height: 85vh;
+  background: var(--mss-surface, #ffffff);
+  border-radius: 16px;
+  border: 1px solid var(--mss-border, #e5e7eb);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+  display: flex;
+  flex-direction: column;
+  z-index: 9998;
+}
+
+/* Header */
+
+.mss-prompt-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--mss-border, #e5e7eb);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mss-prompt-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--mss-heading, #0f172a);
+}
+
+.mss-prompt-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--mss-muted, #6b7280);
+}
+
+/* Close button */
+
+.mss-prompt-close {
+  font-size: 18px;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* Body */
+
+.mss-prompt-body {
+  padding: 14px 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--mss-surface-soft, #f9fafb);
+}
+
+.mss-prompt-label {
+  font-size: 13px;
+  color: var(--mss-muted, #6b7280);
+}
+
+.mss-prompt-textarea {
+  resize: vertical;
+  min-height: 220px;
+  max-height: 52vh;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--mss-border, #e5e7eb);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mss-text, #111827);
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+/* Footer */
+
+.mss-prompt-footer {
+  padding: 10px 20px 14px;
+  border-top: 1px solid var(--mss-border, #e5e7eb);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.mss-prompt-status {
+  font-size: 12px;
+  color: var(--mss-muted, #6b7280);
+}
+
+/* Small tweak for buttons inside modal */
+.mss-prompt-modal .mss-btn-primary {
+  padding-inline: 16px;
+  font-size: 13px;
+}
+
+ body {
+      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      background: var(--mss-bg, #f3f4f6);
+      color: var(--mss-text, #111827);
+    }
+
+    .portal-shell {
+      max-width: 1200px;
+      margin: 24px auto 40px;
+      padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .portal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .portal-title {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: var(--mss-heading, #0f172a);
+    }
+
+    .portal-subtitle {
+      font-size: 0.9rem;
+      color: var(--mss-muted, #6b7280);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      border: 1px solid var(--mss-border-subtle, #e5e7eb);
+      background: var(--mss-surface-soft, #f9fafb);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 960px) {
+      .grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .card {
+      background: var(--mss-surface, #ffffff);
+      border-radius: 16px;
+      border: 1px solid var(--mss-border, #e5e7eb);
+      padding: 16px 18px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      border: 1px solid var(--mss-border-strong, #d1d5db);
+      background: var(--mss-surface-soft, #f9fafb);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      border-color: transparent;
+      background: var(--mss-primary, #1d4ed8);
+      color: white;
+    }
+
+    .btn-danger {
+      border-color: transparent;
+      background: #b91c1c;
+      color: #ffffff;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .widget-frame {
+  margin-top: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--mss-border-subtle, #e5e7eb);
+  overflow: hidden;
+  background: var(--mss-surface, #ffffff);   /* ← LIGHT */
+}
+    .widget-frame iframe {
+      width: 100%;
+      height: 520px;
+      border: none;
+      display: block;
+    }
+
+    .embed-snippet {
+      margin-top: 10px;
+    }
+
+    .embed-snippet-label {
+      font-size: 0.85rem;
+      color: var(--mss-muted, #6b7280);
+      margin-bottom: 4px;
+    }
+
+    .embed-snippet textarea {
+      width: 100%;
+      min-height: 80px;
+      font-size: 0.78rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid var(--mss-border-subtle, #e5e7eb);
+      resize: vertical;
+      background: #f9fafb;
+    }
+
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .stat-pill {
+      flex: 1 1 100px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: var(--mss-surface-soft, #f9fafb);
+      border: 1px solid var(--mss-border-subtle, #e5e7eb);
+      min-width: 120px;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--mss-muted, #6b7280);
+      margin-bottom: 2px;
+    }
+
+    .stat-value {
+      font-size: 0.98rem;
+      font-weight: 600;
+    }
+
+    .timeframe-toggle {
+      display: inline-flex;
+      border-radius: 999px;
+      border: 1px solid var(--mss-border-subtle, #e5e7eb);
+      padding: 2px;
+      background: var(--mss-surface-soft, #f9fafb);
+      gap: 2px;
+    }
+
+    .timeframe-btn {
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.8rem;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .timeframe-btn.active {
+      background: var(--mss-surface, #ffffff);
+      font-weight: 500;
+    }
+
+    .filters-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+
+    .filters-row label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .filters-row input {
+      padding: 4px 6px;
+      border-radius: 8px;
+      border: 1px solid var(--mss-border-subtle, #e5e7eb);
+      font-size: 0.82rem;
+    }
+
+    .tests-table-wrapper {
+      max-height: 320px;
+      overflow: auto;
+      border-radius: 12px;
+      border: 1px solid var(--mss-border-subtle, #e5e7eb);
+      background: var(--mss-surface-soft, #f9fafb);
+    }
+
+    table.tests-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    table.tests-table thead {
+      background: #f3f4f6;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    table.tests-table th,
+    table.tests-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    table.tests-table th {
+      font-weight: 600;
+      color: var(--mss-muted, #6b7280);
+    }
+
+    .muted {
+      color: var(--mss-muted, #6b7280);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      border: 2px solid rgba(15, 23, 42, 0.12);
+      border-top-color: var(--mss-primary, #1d4ed8);
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .portal-tab-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-top: 4px;
+    }
+
+    .widget-preview-tabs {
+      display: inline-flex;
+      gap: 12px;
+    }
+
+    .widget-preview-tab {
+      border-radius: 999px;
+      padding: 6px 16px;
+      font-size: 0.85rem;
+      border: 1px solid var(--mss-border-subtle, #e5e7eb);
+      background: var(--mss-surface-soft, #f9fafb);
+      cursor: pointer;
+    }
+
+    .widget-preview-tab.active {
+      border-color: var(--mss-primary, #1d4ed8);
+      background: var(--mss-surface, #ffffff);
+      font-weight: 500;
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+    }
+
+    .portal-top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Warning modal + hidden helper */
+    .hidden {
+      display: none !important;
+    }
+
+    .portal-warning-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 80;
+    }
+
+    .portal-warning-modal {
+      background: var(--mss-surface, #ffffff);
+      border-radius: 16px;
+      border: 1px solid var(--mss-border, #e5e7eb);
+      padding: 16px 18px;
+      max-width: 360px;
+      width: 100%;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+    }
+
+    .portal-warning-modal .modal-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .portal-warning-modal .modal-message {
+      font-size: 0.9rem;
+      margin-bottom: 14px;
+      color: var(--mss-text, #111827);
+    }
+
+    .portal-warning-modal .modal-btn {
+      display: inline-flex;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: none;
+      background: var(--mss-primary, #1d4ed8);
+      color: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .portal-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.35);
+      z-index: 50;
+    }
+    .portal-modal-backdrop.hidden {
+      display: none;
+    }
+    .portal-modal {
+      background: #ffffff;
+      border-radius: 12px;
+      max-width: 640px;
+      width: 90vw;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.25);
+    }
+    .portal-modal-header,
+    .portal-modal-footer {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .portal-modal-footer {
+      border-top: 1px solid #e5e7eb;
+      border-bottom: none;
+      justify-content: flex-end;
+    }
+    .portal-modal-body {
+      padding: 12px 16px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .portal-modal-close {
+      border: none;
+      background: transparent;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .link-button {
+      border: none;
+      background: none;
+      padding: 0;
+      color: #1d4ed8;
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 13px;
+    }

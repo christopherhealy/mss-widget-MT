@@ -1,0 +1,63 @@
+<!-- /admin-login/AdminLogin.html — WWCD refined, external CSS -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MSS Admin Login</title>
+
+  <!-- Shared global theme -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <!-- Page-specific styling -->
+  <link rel="stylesheet" href="/themes/AdminLogin.css">
+</head>
+
+<body>
+  <div class="admin-login-shell">
+    <img
+      src="/images/MSSLogo.png"
+      alt="MySpeakingScore logo"
+      class="admin-login-logo"
+    />
+
+    <div class="admin-login-tagline">
+      Sign in to manage your widgets, dashboards, and reports.
+    </div>
+
+    <div class="admin-login-card">
+      <h2>Admin Login</h2>
+      <p>Enter your email and password to continue.</p>
+
+      <form id="admin-login-form">
+        <label for="email">Admin email</label>
+        <input
+          id="email"
+          type="email"
+          class="mss-input"
+          placeholder="you@example.com"
+          autocomplete="username"
+          required
+        />
+
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          class="mss-input"
+          placeholder="••••••••"
+          required
+        />
+
+        <button type="submit" class="admin-login-btn">Sign in</button>
+      </form>
+    </div>
+
+    <footer>
+      © 2025 MySpeakingScore. All rights reserved.
+    </footer>
+  </div>
+
+  <script src="/admin-login/AdminLogin.js"></script>
+</body>
+</html>

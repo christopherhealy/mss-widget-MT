@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS CEFR Gauge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f9fafb;
+      --card:#ffffff;
+      --edge:#e5e7eb;
+      --muted:#6b7280;
+      --text:#111827;
+      --accent:#0f766e;
+      --accent-soft:#ecfdf5;
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      padding:0;
+      height:100%;
+      font-family:-apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      background:transparent;
+      color:var(--text);
+    }
+    body{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .gauge-card{
+      width:100%;
+      height:100%;
+      max-width:420px;
+      max-height:260px;
+      margin:auto;
+      background:var(--card);
+      border-radius:18px;
+      border:1px solid var(--edge);
+      box-shadow:0 12px 30px rgba(15,23,42,0.08);
+      padding:16px 18px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+    }
+    .gauge-title{
+      font-size:13px;
+      font-weight:600;
+      color:var(--muted);
+      letter-spacing:0.04em;
+      text-transform:uppercase;
+      margin-bottom:4px;
+    }
+    .gauge-ring-wrap{
+      position:relative;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      margin-top:6px;
+    }
+    .gauge-ring{
+      width:160px;
+      height:160px;
+      border-radius:50%;
+      background:
+        conic-gradient(
+          #22c55e 0deg 60deg,
+          #22c55e 60deg 90deg,
+          #facc15 90deg 150deg,
+          #f97316 150deg 210deg,
+          #ef4444 210deg 270deg,
+          #6b21a8 270deg 360deg
+        );
+      padding:10px;
+      position:relative;
+    }
+    .gauge-inner{
+      position:absolute;
+      inset:18px;
+      border-radius:50%;
+      background:var(--card);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      padding:8px;
+    }
+    .cefr-label{
+      font-size:14px;
+      font-weight:600;
+      letter-spacing:0.08em;
+    }
+    .score-label{
+      font-size:24px;
+      font-weight:700;
+      margin-top:2px;
+    }
+    .score-caption{
+      font-size:11px;
+      color:var(--muted);
+      margin-top:0;
+    }
+    .needle{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
+      transform-origin:50% 50%;
+      transition:transform 0.4s ease-out;
+    }
+    .needle-bar{
+      width:2px;
+      height:50%;
+      background:#111827;
+      border-radius:999px;
+    }
+    .scale{
+      display:flex;
+      justify-content:space-between;
+      margin-top:10px;
+      font-size:11px;
+      color:var(--muted);
+      padding:0 4px;
+    }
+    .scale span{
+      flex:1;
+      text-align:center;
+    }
+    .badge-row{
+      display:flex;
+      justify-content:center;
+      gap:8px;
+      margin-top:8px;
+      flex-wrap:wrap;
+    }
+    .pill{
+      border-radius:999px;
+      padding:4px 10px;
+      font-size:11px;
+      border:1px solid var(--edge);
+      background:var(--accent-soft);
+      color:var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="gauge-card">
+    <div>
+      <div class="gauge-title">CEFR OVERVIEW</div>
+      <div class="gauge-ring-wrap">
+        <div class="gauge-ring">
+          <div id="needle" class="needle">
+            <div class="needle-bar"></div>
+          </div>
+          <div class="gauge-inner">
+            <div id="cefrLabel" class="cefr-label">CEFR –</div>
+            <div id="scoreLabel" class="score-label">–.–</div>
+            <div class="score-caption">Overall MSS score</div>
+          </div>
+        </div>
+      </div>
+      <div class="scale">
+        <span>A1</span><span>A2</span><span>B1</span><span>B2</span><span>C1</span><span>C2</span>
+      </div>
+    </div>
+    <div class="badge-row">
+      <div id="badgeCefr" class="pill">CEFR –</div>
+      <div id="badgeScore" class="pill">Score –.–</div>
+    </div>
+  </div>
+
+  <script>
+    const order = ["A1","A2","B1","B2","C1","C2"];
+
+    function updateGauge(cefr, score){
+      const idx = order.indexOf((cefr || "").toUpperCase());
+      const clampedIdx = idx === -1 ? 2 : idx; // default B1
+      // Map 0..5 -> -135deg .. +135deg
+      const angle = -135 + (270 / (order.length - 1)) * clampedIdx;
+
+      const needle = document.getElementById("needle");
+      if (needle) {
+        needle.style.transform = "rotate(" + angle + "deg)";
+      }
+
+      const cefrLabel = document.getElementById("cefrLabel");
+      const scoreLabel = document.getElementById("scoreLabel");
+      const badgeCefr = document.getElementById("badgeCefr");
+      const badgeScore = document.getElementById("badgeScore");
+
+      if (cefrLabel) cefrLabel.textContent = "CEFR " + (cefr || "–");
+      if (scoreLabel) scoreLabel.textContent =
+        (score != null && !isNaN(score)) ? score.toFixed(2) : "–.–";
+      if (badgeCefr) badgeCefr.textContent = "CEFR " + (cefr || "–");
+      if (badgeScore) badgeScore.textContent =
+        "Score " + ((score != null && !isNaN(score)) ? score.toFixed(2) : "–.–");
+    }
+
+    // Listen for messages from Dashboard2
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type !== "mss:gauge:update") return;
+      updateGauge(data.cefr, data.score);
+    });
+
+    // Preview mode when opened directly
+    (function initPreview(){
+      const params = new URLSearchParams(window.location.search || "");
+      if (params.get("preview") === "1") {
+        updateGauge("B2", 3.15);
+      }
+    })();
+  </script>
+</body>
+</html>
