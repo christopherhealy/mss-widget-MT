@@ -51,10 +51,6 @@ let objectUrl = null;
 const HELP_CACHE = {};
 
 
-// Per-question help cache for WidgetMin + WidgetMax / READMAX
-// questionId -> { min: string, max: string }
-
-
 /* -----------------------------------------------------------------------
    BACKEND BASE (Node / Render)
    ----------------------------------------------------------------------- */
@@ -361,7 +357,8 @@ async function fetchHelpForQuestion(questionId) {
   }
 
   try {
-    const res = await fetch("/api/widget/help", {
+    // 🔁 use API.HELP so Vercel → Render works
+    const res = await fetch(API.HELP, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1538,7 +1535,6 @@ function onSubmitClick() {
     submitUrlConfig: CONFIG?.submitUrl,
   });
 
-
   const fd = new FormData();
 
   // Use the real filename if we have one; fall back to answer.wav
@@ -1640,7 +1636,7 @@ function onSubmitClick() {
 
         const dbPayload = { submission };
 
-                console.log("DB_SUBMIT payload:", dbPayload);
+        console.log("DB_SUBMIT payload:", dbPayload);
 
         fetch(API.DB_SUBMIT, {
           method: "POST",
@@ -1737,7 +1733,8 @@ function onSubmitClick() {
           meta,
         };
 
-        fetch("/log/submission", {
+        // 🔁 use API.CSV_LOG so Vercel → Render works
+        fetch(API.CSV_LOG, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(logPayload),
@@ -1755,7 +1752,7 @@ function onSubmitClick() {
 
       hideSubmitProgress();
 
-          // DASHBOARD
+      // DASHBOARD
       const dashPath = getDashboardPath(body.dashboardUrl);
 
       if (dashPath) {
@@ -1979,11 +1976,14 @@ function safeNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-  $("toggleDebug")?.addEventListener("click", () => {
-    const w = $("debugWrap");
-    if (!w) return;
-    w.style.display = w.style.display === "block" ? "none" : "block";
-  });
+/* -----------------------------------------------------------------------
+   DEBUG TOGGLE
+   ----------------------------------------------------------------------- */
+
+$("toggleDebug")?.addEventListener("click", () => {
+  const w = $("debugWrap");
+  if (!w) return;
+  w.style.display = w.style.display === "block" ? "none" : "block";
 });
 
 // EOF — MSS Widget Core v1.1 (Nov 23 2025 REGEN) – WidgetMin + WidgetMax / READMAX with help/dash metadata
