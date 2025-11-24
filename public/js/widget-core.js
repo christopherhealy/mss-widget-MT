@@ -50,6 +50,62 @@ let objectUrl = null;
 // questionId -> { min: string, max: string }
 const HELP_CACHE = {};
 
+
+// Per-question help cache for WidgetMin + WidgetMax / READMAX
+// questionId -> { min: string, max: string }
+const HELP_CACHE = {};
+
+/* -----------------------------------------------------------------------
+   BACKEND BASE (Node / Render)
+   ----------------------------------------------------------------------- */
+
+// Where are the Node/Render APIs that power /api/widget, /log/submission, etc.?
+//  - Localhost: same origin (http://localhost:3000)
+//  - Render app: same origin (app + API together)
+//  - Vercel static hosting: call Render explicitly
+const BACKEND_BASE = (() => {
+  const h = window.location.hostname || "";
+
+  // Local dev: Express serves both static + APIs
+  if (
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "0.0.0.0" ||
+    h.endsWith(".local")
+  ) {
+    return ""; // same origin
+  }
+
+  // Vercel: static only → talk to Render backend
+  if (h.endsWith(".vercel.app")) {
+    return "https://mss-widget-mt.onrender.com";
+  }
+
+  // Default: assume same-origin (Render app or other Node host)
+  return "";
+})();
+
+/* -----------------------------------------------------------------------
+   API ENDPOINTS
+   ----------------------------------------------------------------------- */
+
+const API = {
+  // Node / Render widget backend
+  BOOTSTRAP: `${BACKEND_BASE}/api/widget`,        // /api/widget/:slug/bootstrap
+  LOG: `${BACKEND_BASE}/api/widget/log`,
+  HELP: `${BACKEND_BASE}/api/widget/help`,
+
+  // JSON-only DB submit (NOT the MSS scoring call)
+  DB_SUBMIT: `${BACKEND_BASE}/api/widget/submit`,
+
+  // CSV / legacy submission logger
+  CSV_LOG: `${BACKEND_BASE}/log/submission`,
+
+  // Fallback for scoring if no api.baseUrl/submitUrl are configured.
+  // This stays as a plain path so local + Render continue to work as before.
+  SUBMIT_FALLBACK: "/api/widget/submit",
+};
+
 // ---------- Help + variant helpers ----------
 
 // 1) Which widget file are we? (Widget, WidgetMin, WidgetMax, etc.)
@@ -122,16 +178,6 @@ function getDashboardPath(bodyDashboardUrl) {
   // 3) Hard-coded default
   return DEFAULT_DASHBOARD_PATH;
 }
-
-/* -----------------------------------------------------------------------
-   API ENDPOINTS
-   ----------------------------------------------------------------------- */
-
-const API = {
-  BOOTSTRAP: "/api/widget",        // /api/widget/:slug/bootstrap
-  SUBMIT_FALLBACK: "/api/widget/submit",
-  LOG: "/api/widget/log",
-};
 
 /* -----------------------------------------------------------------------
    STARTUP
@@ -1492,30 +1538,7 @@ function onSubmitClick() {
     submitUrlConfig: CONFIG?.submitUrl,
   });
 
-<<<<<<< HEAD
-  let wavBlob;
-  try {
-    if (uploadedFile && /^audio\/wav/i.test(uploadedFile.type))
-      wavBlob = uploadedFile;
-    else wavBlob = await transcodeToWav(input);
-  } catch (e) {
-    stopProgress("Failed");
-    setStatus("Could not prepare audio", false);
-    return;
-  }
 
-  const pre = await checkAccess(base, key);
-  if (!pre.ok) {
-    stopProgress("Failed");
-    setStatus(`Access check failed (${pre.status})`, false);
-    return;
-  }
-
-  setStatus("Submitting to MSS…");
-
-  const endpoint = base.replace(/\/+$/, "") + "/api/vox";
-=======
->>>>>>> 4b83126 (QA Test for Andrew Nov 24)
   const fd = new FormData();
 
   // Use the real filename if we have one; fall back to answer.wav
@@ -1617,9 +1640,9 @@ function onSubmitClick() {
 
         const dbPayload = { submission };
 
-        console.log("/api/widget/submit payload:", dbPayload);
+                console.log("DB_SUBMIT payload:", dbPayload);
 
-        fetch("/api/widget/submit", {
+        fetch(API.DB_SUBMIT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(dbPayload),
