@@ -193,12 +193,22 @@ app.post("/api/widget/submit", async (req, res) => {
     // ACCEPT BOTH SHAPES:
     //   A) { slug, question, studentId, mss, ... }
     //   B) { submission: { slug, question, studentId, mss, ... } }
-    const payload =
+        const payload =
       (req.body && (req.body.submission || req.body)) || {};
 
     console.log("Payload keys:", Object.keys(payload));
+    console.log("Query params:", req.query || {});
 
-    const slug = payload.slug;
+    // Accept slug from body *or* query string (for FormData fallback)
+    const slugFromBody =
+      typeof payload.slug === "string" ? payload.slug.trim() : "";
+    const slugFromQuery =
+      req.query && typeof req.query.slug === "string"
+        ? req.query.slug.trim()
+        : "";
+
+    const slug = slugFromBody || slugFromQuery;
+
     if (!slug) {
       return res.status(400).json({
         ok: false,
