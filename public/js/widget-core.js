@@ -1610,7 +1610,7 @@ function onSubmitClick() {
     if (CONFIG.api.secret) headers["X-API-SECRET"] = CONFIG.api.secret;
   }
 
-    fetch(submitUrl, {
+      fetch(submitUrl, {
     method: "POST",
     headers,
     body: fd,
@@ -1641,10 +1641,10 @@ function onSubmitClick() {
       const msg = body.message || "Answer submitted successfully.";
 
       // 🔹 Help + variant metadata at submit time
-      const help_level       = getHelpLevelForSubmit();
-      const help_surface     = getHelpSurface();
-      const widget_variant   = getWidgetVariant();
-      const dashboard_variant= getDashboardVariant();
+      const help_level        = getHelpLevelForSubmit();
+      const help_surface      = getHelpSurface();
+      const widget_variant    = getWidgetVariant();
+      const dashboard_variant = getDashboardVariant();
 
       setStatus(`${msg} (in ${elapsedSec}s)`);
 
@@ -1771,6 +1771,7 @@ function onSubmitClick() {
         error: String(err),
       });
     });
+} // 
 /* -----------------------------------------------------------------------
    TIMERS / RESET
    ----------------------------------------------------------------------- */
