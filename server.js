@@ -603,77 +603,66 @@ const LOG_HEADERS = [
 ];
 
 
-/* ------------------------------------------------------------------
-   Dashboard data – use vw_widget_reports (includes transcript_clean)
-   GET /api/dashboard/submissions?slug=mss-demo&limit=50
-   ------------------------------------------------------------------ */
-// GET /api/dashboard/submissions?slug=mss-demo&submissionId=92
+// ---------------------------------------------------------------------------
+// DASHBOARD SUBMISSIONS
+// Returns recent submissions or a specific submission by ID
+// ---------------------------------------------------------------------------
 app.get("/api/dashboard/submissions", async (req, res) => {
-  const { slug, submissionId } = req.query;
+  const slug = (req.query.slug || "").trim();
+  const submissionId = req.query.submissionId
+    ? Number(req.query.submissionId)
+    : null;
+  const limit = req.query.limit ? Number(req.query.limit) : 50;
 
-  if (!submissionId) {
+  if (!slug) {
     return res.status(400).json({
       ok: false,
-      error: "missing_submissionId",
-      message: "submissionId query parameter is required",
+      error: "missing_slug",
+      message: "Slug is required for dashboard submissions",
     });
   }
 
+  console.log("📥 Dashboard request:", { slug, submissionId, limit });
+
   try {
-    // Base query from the view we just created
-    let sql = "SELECT * FROM vw_widget_reports WHERE id = $1";
-    const params = [submissionId];
-
-    if (slug) {
-      sql += " AND school_slug = $2";
-      params.push(slug);
-    }
-
-    const { rows } = await pool.query(sql, params);
+    // Use your unified view (vw_widget_reports)
+    const rows = await db.any(
+      `
+      SELECT *
+      FROM vw_widget_reports
+      WHERE school_slug = $1
+      ORDER BY submitted_at DESC
+      LIMIT $2
+    `,
+      [slug, limit]
+    );
 
     if (!rows.length) {
-      return res.status(404).json({
-        ok: false,
-        error: "not_found",
-        message: "No submission found for that id (and slug, if provided)",
+      return res.json({
+        ok: true,
+        rows: [],
+        message: "No submissions found for this slug",
       });
     }
 
-    const row = rows[0];
+    // If a specific submissionId is requested, return that only
+    if (submissionId && Number.isFinite(submissionId)) {
+      const match = rows.find((r) => Number(r.id) === submissionId);
+      if (match) {
+        return res.json({ ok: true, rows: [match] });
+      }
+    }
 
-    // Shape this to roughly match what your dashboard expects
-    const payload = {
-      ok: true,
-      submissionId: row.id,
-      slug: row.school_slug,
-      submittedAt: row.submitted_at,
-      question: row.question,
-      studentId: row.student_id,
-      scores: {
-        vox: row.vox_score,
-        toefl: row.mss_toefl ?? row.toefl ?? null,
-        ielts: row.mss_ielts ?? row.ielts ?? null,
-        pte: row.mss_pte ?? row.pte ?? null,
-        cefr: row.mss_cefr ?? row.cefr ?? null,
-        fluency: row.mss_fluency,
-        grammar: row.mss_grammar,
-        pronunciation: row.mss_pron,
-        vocabulary: row.mss_vocab,
-      },
-      transcript: row.transcript_clean || null,
-    };
-
-    return res.json(payload);
+    return res.json({ ok: true, rows });
   } catch (err) {
-    console.error("GET /api/dashboard/submissions error:", err);
+    console.error("❌ Dashboard submissions error:", err);
     return res.status(500).json({
       ok: false,
       error: "server_error",
-      message: "Error loading dashboard submission",
+      message: "Dashboard query failed.",
     });
   }
 });
-
 /* ---------- QUESTION HELP DEFAULT PROMPT ---------- */
 
 const DEFAULT_HELP_PROMPT = `
