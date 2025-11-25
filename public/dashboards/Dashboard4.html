@@ -64,188 +64,212 @@
       <span>CEFR-aligned feedback • 30–60 second practice</span>
     </footer>
   </div>
+<script>
+  (function () {
+    "use strict";
 
-  <script>
-    (function () {
-      "use strict";
+    const $ = (id) => document.getElementById(id);
 
-      const $ = (id) => document.getElementById(id);
+    const cefrLetterEl = $("dash4-cefr-letter");
+    const cefrLabelEl  = $("dash4-cefr-label");
+    const questionEl   = $("dash4-question");
+    const ctaMsgEl     = $("dash4-cta-message");
+    const ctaBtnEl     = $("dash4-cta-button");
+    const ctaHintEl    = $("dash4-cta-hint");
+    const secondaryEl  = $("dash4-secondary");
+    const errorEl      = $("dash4-error");
+    const badgeEl      = $("dash4-badge");
+    const metaEl       = $("dash4-meta");
 
-      const cefrLetterEl = $("dash4-cefr-letter");
-      const cefrLabelEl  = $("dash4-cefr-label");
-      const questionEl   = $("dash4-question");
-      const ctaMsgEl     = $("dash4-cta-message");
-      const ctaBtnEl     = $("dash4-cta-button");
-      const ctaHintEl    = $("dash4-cta-hint");
-      const secondaryEl  = $("dash4-secondary");
-      const errorEl      = $("dash4-error");
-      const badgeEl      = $("dash4-badge");
-      const metaEl       = $("dash4-meta");
+    // ----- query params -----
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get("slug") || "mss-demo";
 
-      const params = new URLSearchParams(window.location.search);
-      const slug = (params.get("slug") || "mss-demo").trim();
-      const subIdParam = params.get("submissionId") || params.get("id");
-      const submissionId = subIdParam ? Number(subIdParam) : null;
+    const submissionIdParam = params.get("submissionId");
+    const submissionId = submissionIdParam ? Number(submissionIdParam) : null;
 
-      if (badgeEl && slug) {
-        badgeEl.textContent = `CEFR snapshot • ${slug}`;
+    console.log("🔎 Dash4 params:", {
+      slug,
+      submissionId,
+      rawSubmissionId: submissionIdParam,
+    });
+
+    if (badgeEl && slug) {
+      badgeEl.textContent = `CEFR snapshot • ${slug}`;
+    }
+
+    function setError(msg) {
+      if (!errorEl) return;
+      errorEl.textContent = msg || "Something went wrong loading your result.";
+      errorEl.style.display = "block";
+    }
+
+    function describeCEFR(cefr) {
+      const map = {
+        A1: "Beginner",
+        A2: "Elementary",
+        B1: "Intermediate",
+        B2: "Upper-intermediate",
+        C1: "Advanced",
+        C2: "Proficiency",
+      };
+      return map[cefr] || "Speaking level";
+    }
+
+    function shortenQuestion(q) {
+      if (!q) return "";
+      const s = String(q).trim().replace(/\s+/g, " ");
+      return s.length > 140 ? s.slice(0, 137) + "…" : s;
+    }
+
+    // Close / secondary action
+    if (secondaryEl) {
+      secondaryEl.addEventListener("click", () => {
+        if (window.opener) {
+          window.close();
+        } else if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          window.location.href = "/";
+        }
+      });
+    }
+
+    // If for some reason we don't have submissionId, bail early
+    if (!submissionId) {
+      console.warn("Dash4: no submissionId in query string.");
+      setError("We couldn’t find your result link. Please try again from your test.");
+      if (cefrLabelEl) {
+        cefrLabelEl.textContent = "Result unavailable.";
       }
+      if (cefrLetterEl) cefrLetterEl.textContent = "–";
+      return;
+    }
 
-      function setError(msg) {
-        if (!errorEl) return;
-        errorEl.textContent = msg || "Something went wrong loading your result.";
-        errorEl.style.display = "block";
-      }
-
-      function describeCEFR(cefr) {
-        const map = {
-          A1: "Beginner",
-          A2: "Elementary",
-          B1: "Intermediate",
-          B2: "Upper-intermediate",
-          C1: "Advanced",
-          C2: "Proficiency",
-        };
-        return map[cefr] || "Speaking level";
-      }
-
-      function shortenQuestion(q) {
-        if (!q) return "";
-        const s = String(q).trim().replace(/\s+/g, " ");
-        return s.length > 140 ? s.slice(0, 137) + "…" : s;
-      }
-
-      // Close / secondary action
-      if (secondaryEl) {
-        secondaryEl.addEventListener("click", () => {
-          if (window.opener) {
-            window.close();
-          } else if (window.history.length > 1) {
-            window.history.back();
-          } else {
-            window.location.href = "/";
+    // ----- Load single result + config -----
+    Promise.all([
+      // NEW: single-submission endpoint
+      fetch(
+        `/api/dashboard/submissions?slug=${encodeURIComponent(
+          slug
+        )}&submissionId=${encodeURIComponent(submissionId)}`
+      )
+        .then(async (r) => {
+          const data = await r.json().catch(() => null);
+          if (!r.ok) {
+            console.error("Dash4 submission fetch error:", data || r.statusText);
+            return { ok: false, error: data && data.error };
           }
-        });
-      }
+          return data;
+        })
+        .catch((err) => {
+          console.error("Dash4 submission fetch exception:", err);
+          return { ok: false, error: "fetch_failed" };
+        }),
 
-      // Load result + config
-      Promise.all([
-        fetch(`/api/dashboard/submissions?slug=${encodeURIComponent(slug)}&limit=50`)
-          .then((r) => r.json())
-          .catch(() => ({ ok: false })),
-        fetch(`/api/admin/widget/${encodeURIComponent(slug)}`)
-          .then((r) => r.json())
-          .catch(() => ({})),
-      ])
-        .then(([subRes, widgetRes]) => {
-          // ----- submissions -----
-          if (!subRes || subRes.ok === false) {
-            setError("We couldn’t load your latest result. Please try again.");
+      // widget config (unchanged)
+      fetch(`/api/admin/widget/${encodeURIComponent(slug)}`)
+        .then((r) => r.json())
+        .catch(() => ({})),
+    ])
+      .then(([subRes, widgetRes]) => {
+        // ----- submission -----
+        if (!subRes || subRes.ok === false || subRes.error) {
+          console.error("Dash4 submission payload error:", subRes);
+          setError("We couldn’t load your latest result. Please try again.");
+          if (cefrLabelEl) {
             cefrLabelEl.textContent = "Result unavailable.";
-            return;
           }
+          if (cefrLetterEl) cefrLetterEl.textContent = "–";
+          return;
+        }
 
-          const rows = Array.isArray(subRes.rows)
-            ? subRes.rows
-            : subRes.tests || [];
+        console.log("📊 Dash4 submission:", subRes);
 
-          if (!rows.length) {
-            setError("No speaking results found yet.");
-            cefrLetterEl.textContent = "–";
-            cefrLabelEl.textContent = "Take a test to see your level.";
-            return;
-          }
+        const scores = subRes.scores || {};
+        const cefrRaw = scores.cefr || "";
+        const cefr = String(cefrRaw || "").toUpperCase();
+        const letter = cefr || "–";
 
-          let row = rows[0];
-          if (submissionId && Number.isFinite(submissionId)) {
-            const found = rows.find((r) => Number(r.id) === submissionId);
-            if (found) row = found;
-          }
-
-          const cefrRaw = row.mss_cefr || row.cefr || "";
-          const cefr = String(cefrRaw || "").toUpperCase();
-          const letter = cefr || "–";
-
-          cefrLetterEl.textContent = letter;
+        if (cefrLetterEl) cefrLetterEl.textContent = letter;
+        if (cefrLabelEl) {
           cefrLabelEl.textContent = cefr
             ? `${cefr} – ${describeCEFR(cefr)} level`
             : "We could not derive your CEFR level from this test.";
+        }
 
-          const q = shortenQuestion(row.question || "");
-          if (q && questionEl) {
-            questionEl.innerHTML = `<strong>Question:</strong> ${q}`;
+        const q = shortenQuestion(subRes.question || "");
+        if (q && questionEl) {
+          questionEl.innerHTML = `<strong>Question:</strong> ${q}`;
+        }
+
+        if (metaEl && subRes.submittedAt) {
+          metaEl.textContent =
+            "Powered by MSS Vox • " +
+            new Date(subRes.submittedAt).toLocaleString();
+        }
+
+        // ----- config for after-dashboard CTA -----
+        const cfgRoot =
+          (widgetRes.settings && widgetRes.settings.config)
+            ? widgetRes.settings.config
+            : (widgetRes.config || {});
+
+        const afterDash = cfgRoot.afterDashboard || {};
+
+        let signupUrl =
+          afterDash.signupUrl ||
+          afterDash.signup_url ||
+          cfgRoot.afterDashboardSignupUrl ||
+          cfgRoot.after_dashboard_signup_url ||
+          "";
+
+        const ctaMessage =
+          afterDash.ctaMessage ||
+          afterDash.message ||
+          afterDash.cta_message ||
+          cfgRoot.afterDashboardCtaMessage ||
+          cfgRoot.after_dashboard_cta_message ||
+          "Get a free, detailed speaking report and advice from one of our teachers.";
+
+        if (ctaMsgEl) {
+          ctaMsgEl.textContent = ctaMessage;
+        }
+
+        if (signupUrl) {
+          try {
+            const u = new URL(signupUrl, window.location.origin);
+            signupUrl = u.toString();
+          } catch (_) {
+            // ignore – leave raw
           }
 
-          if (metaEl && row.submitted_at) {
-            metaEl.textContent =
-              "Powered by MSS Vox • " +
-              new Date(row.submitted_at).toLocaleString();
+          if (ctaBtnEl) {
+            ctaBtnEl.disabled = false;
+            ctaBtnEl.addEventListener("click", () => {
+              window.location.href = signupUrl;
+            });
           }
 
-          // ----- config for after-dashboard CTA -----
-          const cfgRoot =
-            (widgetRes.settings && widgetRes.settings.config)
-              ? widgetRes.settings.config
-              : (widgetRes.config || {});
-
-          // Support new nested structure: config.afterDashboard.signupUrl / ctaMessage
-          const afterDash = cfgRoot.afterDashboard || {};
-
-          let signupUrl =
-            afterDash.signupUrl ||
-            afterDash.signup_url ||
-            cfgRoot.afterDashboardSignupUrl ||
-            cfgRoot.after_dashboard_signup_url ||
-            "";
-
-          const ctaMessage =
-            afterDash.ctaMessage ||
-            afterDash.message ||
-            afterDash.cta_message ||
-            cfgRoot.afterDashboardCtaMessage ||
-            cfgRoot.after_dashboard_cta_message ||
-            "Get a free, detailed speaking report and advice from one of our teachers.";
-
-          if (ctaMsgEl) {
-            ctaMsgEl.textContent = ctaMessage;
+          if (ctaHintEl) {
+            ctaHintEl.textContent =
+              "Click the button above to go to your school’s signup page and receive your full report.";
           }
-
-          if (signupUrl) {
-            // Normalize relative URLs against current origin
-            try {
-              const u = new URL(signupUrl, window.location.origin);
-              signupUrl = u.toString();
-            } catch (_) {
-              // if URL constructor fails, fall back to raw string
-            }
-
-            if (ctaBtnEl) {
-              ctaBtnEl.disabled = false;
-              ctaBtnEl.addEventListener("click", () => {
-                window.location.href = signupUrl;
-              });
-            }
-
-            if (ctaHintEl) {
-              ctaHintEl.textContent =
-                "Click the button above to go to your school’s signup page and receive your full report.";
-            }
-          } else {
-            // No signup URL configured
-            if (ctaBtnEl) {
-              ctaBtnEl.disabled = true;
-            }
-            if (ctaHintEl) {
-              ctaHintEl.textContent =
-                "Ask your school how to receive a full speaking report linked to this result.";
-            }
+        } else {
+          if (ctaBtnEl) {
+            ctaBtnEl.disabled = true;
           }
-        })
-        .catch((err) => {
-          console.error("Dashboard4 load error:", err);
-          setError("We couldn’t load your result. Please try again.");
-        });
-    })();
-  </script>
+          if (ctaHintEl) {
+            ctaHintEl.textContent =
+              "Ask your school how to receive a full speaking report linked to this result.";
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Dashboard4 load error:", err);
+        setError("We couldn’t load your result. Please try again.");
+      });
+  })();
+</script>
 </body>
 </html>
