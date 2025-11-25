@@ -1,4 +1,4 @@
-// server.js — ESM version for "type": "module" (Nov 18 12:50 PM 2025 )
+// server.js — ESM version for "type": "module" (Nov 25 update for Vercel)
 
 
 
@@ -35,22 +35,53 @@ const SRC_DIR = path.join(ROOT, "src");
 const PUBLIC_DIR = path.join(ROOT, "public");
 const THEMES_DIR = path.join(ROOT, "themes");
 
+// ---------- CORS MIDDLEWARE (Render ↔ Vercel) ----------
+const allowedOrigins = [
+  "https://mss-widget-mt.vercel.app",   // Vercel front-end
+  "https://mss-widget-mt.onrender.com", // direct API calls (if any)
+  "http://localhost:3000",              // local dev (Next/Vite/etc.)
+  "http://localhost:5173",
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // same-origin/non-browser
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.warn("🚫 CORS blocked origin:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "X-ADMIN-KEY",
+    "API-KEY",
+    "X-API-SECRET",
+  ],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// Body parsers (single source of truth)
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// Static files
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use(express.static(PUBLIC_DIR));
+app.use("/themes", express.static(path.join(PUBLIC_DIR, "themes")));
+app.use("/themes", express.static(THEMES_DIR));
+
 // ----- Postgres pool -----
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
-});
-
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => {
-      const slug = req.params.slug || "default";
-      const ext = path.extname(file.originalname) || ".png";
-      cb(null, `${slug}-${Date.now()}${ext}`);
-    },
-  }),
 });
 
 fsSync.mkdirSync(uploadDir, { recursive: true });
@@ -69,58 +100,7 @@ const storage = multer.diskStorage({
 
 const imageUpload = multer({ storage });
 
-// Helper for submission logging into DB
-async function insertSubmission(sub) {
-  const sql = `
-    INSERT INTO submissions (
-      school_id,
-      assessment_id,
-      student_id,
-      teacher_id,
-      ip,
-      record_count,
-      file_name,
-      length_sec,
-      submit_time,
-      toefl,
-      ielts,
-      pte,
-      cefr,
-      question,
-      transcript,
-      wpm,
-      meta
-    )
-    VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
-    )
-  `;
 
-  const values = [
-    sub.school_id ?? null,
-    sub.assessment_id ?? null,
-    sub.student_id ?? null,
-    sub.teacher_id ?? null,
-    sub.ip ?? null,
-    sub.record_count ?? null,
-    sub.file_name ?? null,
-    sub.length_sec ?? null,
-    sub.submit_time ?? null,
-    sub.toefl ?? null,
-    sub.ielts ?? null,
-    sub.pte ?? null,
-    sub.cefr ?? null,
-    sub.question ?? null,
-    sub.transcript ?? null,
-    sub.wpm ?? null,
-    sub.meta ? JSON.stringify(sub.meta) : null,
-  ];
-
-  await pool.query(sql, values);
-}
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 // === ADMIN: list available widgets (public/widgets/*.html) ============
 app.get("/api/admin/widgets", async (req, res) => {
@@ -623,13 +603,7 @@ app.get("/api/dashboard/submissions", async (req, res) => {
     const slug = rawSlug || "mss-demo";
     const limit = Math.min(Number(req.query.limit) || 50, 1000);
 
-    if (!slug) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_slug",
-        message: "slug is required",
-      });
-    }
+   
 
         const sql = `
       SELECT
@@ -702,24 +676,12 @@ copy-paste:
 • the point summary into MinHelp.
 `.trim();
 
-/* ---------- middleware ---------- */
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-ADMIN-KEY", "API-KEY", "X-API-SECRET"],
-  })
-);
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded widget images from /uploads/widget-images/...
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Static files
-app.use(express.static(PUBLIC_DIR));
-app.use("/themes", express.static(path.join(PUBLIC_DIR, "themes")));
-app.use("/themes", express.static(THEMES_DIR));
+// ⬇️ all your routes AFTER this point
+// app.get("/api/admin/widgets", ...)
+// app.post("/api/widget/submit", ...)
+// etc.
 
 /* ---------- helpers (legacy JSON config helpers) ---------- */
 async function ensureSrcDir() {
@@ -876,29 +838,6 @@ app.get("/config/forms", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// LIST DASHBOARDS IN /public/dashboards
-// GET /api/admin/dashboards
-// ---------------------------------------------------------------------------
-app.get("/api/admin/dashboards", async (req, res) => {
-  try {
-    const folder = path.join(PUBLIC_DIR, "dashboards");
-
-    const files = await fs.readdir(folder);
-    const htmlFiles = files
-      .filter(f => f.toLowerCase().endsWith(".html"))
-      .map(f => ({
-        name: f,
-        url: `/dashboards/${f}`,
-        preview: `/dashboards/${f}?preview=1`
-      }));
-
-    res.json({ ok: true, dashboards: htmlFiles });
-  } catch (err) {
-    console.error("Error listing dashboards:", err);
-    res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
 
 app.put("/config/forms", async (req, res) => {
   if (!checkAdminKey(req, res)) return;
@@ -1372,70 +1311,7 @@ app.get("/api/admin/dashboards", async (req, res) => {
 
 /* ---------- ADMIN: WIDGET CONFIG (config + form + image) ---------- */
 
-// GET full widget state for ConfigAdmin (config + form + image)
-// GET /api/admin/widget/:slug
-app.get("/api/admin/widget/:slug", async (req, res) => {
-  const { slug } = req.params;
 
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, name, slug, settings
-         FROM schools
-        WHERE slug = $1`,
-      [slug]
-    );
-
-    if (!rows.length) {
-      return res.status(404).json({ ok: false, error: "not_found" });
-    }
-
-    const row = rows[0];
-    const settings = row.settings || {};
-    const config = settings.config || {};
-    const form = settings.form || {};
-    const image = settings.image || {};
-
-    // ---- NORMALISE URL/PATH KEYS ----
-    const normalisedConfig = { ...config };
-
-    // prefer widgetPath/dashboardPath but fall back to *Url
-    const widgetPath =
-      normalisedConfig.widgetPath ||
-      normalisedConfig.widgetUrl ||
-      "/widgets/Widget.html";
-
-    const dashboardPath =
-      normalisedConfig.dashboardPath ||
-      normalisedConfig.dashboardUrl ||
-      "/dashboards/Dashboard3.html";
-
-    normalisedConfig.widgetPath = widgetPath;
-    normalisedConfig.widgetUrl = widgetPath; // keep both for now
-
-    normalisedConfig.dashboardPath = dashboardPath;
-    normalisedConfig.dashboardUrl = dashboardPath; // keep both for now
-
-    return res.json({
-      ok: true,
-      school: {
-        id: row.id,
-        slug: row.slug,
-        name: row.name || row.slug,
-      },
-      settings: {
-        config: normalisedConfig,
-        form,
-        image,
-      },
-      config: normalisedConfig,
-      form,
-      image,
-    });
-  } catch (err) {
-    console.error("GET /api/admin/widget error:", err);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
 // PUT full widget state from ConfigAdmin (config + form + image)
 // PUT /api/admin/widget/:slug
 // PUT full widget state from ConfigAdmin (config + form + image)
@@ -1903,104 +1779,6 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// --------------------------------------------------------------
-// Student enrollment from school landing page / embedded app
-// POST /api/student/enroll
-// Body: { slug, submissionId, name, email }
-// --------------------------------------------------------------
-app.post("/api/student/enroll", async (req, res) => {
-  try {
-    const body = req.body || {};
-    const slug = (body.slug || "").trim();
-    const submissionId = Number(body.submissionId);
-    const name = (body.name || "").trim();
-    const email = (body.email || "").trim().toLowerCase();
-
-    if (!slug || !email || !Number.isInteger(submissionId)) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_params",
-        message: "slug, submissionId, name and email are required",
-      });
-    }
-
-    // 1) Look up school
-    const schoolRes = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
-    if (!schoolRes.rowCount) {
-      return res.status(404).json({
-        ok: false,
-        error: "school_not_found",
-        message: `No school found for slug ${slug}`,
-      });
-    }
-    const schoolId = schoolRes.rows[0].id;
-
-    // 2) Upsert student on (school_id, email)
-    const studentRes = await pool.query(
-      `
-        INSERT INTO students (school_id, email, full_name)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (school_id, email)
-        DO UPDATE SET
-          full_name = COALESCE(EXCLUDED.full_name, students.full_name),
-          updated_at = NOW()
-        RETURNING id
-      `,
-      [schoolId, email, name || null]
-    );
-
-    const studentId = studentRes.rows[0].id;
-
-    // 3) Attach this student to the submission row
-    const updateRes = await pool.query(
-      `
-        UPDATE submissions
-           SET student_id = $1
-         WHERE id = $2
-           AND school_id = $3
-        RETURNING id
-      `,
-      [studentId, submissionId, schoolId]
-    );
-
-    if (!updateRes.rowCount) {
-      // No submission found for this id+school – still return studentId
-      return res.status(404).json({
-        ok: false,
-        error: "submission_not_found",
-        message: `No submission ${submissionId} found for this school`,
-        studentId,
-      });
-    }
-
-    console.log("✅ student enrolled + linked:", {
-      slug,
-      schoolId,
-      studentId,
-      submissionId,
-      email,
-      name,
-    });
-
-    return res.json({
-      ok: true,
-      slug,
-      schoolId,
-      studentId,
-      submissionId,
-    });
-  } catch (err) {
-    console.error("❌ /api/student/enroll error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "enroll_failed",
-      message: err.message || "Error enrolling student",
-    });
-  }
-});
 
 /* ------------------------------------------------------------------
    STUDENT ENROLLMENT
