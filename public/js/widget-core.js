@@ -1,4 +1,4 @@
-// MSS Widget Core v1.1 — Nov 19 2025 (REGEN Nov 23 2025)
+// MSS Widget Core v1.1 — Nov 19 2025 (REGEN Nov 25 2025)
 // Supports:
 //   • Widget.html      – slider help (MSSHelp overlay)
 //   • WidgetMin.html   – inline MIN-help panel (per-question)
@@ -222,19 +222,39 @@ function logEvent(type, payload) {
       ...payload,
     };
 
-    if (navigator.sendBeacon) {
+    const url = API.LOG || "/api/widget/log";
+
+    // Work out if the log URL is same-origin or cross-origin
+    let sameOrigin = true;
+    try {
+      const logUrl = new URL(url, window.location.origin);
+      sameOrigin = logUrl.origin === window.location.origin;
+    } catch {
+      sameOrigin = true; // be permissive; worst case we treat as same-origin
+    }
+
+    // ✅ Same-origin → safe to use sendBeacon (no CORS issues)
+    if (sameOrigin && navigator.sendBeacon) {
       const b = new Blob([JSON.stringify(data)], {
         type: "application/json",
       });
-      navigator.sendBeacon(API.LOG, b);
-    } else {
-      fetch(API.LOG, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        keepalive: true,
-      }).catch(() => {});
+      navigator.sendBeacon(url, b);
+      return;
     }
+
+    // 🌐 Cross-origin (e.g., Vercel → Render) → use fetch with credentials *omitted*
+    fetch(url, {
+      method: "POST",
+      mode: "cors",
+      credentials: "omit",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+      keepalive: true,
+    }).catch(() => {
+      // Logging is best-effort only – ignore errors
+    });
   } catch (err) {
     console.warn("logEvent error:", err);
   }
