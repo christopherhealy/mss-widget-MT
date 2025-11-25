@@ -1610,7 +1610,7 @@ function onSubmitClick() {
     if (CONFIG.api.secret) headers["X-API-SECRET"] = CONFIG.api.secret;
   }
 
-  fetch(submitUrl, {
+    fetch(submitUrl, {
     method: "POST",
     headers,
     body: fd,
@@ -1621,7 +1621,7 @@ function onSubmitClick() {
         .catch(() => ({}))
         .then((body) => ({ ok: r.ok, status: r.status, body }))
     )
-    .then((res) => {
+    .then(async (res) => {
       const elapsedSec = ((performance.now() - t0Local) / 1000).toFixed(1);
       console.log("🎯 Submit response from MSS:", res);
 
@@ -1638,22 +1638,127 @@ function onSubmitClick() {
       }
 
       const body = res.body || {};
-      const sessionId =
-        body.sessionId || body.session || `local-${Date.now()}`;
       const msg = body.message || "Answer submitted successfully.";
 
-      // 🔹 Compute help + variant metadata at submit time
-      const help_level = getHelpLevelForSubmit();
-      const help_surface = getHelpSurface();
-      const widget_variant = getWidgetVariant();
-      const dashboard_variant = getDashboardVariant();
+      // 🔹 Help + variant metadata at submit time
+      const help_level       = getHelpLevelForSubmit();
+      const help_surface     = getHelpSurface();
+      const widget_variant   = getWidgetVariant();
+      const dashboard_variant= getDashboardVariant();
 
       setStatus(`${msg} (in ${elapsedSec}s)`);
 
-      // 🔹 DB_SUBMIT, logging, dashboard, etc...
-      // (keep the rest of your function exactly as you already have it)
-      // ...
-      // ... existing body of onSubmitClick continues here ...
+      // Are we POSTing directly to /api/widget/submit ?
+      const norm = (s) => (s || "").replace(/\/+$/, "");
+      const isDirectWidgetSubmit =
+        norm(submitUrl) === norm(API.DB_SUBMIT) ||
+        /\/api\/widget\/submit\/?$/.test(submitUrl);
+
+      try {
+        let submissionId;
+        let dashboardUrl;
+
+        if (isDirectWidgetSubmit && body.ok && body.submissionId) {
+          // ✅ We already hit our Node submit handler
+          submissionId = body.submissionId;
+          dashboardUrl = body.dashboardUrl;
+          console.log("✅ Direct widget submit stored:", {
+            submissionId,
+            dashboardUrl,
+          });
+        } else {
+          // ✅ MSS scoring cluster → now store in DB via JSON submit
+          const questionText = q.question || q.text || "";
+
+          const dbPayload = {
+            slug: CURRENT_SLUG,
+            question: questionText,
+            studentId: null, // can wire up later
+            mss: body,       // full MSS result payload
+            help_level,
+            help_surface,
+            widget_variant,
+            dashboard_variant,
+          };
+
+          console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
+
+          const dbRes = await fetch(API.DB_SUBMIT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(dbPayload),
+          });
+
+          const dbJson = await dbRes.json().catch(() => ({}));
+          if (!dbRes.ok || dbJson.ok === false) {
+            console.error("❌ DB_SUBMIT error:", dbRes.status, dbJson);
+            setStatus(
+              "We scored your answer but could not save it. Please try again later."
+            );
+            hideSubmitProgress();
+            logEvent("submit_db_error", {
+              questionId: q.id,
+              status: dbRes.status,
+              body: dbJson,
+            });
+            return;
+          }
+
+          submissionId = dbJson.submissionId || dbJson.id;
+          dashboardUrl = dbJson.dashboardUrl;
+          console.log("✅ Stored via DB_SUBMIT:", {
+            submissionId,
+            dashboardUrl,
+          });
+        }
+
+        // Fallback: make sure we have some dashboard URL
+        if (!dashboardUrl) {
+          dashboardUrl = getDashboardPath(body.dashboardUrl);
+        }
+
+        // Inline dashboard if possible, otherwise popup
+        const expanded = expandDashboard(dashboardUrl, submissionId);
+        if (!expanded) {
+          dashboardWindow = window.open(
+            dashboardUrl,
+            "_blank",
+            "noopener,noreferrer"
+          );
+          logEvent("dashboard_popup_open", {
+            submissionId,
+            url: dashboardUrl,
+          });
+        }
+
+        // Optionally lock session if full help was used
+        if (help_level === "max") {
+          SESSION_LOCKED = true;
+        }
+
+        hideSubmitProgress();
+        setRecordingUiEnabled(false);
+
+        logEvent("submit_success", {
+          questionId: q.id,
+          submissionId,
+          help_level,
+          help_surface,
+          widget_variant,
+          dashboard_variant,
+          elapsedSec,
+        });
+      } catch (err) {
+        console.error("submit success-flow error:", err);
+        setStatus(
+          "We scored your answer but ran into a problem showing the results."
+        );
+        hideSubmitProgress();
+        logEvent("submit_flow_exception", {
+          questionId: q.id,
+          error: String(err),
+        });
+      }
     })
     .catch((err) => {
       console.error("Submit fetch error:", err);
@@ -1666,7 +1771,6 @@ function onSubmitClick() {
         error: String(err),
       });
     });
-}
 /* -----------------------------------------------------------------------
    TIMERS / RESET
    ----------------------------------------------------------------------- */
