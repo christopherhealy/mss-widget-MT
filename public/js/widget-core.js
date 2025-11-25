@@ -59,7 +59,8 @@ const HELP_CACHE = {};
 //  - Localhost: same origin (http://localhost:3000)
 //  - Render app: same origin (app + API together)
 //  - Vercel static hosting: call Render explicitly
-const BACKEND_BASE = (() => {
+  
+  const BACKEND_BASE = (() => {
   const h = window.location.hostname || "";
 
   // Local dev: Express serves both static + APIs
@@ -86,7 +87,7 @@ const BACKEND_BASE = (() => {
    ----------------------------------------------------------------------- */
 
 const API = {
-  // Node / Render widget backend
+  // Node / Render widget backend (Bootstrap, logs, help, DB submit)
   BOOTSTRAP: `${BACKEND_BASE}/api/widget`,        // /api/widget/:slug/bootstrap
   LOG: `${BACKEND_BASE}/api/widget/log`,
   HELP: `${BACKEND_BASE}/api/widget/help`,
@@ -98,8 +99,8 @@ const API = {
   CSV_LOG: `${BACKEND_BASE}/log/submission`,
 
   // Fallback for scoring if no api.baseUrl/submitUrl are configured.
-  // This stays as a plain path so local + Render continue to work as before.
-  SUBMIT_FALLBACK: "/api/widget/submit",
+  // Use BACKEND_BASE so Vercel → Render, localhost/Render → same origin.
+  SUBMIT_FALLBACK: `${BACKEND_BASE}/api/widget/submit`,
 };
 
 // ---------- Help + variant helpers ----------
@@ -1512,27 +1513,52 @@ function onSubmitClick() {
 
   showSubmitProgress();
 
-  const rawSubmitUrl =
-    CONFIG?.api?.baseUrl || CONFIG?.submitUrl || API.SUBMIT_FALLBACK;
-
+  // Decide where to submit:
+  //  1) If CONFIG.api.baseUrl is set → MSS scoring cluster (/api/vox)
+  //  2) Else if CONFIG.submitUrl is set → use it as-is (absolute or relative)
+  //  3) Else → fall back to our widget backend submit endpoint (API.SUBMIT_FALLBACK)
   let submitUrl;
-  if (/^https?:\/\//i.test(rawSubmitUrl)) {
-    const base = rawSubmitUrl.replace(/\/+$/, "");
+
+  if (CONFIG?.api?.baseUrl) {
+    const base = CONFIG.api.baseUrl.replace(/\/+$/, "");
     if (/\/api\/vox($|\/|\?)/.test(base)) {
       submitUrl = base;
     } else {
       submitUrl = `${base}/api/vox`;
     }
-  } else if (rawSubmitUrl.startsWith("/")) {
-    submitUrl = `${window.location.origin}${rawSubmitUrl}`;
+  } else if (CONFIG?.submitUrl) {
+    const s = CONFIG.submitUrl;
+    if (/^https?:\/\//i.test(s)) {
+      submitUrl = s;
+    } else if (s.startsWith("/")) {
+      submitUrl = `${BACKEND_BASE || ""}${s}`;
+    } else {
+      submitUrl = `${BACKEND_BASE || ""}/${s}`;
+    }
   } else {
-    submitUrl = `${window.location.origin}/${rawSubmitUrl}`;
+    submitUrl = API.SUBMIT_FALLBACK;   // e.g. `${BACKEND_BASE}/api/widget/submit`
+  }
+
+  // 🔑 Ensure /api/widget/submit also receives slug as a query param
+  try {
+    const u = new URL(submitUrl, window.location.origin);
+
+    // match both "/api/widget/submit" and ".../api/widget/submit/"
+    if (/\/api\/widget\/submit\/?$/.test(u.pathname)) {
+      if (CURRENT_SLUG && !u.searchParams.has("slug")) {
+        u.searchParams.set("slug", CURRENT_SLUG);
+      }
+      submitUrl = u.toString();
+    }
+  } catch (e) {
+    console.warn("Could not normalize submitUrl with slug:", e);
   }
 
   console.log("📤 Submitting to:", submitUrl, {
-    rawSubmitUrl,
     apiBaseUrl: CONFIG?.api?.baseUrl,
     submitUrlConfig: CONFIG?.submitUrl,
+    fallback: API.SUBMIT_FALLBACK,
+    slug: CURRENT_SLUG,
   });
 
   const fd = new FormData();
@@ -1548,8 +1574,9 @@ function onSubmitClick() {
 
   fd.append("file", blob, fileNameForUpload);
   fd.append("questionId", q.id);
-  fd.append("slug", CURRENT_SLUG);
 
+  // ⬇️ still send slug in the body as well (belt + suspenders)
+  if (CURRENT_SLUG) fd.append("slug", CURRENT_SLUG);
   if (SCHOOL_ID) fd.append("schoolId", SCHOOL_ID);
   if (CONFIG.assessmentId) fd.append("assessmentId", CONFIG.assessmentId);
 
@@ -1603,230 +1630,10 @@ function onSubmitClick() {
 
       setStatus(`${msg} (in ${elapsedSec}s)`);
 
-      // 🔹 Send full MSS JSON to our own DB endpoint so mss_* columns get filled
-      try {
-        const submission = {
-          slug: CURRENT_SLUG,
-          question: q.question || q.text || "",
-          studentId: body.studentId || null,
-
-          // NEW: help + surface + widget/dash variants
-          help_level,
-          help_surface,
-          widget_variant,
-          dashboard_variant,
-
-          // Full MSS response, enriched with same metadata
-          mss: {
-            ...body,
-            help_level,
-            help_surface,
-            widget_variant,
-            dashboard_variant,
-          },
-
-          // Optional explicit meta block if server uses submission.meta.*
-          meta: {
-            help_level,
-            help_surface,
-            widget_variant,
-            dashboard_variant,
-          },
-        };
-
-        const dbPayload = { submission };
-
-        console.log("DB_SUBMIT payload:", dbPayload);
-
-        fetch(API.DB_SUBMIT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(dbPayload),
-        })
-          .then((r) =>
-            r
-              .json()
-              .catch(() => ({}))
-              .then((b) => ({ ok: r.ok, status: r.status, body: b }))
-          )
-          .then((dbRes) => {
-            if (!dbRes.ok) {
-              console.warn(
-                "⚠️ /api/widget/submit failed:",
-                dbRes.status,
-                dbRes.body
-              );
-            } else {
-              console.log(
-                "💾 /api/widget/submit stored submission:",
-                dbRes.body
-              );
-            }
-          })
-          .catch((err) => {
-            console.warn("⚠️ /api/widget/submit exception:", err);
-          });
-      } catch (e) {
-        console.warn("⚠️ Error preparing DB payload:", e);
-      }
-      // 🔹 END DB BLOCK
-
-      // Lock if full help was used:
-      //  - Slider widget: HELP_LEVEL === 2
-      //  - Max panel was open (but NOT for readmax, where model answer is baseline)
-      const usedFullHelp =
-        HELP_LEVEL === 2 ||
-        (WIDGET_MODE !== "readmax" && isMaxHelpOpen());
-
-      if (usedFullHelp) {
-        SESSION_LOCKED = true;
-        setRecordingUiEnabled(false);
-        setStatus(
-          `${msg} You used full help for this question. Choose another question to record again.`
-        );
-      }
-
-      try {
-        sessionStorage.setItem(
-          "mss-widget-latest-result",
-          JSON.stringify(body)
-        );
-        sessionStorage.setItem(
-          `mss-widget-session-${sessionId}`,
-          JSON.stringify(body)
-        );
-      } catch (e) {
-        console.warn("Unable to store results in sessionStorage:", e);
-      }
-
-      // fire-and-forget DB logging (legacy CSV + submissions table)
-      try {
-        const meta = {
-          ...body,
-          help_level,
-          help_surface,
-          widget_variant,
-          dashboard_variant,
-        };
-
-        const logPayload = {
-          schoolId: SCHOOL_ID,
-          assessmentId: CONFIG.assessmentId || null,
-          studentId: body.studentId || null,
-          teacherId: body.teacherId || null,
-
-          timestamp: new Date().toISOString(),
-          fileName: body.fileName || blobName || "answer.wav",
-          lengthSec: safeNum(body.lengthSec),
-          submitTime: elapsedSec,
-
-          toefl: safeNum(body.toefl),
-          ielts: safeNum(body.ielts),
-          pte: safeNum(body.pte),
-          cefr: body.cefr ?? null,
-          question: q.question || q.text || "",
-          transcript: body.transcript || "",
-          wpm: safeNum(body.wpm),
-          recordCount: 1,
-          teacher: body.teacher || "",
-          note: body.note || "",
-          meta,
-        };
-
-        // 🔁 use API.CSV_LOG so Vercel → Render works
-        fetch(API.CSV_LOG, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(logPayload),
-        }).catch(() => {});
-      } catch (e) {
-        console.warn("DB log submission failed on client side:", e);
-      }
-
-      logEvent("submit_ok", {
-        questionId: q.id,
-        elapsedSec,
-        sessionId,
-        status: res.status,
-      });
-
-      hideSubmitProgress();
-
-      // DASHBOARD
-      const dashPath = getDashboardPath(body.dashboardUrl);
-
-      if (dashPath) {
-        const u = new URL(dashPath, window.location.origin);
-
-        // 🔹 Make sure we don't carry over any old/legacy "session" query param
-        u.searchParams.delete("session");
-
-        // 🔹 Always pass the school slug so Dashboard4 can load the right tests
-        if (CURRENT_SLUG) {
-          u.searchParams.set("slug", CURRENT_SLUG);
-        }
-
-        // 🔹 If the backend ever sends back a submissionId on this body,
-        //     pass it through so Dashboard4 can highlight that exact row.
-        if (body.submissionId != null) {
-          u.searchParams.set("submissionId", String(body.submissionId));
-        }
-
-        console.log("📊 Dashboard URL:", u.toString());
-
-        const openedInline = expandDashboard(u.toString(), sessionId);
-
-        if (openedInline) {
-          const iframe = document.getElementById("dashboardFrame");
-          if (iframe) {
-            const handler = () => {
-              try {
-                if (iframe.contentWindow) {
-                  iframe.contentWindow.postMessage(
-                    { type: "mss-results", payload: body },
-                    "*"
-                  );
-                }
-              } catch (e) {
-                console.warn("dashboard iframe postMessage failed", e);
-              } finally {
-                iframe.removeEventListener("load", handler);
-              }
-            };
-            iframe.addEventListener("load", handler);
-          }
-        } else {
-          console.log("🪟 Opening dashboard popup at:", u.toString());
-
-          if (!dashboardWindow || dashboardWindow.closed) {
-            dashboardWindow = window.open(u.toString(), "_blank");
-          } else {
-            dashboardWindow.location = u.toString();
-            dashboardWindow.focus();
-          }
-
-          try {
-            logEvent("dashboard_popup_open", {
-              sessionId,
-              url: u.toString(),
-            });
-          } catch (_) {}
-
-          if (dashboardWindow) {
-            const sendToPopup = () => {
-              try {
-                dashboardWindow.postMessage(
-                  { type: "mss-results", payload: body },
-                  "*"
-                );
-              } catch (e) {
-                console.warn("dashboard popup postMessage failed", e);
-              }
-            };
-            setTimeout(sendToPopup, 1000);
-          }
-        }
-      }
+      // 🔹 DB_SUBMIT, logging, dashboard, etc...
+      // (keep the rest of your function exactly as you already have it)
+      // ...
+      // ... existing body of onSubmitClick continues here ...
     })
     .catch((err) => {
       console.error("Submit fetch error:", err);
@@ -1840,7 +1647,6 @@ function onSubmitClick() {
       });
     });
 }
-
 /* -----------------------------------------------------------------------
    TIMERS / RESET
    ----------------------------------------------------------------------- */

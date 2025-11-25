@@ -1,8 +1,38 @@
-// public/js/help-core.js — DB-backed question help (Nov 16 2025)
+// public/js/help-core.js — DB-backed question help
+// Nov 16 2025  + Vercel/Render routing fix Nov 25 2025
 console.log("✅ help-core.js loaded");
 
 (function () {
   "use strict";
+
+  // -------------------------------------------------------------------
+  // Backend base (match widget-core.js behaviour)
+  // -------------------------------------------------------------------
+  const HELP_BACKEND_BASE = (() => {
+    const h = window.location.hostname || "";
+
+    // Local dev: Express serves static + APIs
+    if (
+      h === "localhost" ||
+      h === "127.0.0.1" ||
+      h === "0.0.0.0" ||
+      h.endsWith(".local")
+    ) {
+      return ""; // same origin
+    }
+
+    // Vercel: static only → talk to Render backend explicitly
+    if (h.endsWith(".vercel.app")) {
+      return "https://mss-widget-mt.onrender.com";
+    }
+
+    // Default (Render app or other Node host): same origin
+    return "";
+  })();
+
+  const HELP_API = {
+    HELP: `${HELP_BACKEND_BASE}/api/widget/help`,
+  };
 
   const overlay  = document.getElementById("helpOverlay");
   const modal    = document.getElementById("helpModal");
@@ -47,7 +77,7 @@ console.log("✅ help-core.js loaded");
       overflow-y: auto !important;
       font-size: 14px !important;
       line-height: 1.5 !important;
-      white-space: pre-wrap !important; /* keeps your line breaks from DB */
+      white-space: pre-wrap !important;
     }
 
     #helpCloseBtn {
@@ -94,7 +124,7 @@ console.log("✅ help-core.js loaded");
     modal.style.display   = "block";
 
     if (isMax) {
-      // Max help → let clicks reach widget controls (record/stop etc.)
+      // Max help → let clicks reach widget controls
       overlay.style.background    = "rgba(15,23,42,0.10)";
       overlay.style.pointerEvents = "none";
       modal.style.pointerEvents   = "auto";
@@ -128,7 +158,7 @@ console.log("✅ help-core.js loaded");
     if (HELP_CACHE[key]) return HELP_CACHE[key];
 
     try {
-      const res = await fetch("/api/widget/help", {
+      const res = await fetch(HELP_API.HELP, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -143,13 +173,13 @@ console.log("✅ help-core.js loaded");
       console.log("[MSSHelp] raw help response:", data);
       return data;
     } catch (err) {
-      console.error("[MSSHelp] fetch /api/widget/help failed:", err);
+      console.error("[MSSHelp] fetch HELP_API.HELP failed:", err);
       return { ok: false, exists: false, minhelp: "", maxhelp: "" };
     }
   }
 
   // ─────────────────────────────────────────────
-  // Public API: setLevel
+  // Public API: setLevel / open / hide
   // ─────────────────────────────────────────────
 
   async function setLevel(level, ctx = {}) {
@@ -188,6 +218,12 @@ console.log("✅ help-core.js loaded");
     show(lvl === 2 ? "max" : "min");
   }
 
-  window.MSSHelp = { setLevel, hide };
+  // Optional helper for the "Question Help" button
+  function open(ctx = {}) {
+    const lvl = ctx.level != null ? ctx.level : 1;
+    return setLevel(lvl, ctx);
+  }
+
+  window.MSSHelp = { setLevel, open, hide };
   console.log("✅ MSSHelp API ready (DB-backed min/max)");
 })();

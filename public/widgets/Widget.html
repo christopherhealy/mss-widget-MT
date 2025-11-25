@@ -1,4 +1,5 @@
-<! -- Version 1.0 Nov 19 2025 -->
+<!-- Version 1.1 Nov 19 2025 updated Nov 25-->
+
 <!DOCTYPE html>
 <!-- MSS Speaking Widget – Baseline Nov 18 PM -->
 <html lang="en">
@@ -198,9 +199,11 @@
       </div>
     </div>
   </div>
-
   <!-- SCRIPTS --------------------------------------------------------- -->
-  <script src="../js/widget-core.js"></script>
-  <script src="../js/help-core.js"></script>
+  <!-- Help overlay + MSSHelp API (must load first) -->
+  <script src="../js/help-core.js" defer></script>
+
+  <!-- Main widget logic (uses window.MSSHelp) -->
+  <script src="../js/widget-core.js" defer></script>
 </body>
 </html>
