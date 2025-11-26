@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – Random Question Widget (No Help)</title>
+
+  <!-- Shared MSS design system -->
+  <link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+</head>
+<body>
+  <div id="mss-widget-root"
+       class="mss-widget-shell"
+       data-school-slug="mss-demo"
+       data-widget-mode="default">
+    <!-- Header / Branding -->
+    <header class="mss-widget-header">
+      <div class="mss-widget-brand">
+        <div class="mss-widget-logo-wrap">
+          <img id="brandImg" alt="School logo" class="mss-widget-logo" />
+        </div>
+        <div class="mss-widget-titles">
+          <h1 id="brand" class="mss-widget-title">
+            MySpeakingScore – Speaking Practice
+          </h1>
+          <p id="powered" class="mss-widget-subtitle">
+            Get instant feedback on your speaking.
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="mss-widget-main">
+      <!-- Instructions -->
+      <section class="mss-widget-instructions">
+        <p>
+          You will see a series of sample questions, each shown for a few seconds.
+          <strong>One of these questions will be randomly selected when you press “Record”.</strong>
+        </p>
+        <p>
+          When your question appears, speak for up to 60 seconds. Try to give a clear,
+          well-organized answer with a beginning, middle and end.
+        </p>
+      </section>
+
+      <!-- Question + counter -->
+      <section class="mss-widget-question-wrap">
+        <div class="mss-widget-question-meta">
+          <span id="counter" class="mss-widget-counter">QUESTION 1 OF 1</span>
+          <!-- No prev/next buttons: this widget cycles and picks randomly -->
+        </div>
+        <div id="question" class="mss-widget-question">
+          Loading question…
+        </div>
+      </section>
+
+      <!-- Recording + Timer -->
+      <section class="mss-widget-rec-panel">
+        <div class="mss-rec-status-row">
+          <span id="recDot" class="mss-rec-dot"></span>
+          <span id="recState" class="mss-rec-state">Not recording</span>
+          <span id="timer" class="mss-rec-timer"></span>
+        </div>
+        <div class="mss-rec-controls-row">
+          <button id="recBtn" class="mss-btn mss-btn-primary">
+            Record
+          </button>
+          <button id="stopBtn" class="mss-btn mss-btn-ghost" disabled>
+            Stop
+          </button>
+        </div>
+      </section>
+
+      <!-- Player + file info -->
+      <section class="mss-widget-player-section">
+        <div id="playerWrap" class="mss-player-wrap" style="display:none;">
+          <audio id="player" controls preload="auto"></audio>
+          <div id="lengthHint" class="mss-length-hint"></div>
+        </div>
+        <div class="mss-file-info-row">
+          <span id="fileBadge" class="mss-file-badge"></span>
+        </div>
+      </section>
+
+      <!-- Upload row (still allowed, but no help) -->
+      <section class="mss-upload-row">
+        <label class="mss-upload-label">
+          <span>Upload a WAV or MP3 instead</span>
+          <input id="fileInput" type="file" accept="audio/*" />
+        </label>
+        <button id="clearFileBtn" type="button" class="mss-btn mss-btn-link">
+          Clear
+        </button>
+      </section>
+
+      <!-- Student ID (optional) -->
+      <section class="mss-student-id-row">
+        <label for="studentId" class="mss-field-label">
+          Student ID (optional)
+        </label>
+        <input id="studentId"
+               type="text"
+               class="mss-input"
+               placeholder="Enter your ID if provided by your school" />
+      </section>
+
+      <!-- Submit -->
+      <section class="mss-submit-row">
+        <button id="submitBtn"
+                class="mss-btn mss-btn-primary mss-btn-wide"
+                disabled>
+          Submit for scoring
+        </button>
+        <div id="submitProgress" class="mss-submit-progress mss-hidden">
+          Submitting your answer…
+        </div>
+      </section>
+
+      <!-- Inline dashboard container (optional, reused from widget-core) -->
+      <section id="dashboardContainer"
+               class="mss-dashboard-container mss-dashboard-hidden mss-dashboard-collapsed">
+        <div class="mss-dashboard-header">
+          <h2 class="mss-dashboard-title">Your scores</h2>
+          <button id="dashboardCloseBtn" class="mss-btn mss-btn-ghost mss-btn-sm">
+            Close
+          </button>
+        </div>
+        <div id="dashboardBody" class="mss-dashboard-body">
+          <!-- dashboard iframe injected here by widget-core -->
+        </div>
+      </section>
+
+      <!-- Status line -->
+      <section class="mss-status-row">
+        <div id="status" class="mss-status">
+          Ready to load questions…
+        </div>
+      </section>
+
+      <!-- (Optional) debug toggle -->
+      <section class="mss-debug-row">
+        <button id="toggleDebug" type="button" class="mss-btn mss-btn-link mss-btn-sm">
+          Toggle debug
+        </button>
+        <pre id="debugWrap" class="mss-debug-wrap" style="display:none;"></pre>
+      </section>
+    </main>
+  </div>
+
+  <!-- Core widget logic -->
+  <script src="/js/widget-core.js"></script>
+
+  <!-- Random-question / no-help behaviour -->
+  <script>
+    (function () {
+      "use strict";
+
+      // --- 1) Random question on Record ---
+
+      // Keep a reference to the original onRecordClick from widget-core.
+      const originalOnRecordClick = window.onRecordClick;
+
+      // Guard: if for some reason widget-core didn't define it, bail.
+      if (typeof originalOnRecordClick !== "function") {
+        console.warn("[RandomWidget] original onRecordClick not found");
+      } else {
+        // Override the global onRecordClick BEFORE DOMContentLoaded fires.
+        window.onRecordClick = function (event) {
+          try {
+            // Stop the preview rotation once the student actually records.
+            if (typeof window.stopPreviewRotation === "function") {
+              window.stopPreviewRotation();
+            }
+
+            // Pick a random question index if QUESTIONS are loaded.
+            if (Array.isArray(window.QUESTIONS) && window.QUESTIONS.length > 0) {
+              const randomIndex = Math.floor(Math.random() * window.QUESTIONS.length);
+              window.idx = randomIndex;
+
+              if (typeof window.renderQuestion === "function") {
+                window.renderQuestion();
+              }
+
+              console.log("[RandomWidget] Selected random question index:", randomIndex);
+            }
+          } catch (err) {
+            console.warn("[RandomWidget] Error selecting random question:", err);
+          }
+
+          // Delegate to the original recording logic.
+          return originalOnRecordClick.call(this, event);
+        };
+      }
+
+      // --- 2) Preview rotation: cycle through questions every 5 seconds ---
+
+      let previewTimer = null;
+      let previewStarted = false;
+
+      function startPreviewRotation() {
+        if (previewStarted) return;
+        previewStarted = true;
+
+        previewTimer = setInterval(function () {
+          // Wait until QUESTIONS has been bootstrapped.
+          if (!Array.isArray(window.QUESTIONS) || window.QUESTIONS.length === 0) {
+            return;
+          }
+
+          // Don't rotate while an actual recording is in progress.
+          if (window.recording) {
+            return;
+          }
+
+          // Advance index as if the user clicked "Next" and re-render.
+          window.idx = (window.idx + 1) % window.QUESTIONS.length;
+
+          if (typeof window.renderQuestion === "function") {
+            window.renderQuestion();
+          }
+
+          console.log("[RandomWidget] Preview rotating, idx =", window.idx);
+        }, 5000);
+      }
+
+      function stopPreviewRotation() {
+        if (previewTimer) {
+          clearInterval(previewTimer);
+          previewTimer = null;
+        }
+      }
+
+      // Expose stopPreviewRotation so the overridden onRecordClick can call it.
+      window.stopPreviewRotation = stopPreviewRotation;
+
+      // Poll until QUESTIONS is ready, then start preview rotation once.
+      const readyPoll = setInterval(function () {
+        if (Array.isArray(window.QUESTIONS) && window.QUESTIONS.length > 0) {
+          console.log("[RandomWidget] QUESTIONS loaded, starting preview rotation");
+          startPreviewRotation();
+          clearInterval(readyPoll);
+        }
+      }, 500);
+
+    })();
+  </script>
+</body>
+</html>

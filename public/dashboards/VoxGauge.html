@@ -1,0 +1,259 @@
+<!-- /public/dashboards/VoxGauge.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – Vox Gauge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+  <style>
+    :root {
+      --gauge-primary: #1d4ed8;
+      --gauge-track: #e5e7eb;
+      --gauge-text-main: #111827;
+      --gauge-text-muted: #6b7280;
+    }
+
+    body {
+      margin: 0;
+      padding: 10px 12px 14px;
+      background: #ffffff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      color: var(--gauge-text-main);
+    }
+
+    .gauge-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .gauge-header {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .gauge-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--gauge-text-main);
+    }
+
+    .gauge-subtitle {
+      font-size: 0.8rem;
+      color: var(--gauge-text-muted);
+    }
+
+    .gauge-shell {
+      width: 100%;
+      max-width: 420px;
+      border-radius: 18px;
+      background: #f9fafb;
+      padding: 6px 8px 10px;
+    }
+
+    #gaugeCanvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .cefr-summary {
+      margin-top: 4px;
+      display: flex;
+      justify-content: center;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 0.9rem;
+    }
+
+    .cefr-summary-main {
+      font-weight: 600;
+      color: var(--gauge-text-main);
+    }
+
+    .cefr-summary-score {
+      font-size: 0.85rem;
+      color: var(--gauge-text-muted);
+    }
+
+    .cefr-scale {
+      margin-top: 6px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      font-size: 0.78rem;
+      color: var(--gauge-text-muted);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .cefr-step {
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      transition: all 0.18s ease-out;
+    }
+
+    .cefr-step--active {
+      background: #eff6ff;
+      border-color: rgba(37, 99, 235, 0.25);
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="gauge-wrapper">
+    <div class="gauge-header">
+      <div class="gauge-title">CEFR overview</div>
+      <div class="gauge-subtitle">Live MSS Vox result</div>
+    </div>
+
+    <div class="gauge-shell">
+      <canvas id="gaugeCanvas" width="400" height="220"></canvas>
+
+      <div class="cefr-summary">
+        <span id="cefrSummary" class="cefr-summary-main">CEFR B2</span>
+        <span class="cefr-summary-score" id="scoreSummary">Score 3.18</span>
+      </div>
+
+      <div class="cefr-scale">
+        <span class="cefr-step" data-band="A1">A1</span>
+        <span class="cefr-step" data-band="A2">A2</span>
+        <span class="cefr-step" data-band="B1">B1</span>
+        <span class="cefr-step" data-band="B2">B2</span>
+        <span class="cefr-step" data-band="C1">C1</span>
+        <span class="cefr-step" data-band="C2">C2</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gaugeCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const cefrSummaryEl = document.getElementById("cefrSummary");
+    const scoreSummaryEl = document.getElementById("scoreSummary");
+    const cefrSteps = Array.from(
+      document.querySelectorAll(".cefr-step[data-band]")
+    );
+
+    const STATE = {
+      score: 3.18,
+      cefr: "B2",
+    };
+
+    function clampScore(score) {
+      if (typeof score !== "number" || isNaN(score)) return 0;
+      if (score < 0) return 0;
+      if (score > 5) return 5;
+      return score;
+    }
+
+    function bandFromScore(score) {
+      // Simple fallback mapping if CEFR not provided
+      if (score < 1.5) return "A1";
+      if (score < 2.0) return "A2";
+      if (score < 2.5) return "B1";
+      if (score < 3.5) return "B2";
+      if (score < 4.2) return "C1";
+      return "C2";
+    }
+
+    function drawGauge(score) {
+      const width = canvas.width;
+      const height = canvas.height;
+      const cx = width / 2;
+      const cy = height * 0.95;
+      const radius = Math.min(width * 0.42, height * 0.9);
+      const lineWidth = 16;
+
+      const trackColor = getComputedStyle(document.documentElement)
+        .getPropertyValue("--mss-border-subtle") || "#e5e7eb";
+      const primaryColor = getComputedStyle(document.documentElement)
+        .getPropertyValue("--mss-primary") || "#1d4ed8";
+
+      ctx.clearRect(0, 0, width, height);
+
+      // Background track
+      ctx.beginPath();
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = trackColor.trim() || "#e5e7eb";
+      ctx.arc(cx, cy, radius, Math.PI, 2 * Math.PI);
+      ctx.stroke();
+
+      // Score arc
+      const pct = clampScore(score) / 5; // 0–1
+      const angle = Math.PI + Math.PI * pct;
+
+      ctx.beginPath();
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = primaryColor.trim() || "#1d4ed8";
+      ctx.arc(cx, cy, radius, Math.PI, angle);
+      ctx.stroke();
+
+      // Score text
+      ctx.fillStyle = "#111827";
+      ctx.font = "bold 30px system-ui, -apple-system, BlinkMacSystemFont";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(score.toFixed(2), cx, cy - radius * 0.4);
+
+      // Small label “MSS Score”
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "12px system-ui, -apple-system, BlinkMacSystemFont";
+      ctx.fillText("MSS score", cx, cy - radius * 0.4 + 24);
+    }
+
+    function updateScaleHighlight(cefrBand) {
+      const band = (cefrBand || "").toUpperCase();
+      cefrSteps.forEach((step) => {
+        step.classList.toggle(
+          "cefr-step--active",
+          step.dataset.band === band
+        );
+      });
+    }
+
+    function applyState() {
+      const score = clampScore(STATE.score);
+      const band = STATE.cefr || bandFromScore(score);
+
+      drawGauge(score);
+
+      cefrSummaryEl.textContent = `CEFR ${band}`;
+      scoreSummaryEl.textContent = `Score ${score.toFixed(2)}`;
+      updateScaleHighlight(band);
+    }
+
+    // Initial render
+    applyState();
+
+    /* ------------------------------------------------------------
+       Dashboard → Gauge bridge
+       Expects: { type: "mss:gauge:update", score, cefr }
+    ------------------------------------------------------------ */
+    window.addEventListener("message", (event) => {
+      const msg = event.data || {};
+      if (msg.type !== "mss:gauge:update") return;
+
+      if (typeof msg.score === "number") {
+        STATE.score = msg.score;
+      }
+      if (typeof msg.cefr === "string" && msg.cefr.trim()) {
+        STATE.cefr = msg.cefr.trim().toUpperCase();
+      }
+
+      applyState();
+    });
+  </script>
+</body>
+</html>

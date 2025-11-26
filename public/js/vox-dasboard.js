@@ -1,6 +1,5 @@
-// /public/js/dashboard-core.js Nov 26 AM
-// Unified logic for all dashboards (2, 3, 4…)
-console.log("✅ dashboard-core.js file loaded");
+// /public/js/vox-dashboard.js — shared logic for Vox Dashboards 2 & 3
+console.log("✅ vox-dashboard.js loaded");
 
 (function (global) {
   "use strict";
@@ -8,31 +7,30 @@ console.log("✅ dashboard-core.js file loaded");
   const Dashboard = {};
 
   /* -----------------------------------------------------------
-     URL + param helpers
-  ----------------------------------------------------------- */
-  function getParams() {
+   * URL helpers
+   * --------------------------------------------------------- */
+  function params() {
     return new URLSearchParams(window.location.search || "");
   }
 
   function getSlug() {
-    const slug = (getParams().get("slug") || "").trim();
-    return slug;
+    return (params().get("slug") || "").trim();
   }
 
   function getSubmissionId() {
-    const raw = (getParams().get("submissionId") || "").trim();
+    const raw = (params().get("submissionId") || "").trim();
     if (!raw) return null;
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   }
 
   function isPreview() {
-    return getParams().get("preview") === "1";
+    return params().get("preview") === "1";
   }
 
   /* -----------------------------------------------------------
-     Tiny DOM helpers
-  ----------------------------------------------------------- */
+   * Tiny DOM helpers
+   * --------------------------------------------------------- */
   function setText(id, value, emptyLabel) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -108,7 +106,7 @@ console.log("✅ dashboard-core.js file loaded");
   function updateGauge(r) {
     const iframe = document.getElementById("cefrGauge");
     if (!iframe || !iframe.contentWindow) {
-      console.log("📈 Gauge iframe not found or not ready.");
+      console.log("📈 Gauge iframe not ready");
       return;
     }
 
@@ -133,12 +131,11 @@ console.log("✅ dashboard-core.js file loaded");
   }
 
   /* -----------------------------------------------------------
-     applyResults – main UI renderer
-  ----------------------------------------------------------- */
+   * Main renderer
+   * --------------------------------------------------------- */
   Dashboard.applyResults = function (r) {
     if (!r) {
       console.warn("Dashboard.applyResults called with null result");
-      return;
     }
 
     console.log("🎨 Dashboard.applyResults()", r);
@@ -182,28 +179,17 @@ console.log("✅ dashboard-core.js file loaded");
     if (transcriptEl) {
       const raw = r.transcript || "";
       const cleaned = cleanHtmlToText(raw);
-
-      if (cleaned) {
-        transcriptEl.textContent = cleaned;
-        transcriptEl.classList.remove("empty");
-      } else {
-        transcriptEl.textContent =
-          "Transcript not available for this answer.";
-        transcriptEl.classList.add("empty");
-      }
+      transcriptEl.textContent =
+        cleaned ||
+        "Transcript not available for this answer.";
     }
 
     const notesEl = document.getElementById("notesBody");
     if (notesEl) {
       const note = r.note || r.teacher || "";
-      if (note && String(note).trim()) {
-        notesEl.textContent = String(note).trim();
-        notesEl.classList.remove("empty");
-      } else {
-        notesEl.textContent =
-          "No teacher notes were returned for this answer.";
-        notesEl.classList.add("empty");
-      }
+      notesEl.textContent =
+        (note && String(note).trim()) ||
+        "No teacher notes were returned for this answer.";
     }
 
     const debugEl = document.getElementById("debugContent");
@@ -215,24 +201,8 @@ console.log("✅ dashboard-core.js file loaded");
   };
 
   /* -----------------------------------------------------------
-     Debug toggle
-  ----------------------------------------------------------- */
-  function setupDebugToggle() {
-    const toggle = document.getElementById("debugToggle");
-    const content = document.getElementById("debugContent");
-    if (!toggle || !content) return;
-
-    toggle.addEventListener("click", () => {
-      const isOpen = content.classList.toggle("show");
-      toggle.classList.toggle("open", isOpen);
-      toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
-      content.setAttribute("aria-hidden", isOpen ? "false" : "true");
-    });
-  }
-
-  /* -----------------------------------------------------------
-     DB loader
-  ----------------------------------------------------------- */
+   * DB loader
+   * --------------------------------------------------------- */
   Dashboard.loadFromDB = async function (slug, submissionId) {
     const url = `/api/admin/reports/${encodeURIComponent(slug)}?limit=200`;
     console.log("📡 Dashboard.loadFromDB →", { url, slug, submissionId });
@@ -250,11 +220,11 @@ console.log("✅ dashboard-core.js file loaded");
     let row = null;
 
     if (submissionId != null && !Number.isNaN(submissionId)) {
-      row = json.tests.find((t) => Number(t.id) === submissionId) || null;
+      row =
+        json.tests.find((t) => Number(t.id) === submissionId) || null;
     }
 
     if (!row) row = json.tests[0] || null;
-
     if (!row) {
       console.warn("Dashboard: no rows for slug", slug);
       return null;
@@ -264,11 +234,9 @@ console.log("✅ dashboard-core.js file loaded");
     return Dashboard.mapRow(row);
   };
 
-  /* -----------------------------------------------------------
-     Report row → results object
-  ----------------------------------------------------------- */
   Dashboard.mapRow = function (row) {
-    const overall = row.vox_score != null ? Number(row.vox_score) : null;
+    const overall =
+      row.vox_score != null ? Number(row.vox_score) : null;
 
     const mapped = {
       sessionId: row.id,
@@ -309,21 +277,8 @@ console.log("✅ dashboard-core.js file loaded");
   };
 
   /* -----------------------------------------------------------
-     postMessage handler (fallback)
-  ----------------------------------------------------------- */
-  Dashboard.enablePostMessage = function () {
-    console.log("📥 Dashboard listening for postMessage mss-results");
-    window.addEventListener("message", (event) => {
-      const data = event.data || {};
-      if (data.type !== "mss-results") return;
-      const payload = data.payload || {};
-      Dashboard.applyResults(payload);
-    });
-  };
-
-  /* -----------------------------------------------------------
-     Preview mode
-  ----------------------------------------------------------- */
+   * Preview + postMessage fallback
+   * --------------------------------------------------------- */
   Dashboard.loadPreview = function () {
     console.log("🎭 Dashboard.loadPreview()");
     Dashboard.applyResults({
@@ -341,41 +296,49 @@ console.log("✅ dashboard-core.js file loaded");
     });
   };
 
+  Dashboard.enablePostMessage = function () {
+    console.log("📥 Dashboard listening for postMessage mss-results");
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type !== "mss-results") return;
+      const payload = data.payload || {};
+      Dashboard.applyResults(payload);
+    });
+  };
+
   /* -----------------------------------------------------------
-     init()
-  ----------------------------------------------------------- */
+   * init + autoInit
+   * --------------------------------------------------------- */
   Dashboard.init = async function ({ mode = "auto" } = {}) {
     const slug = getSlug();
     const submissionId = getSubmissionId();
     const previewFlag = isPreview();
 
-    console.log("🚀 Dashboard.init()", {
+    console.log("🚀 Vox Dashboard.init()", {
       mode,
       slug,
       submissionId,
       previewFlag,
     });
 
-    setupDebugToggle();
-
     if (mode === "preview" || previewFlag) {
       Dashboard.loadPreview();
       return;
     }
 
-    // If we have slug + submissionId, prefer DB mode
     if (mode === "db" || (slug && submissionId != null)) {
       const result = await Dashboard.loadFromDB(slug, submissionId);
       if (result) {
         Dashboard.applyResults(result);
       } else {
-        console.warn("Dashboard.init: no result from DB, enabling postMessage fallback.");
+        console.warn(
+          "Vox Dashboard.init: no result from DB, falling back to postMessage."
+        );
         Dashboard.enablePostMessage();
       }
       return;
     }
 
-    // Fallback: embedded/postMessage mode
     Dashboard.enablePostMessage();
   };
 
@@ -383,16 +346,15 @@ console.log("✅ dashboard-core.js file loaded");
     try {
       Dashboard.init();
     } catch (err) {
-      console.error("Dashboard autoInit error:", err);
+      console.error("Vox Dashboard autoInit error:", err);
     }
   }
 
-  // Auto-init when dashboards load
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", autoInit);
   } else {
     autoInit();
   }
 
-  global.Dashboard = Dashboard;
+  global.VoxDashboard = Dashboard;
 })(window);

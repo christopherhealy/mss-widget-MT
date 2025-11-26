@@ -1,0 +1,260 @@
+<!-- /public/dashboards/Dashboard5.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – Speaking Result</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css">
+  <link rel="stylesheet" href="/themes/Dashboard.css">
+</head>
+<body class="dash5-body">
+  <div class="dash5-shell">
+    <!-- Header -->
+    <header class="dash5-header">
+      <div>
+        <h1 class="dash5-title">Your speaking result</h1>
+        <p class="dash5-subtitle">
+          This is your most recent score for today’s speaking task.
+        </p>
+      </div>
+      <div id="dash5-badge" class="dash5-badge">
+        CEFR snapshot
+      </div>
+    </header>
+
+    <div class="dash5-main">
+      <!-- Score side -->
+      <section class="dash5-score-card">
+        <div class="dash5-score-label">Overall level</div>
+        <div class="dash5-score-circle">
+          <span id="dash5-cefr-letter" class="dash5-score-letter">–</span>
+        </div>
+        <div id="dash5-cefr-label" class="dash5-score-desc">
+          We’re loading your score…
+        </div>
+        <div id="dash5-question" class="dash5-question"></div>
+      </section>
+
+      <!-- CTA side -->
+      <section class="dash5-cta">
+        <h2 class="dash5-cta-title">Get your free detailed report</h2>
+        <p id="dash5-cta-message" class="dash5-cta-text">
+          We’re preparing a short summary you can share with your teacher.
+        </p>
+
+        <div class="dash5-button-row">
+          <button id="dash5-cta-button" class="dash5-primary-btn" disabled>
+            Continue to my free report
+          </button>
+          <span id="dash5-secondary" class="dash5-secondary-link">
+            Close this window
+          </span>
+        </div>
+
+        <p id="dash5-cta-hint" class="dash5-cta-hint">
+          Your teacher will receive a copy of this result so you can track progress together.
+        </p>
+
+        <div id="dash5-error" class="dash5-error" style="display:none;"></div>
+      </section>
+    </div>
+
+    <footer class="dash5-footer">
+      <span id="dash5-meta">Powered by MSS Vox</span>
+      <span>CEFR-aligned feedback • 30–60 second practice</span>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const $ = (id) => document.getElementById(id);
+
+      const cefrLetterEl = $("dash5-cefr-letter");
+      const cefrLabelEl  = $("dash5-cefr-label");
+      const questionEl   = $("dash5-question");
+      const ctaMsgEl     = $("dash5-cta-message");
+      const ctaBtnEl     = $("dash5-cta-button");
+      const ctaHintEl    = $("dash5-cta-hint");
+      const secondaryEl  = $("dash5-secondary");
+      const errorEl      = $("dash5-error");
+      const badgeEl      = $("dash5-badge");
+      const metaEl       = $("dash5-meta");
+
+      const params = new URLSearchParams(window.location.search);
+      const slug = (params.get("slug") || "mss-demo").trim();
+      const subIdParam = params.get("submissionId") || params.get("id");
+      const submissionId = subIdParam ? Number(subIdParam) : null;
+
+      if (badgeEl && slug) {
+        badgeEl.textContent = `CEFR snapshot • ${slug}`;
+      }
+
+      function setError(msg) {
+        if (!errorEl) return;
+        errorEl.textContent = msg || "Something went wrong loading your result.";
+        errorEl.style.display = "block";
+      }
+
+      function describeCEFR(cefr) {
+        const map = {
+          A1: "Beginner",
+          A2: "Elementary",
+          B1: "Intermediate",
+          B2: "Upper-intermediate",
+          C1: "Advanced",
+          C2: "Proficiency",
+        };
+        return map[cefr] || "Speaking level";
+      }
+
+      function shortenQuestion(q) {
+        if (!q) return "";
+        const s = String(q).trim().replace(/\s+/g, " ");
+        return s.length > 140 ? s.slice(0, 137) + "…" : s;
+      }
+
+      // Close / secondary action
+      if (secondaryEl) {
+        secondaryEl.addEventListener("click", () => {
+          if (window.opener) {
+            window.close();
+          } else if (window.history.length > 1) {
+            window.history.back();
+          } else {
+            window.location.href = "/";
+          }
+        });
+      }
+
+      // Load latest submission + widget config
+      Promise.all([
+        // Use the same reports endpoint as other dashboards
+        fetch(`/api/admin/reports/${encodeURIComponent(slug)}?limit=50`)
+          .then((r) => r.json())
+          .catch(() => ({ ok: false })),
+
+        fetch(`/api/admin/widget/${encodeURIComponent(slug)}`)
+          .then((r) => r.json())
+          .catch(() => ({})),
+      ])
+        .then(([subRes, widgetRes]) => {
+          // ----- submissions -----
+          if (!subRes || subRes.ok === false) {
+            setError("We couldn’t load your latest result. Please try again.");
+            if (cefrLabelEl) {
+              cefrLabelEl.textContent = "Result unavailable.";
+            }
+            return;
+          }
+
+          const rows = Array.isArray(subRes.rows)
+            ? subRes.rows
+            : subRes.tests || [];
+
+          if (!rows.length) {
+            setError("No speaking results found yet.");
+            if (cefrLetterEl) cefrLetterEl.textContent = "–";
+            if (cefrLabelEl) {
+              cefrLabelEl.textContent = "Take a test to see your level.";
+            }
+            return;
+          }
+
+          let row = rows[0];
+          if (submissionId && Number.isFinite(submissionId)) {
+            const found = rows.find((r) => Number(r.id) === submissionId);
+            if (found) row = found;
+          }
+
+          const cefrRaw = row.mss_cefr || row.cefr || "";
+          const cefr = String(cefrRaw || "").toUpperCase();
+          const letter = cefr || "–";
+
+          if (cefrLetterEl) cefrLetterEl.textContent = letter;
+          if (cefrLabelEl) {
+            cefrLabelEl.textContent = cefr
+              ? `${cefr} – ${describeCEFR(cefr)} level`
+              : "We could not derive your CEFR level from this test.";
+          }
+
+          const q = shortenQuestion(row.question || "");
+          if (q && questionEl) {
+            questionEl.innerHTML = `<strong>Question:</strong> ${q}`;
+          }
+
+          if (metaEl && row.submitted_at) {
+            metaEl.textContent =
+              "Powered by MSS Vox • " +
+              new Date(row.submitted_at).toLocaleString();
+          }
+
+          // ----- config for after-dashboard CTA -----
+          const cfgRoot =
+            (widgetRes.settings && widgetRes.settings.config)
+              ? widgetRes.settings.config
+              : (widgetRes.config || {});
+
+          const afterDash = cfgRoot.afterDashboard || {};
+
+          // Flexible key support
+          let signupUrl =
+            afterDash.signupUrl ||
+            afterDash.signup_url ||
+            cfgRoot.afterDashboardSignupUrl ||
+            cfgRoot.after_dashboard_signup_url ||
+            "";
+
+          const ctaMessage =
+            afterDash.ctaMessage ||
+            afterDash.message ||
+            afterDash.cta_message ||
+            cfgRoot.afterDashboardCtaMessage ||
+            cfgRoot.after_dashboard_cta_message ||
+            "Get a free, detailed speaking report and advice from one of our teachers.";
+
+          if (ctaMsgEl) {
+            ctaMsgEl.textContent = ctaMessage;
+          }
+
+          if (signupUrl) {
+            // Normalize relative URLs
+            try {
+              const u = new URL(signupUrl, window.location.origin);
+              signupUrl = u.toString();
+            } catch (_) {
+              // fall back to raw string
+            }
+
+            if (ctaBtnEl) {
+              ctaBtnEl.disabled = false;
+              ctaBtnEl.addEventListener("click", () => {
+                window.location.href = signupUrl;
+              });
+            }
+
+            if (ctaHintEl) {
+              ctaHintEl.textContent =
+                "Click the button above to go to your school’s signup page and receive your full report.";
+            }
+          } else {
+            // No signup URL configured
+            if (ctaBtnEl) {
+              ctaBtnEl.disabled = true;
+            }
+            if (ctaHintEl) {
+              ctaHintEl.textContent =
+                "Ask your school how to receive a full speaking report linked to this result.";
+            }
+          }
+        })
+        .catch((err) => {
+          console.error("Dashboard5 load error:", err);
+          setError("We couldn’t load your result. Please try again.");
+        });
+    })();
+  </script>
+</body>
+</html>

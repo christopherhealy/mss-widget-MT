@@ -616,3 +616,387 @@ body.dash4-page {
 /* Dashboard_template.html styles
 -------------------------------------------------- */
 /* (paste existing Dashboard_template <style> content here) */
+
+/* ===== Dashboard 5 – Signup CTA layout ===== */
+
+.dash5-body {
+  margin: 0;
+  padding: 24px;
+  background: var(--mss-bg, #f3f4f6);
+  color: var(--mss-text, #111827);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.dash5-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  background: var(--mss-surface, #ffffff);
+  border-radius: 16px;
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.08);
+  padding: 24px 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dash5-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1px solid var(--mss-border, #e5e7eb);
+  padding-bottom: 16px;
+}
+
+.dash5-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--mss-heading, #0f172a);
+}
+
+.dash5-subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--mss-muted, #6b7280);
+}
+
+.dash5-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--mss-primary-soft, #eff6ff);
+  color: var(--mss-primary, #1d4ed8);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Main two-column layout */
+
+.dash5-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.dash5-score-card,
+.dash5-cta {
+  background: var(--mss-surface-soft, #f9fafb);
+  border-radius: 12px;
+  padding: 18px 18px 16px;
+}
+
+.dash5-score-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mss-muted, #6b7280);
+  margin-bottom: 8px;
+}
+
+/* CEFR “pill” circle */
+
+.dash5-score-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 8px solid var(--mss-primary, #1d4ed8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  background: #ffffff;
+}
+
+.dash5-score-letter {
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: var(--mss-heading, #0f172a);
+}
+
+.dash5-score-desc {
+  font-size: 0.95rem;
+  color: var(--mss-muted, #6b7280);
+  margin-bottom: 10px;
+}
+
+.dash5-question {
+  font-size: 0.9rem;
+  color: var(--mss-text, #111827);
+}
+
+.dash5-question strong {
+  font-weight: 600;
+}
+
+/* CTA column */
+
+.dash5-cta-title {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--mss-heading, #0f172a);
+}
+
+.dash5-cta-text {
+  margin: 0 0 14px;
+  font-size: 0.95rem;
+  color: var(--mss-text, #111827);
+}
+
+.dash5-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.dash5-primary-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: var(--mss-primary, #1d4ed8);
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.04s ease, box-shadow 0.1s ease,
+              background-color 0.1s ease, opacity 0.1s ease;
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+}
+
+.dash5-primary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 26px rgba(37, 99, 235, 0.3);
+}
+
+.dash5-primary-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.25);
+}
+
+.dash5-primary-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  box-shadow: none;
+}
+
+.dash5-secondary-link {
+  font-size: 0.9rem;
+  color: var(--mss-muted, #6b7280);
+  cursor: pointer;
+}
+
+.dash5-secondary-link:hover {
+  text-decoration: underline;
+}
+
+.dash5-cta-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--mss-muted, #6b7280);
+}
+
+/* Error + footer */
+
+.dash5-error {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--mss-danger, #b91c1c);
+}
+
+.dash5-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--mss-border-subtle, #e5e7eb);
+  font-size: 0.8rem;
+  color: var(--mss-muted, #6b7280);
+}
+
+/* Responsive tweaks */
+
+@media (max-width: 768px) {
+  .dash5-shell {
+    padding: 18px 16px 14px;
+  }
+  .dash5-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dash5-score-card,
+  .dash5-cta {
+    padding: 14px 14px 12px;
+  }
+  .dash5-score-circle {
+    margin: 0 auto 8px;
+  }
+  .dash5-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* =========================
+   DASHBOARD 4 – GAUGE + SUMMARY
+   ========================== */
+
+/* Top row layout */
+
+.mss-dashboard-4 .dash-row-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.15fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+/* Shared card base */
+
+.mss-dashboard-4 .dash-card {
+  background: var(--mss-surface-soft, #f9fafb);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+}
+
+/* --- Gauge card --- */
+
+.mss-dashboard-4 .dash-card-gauge {
+  position: relative;
+  overflow: hidden;
+  padding: 14px 16px 10px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+}
+
+.mss-dashboard-4 .dash-card-gauge h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--mss-heading, #0f172a);
+}
+
+/* “Window” that shows only the top half of the gauge */
+.mss-dashboard-4 .dash-card-gauge .gauge-window {
+  margin-top: 4px;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 180px; /* visible slice */
+}
+
+/* The iframe itself */
+.mss-dashboard-4 .dash-card-gauge .dash-gauge-frame {
+  position: relative;
+  top: -55px;        /* lift gauge so arc is centered, number visible */
+  width: 100%;
+  height: 260px;     /* original canvas height */
+  border: none;
+  background: #ffffff;
+}
+
+/* --- Score summary card --- */
+
+.mss-dashboard-4 .dash-card-summary {
+  background: var(--mss-surface-soft, #f9fafb);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+}
+
+.mss-dashboard-4 .dash-card-summary h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--mss-heading, #0f172a);
+}
+
+.mss-dashboard-4 .dash-card-summary .summary-list {
+  margin: 4px 0 8px;
+  padding: 0;
+}
+
+/* Make labels + numbers a bit “help-style” */
+
+.mss-dashboard-4 .summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--mss-border-subtle, #e5e7eb);
+}
+
+.mss-dashboard-4 .summary-row:last-child {
+  border-bottom: none;
+}
+
+.mss-dashboard-4 .summary-row dt {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--mss-muted, #6b7280);
+}
+
+.mss-dashboard-4 .summary-row dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--mss-heading, #0f172a);
+  text-align: right;
+}
+
+.mss-dashboard-4 #summaryBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mss-dashboard-4 #summaryBadges .badge {
+  font-size: 0.8rem;
+}
+
+/* Mobile tweaks */
+
+@media (max-width: 900px) {
+  .mss-dashboard-4 .dash-row-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mss-dashboard-4 .dash-card-gauge .gauge-window {
+  height: 190px;        /* was 180 – slightly taller window */
+}
+
+.mss-dashboard-4 .dash-card-gauge .dash-gauge-frame {
+  top: -45px;           /* was -55 – lower the gauge a bit */
+  height: 260px;
+}
+}
+
+/* Dash4 – Transcript header soft style */
+.mss-dashboard-4 .dash-card-transcript h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--mss-heading, #0f172a);
+  margin: 0 0 6px;
+  letter-spacing: -0.2px;
+}
+
+/* Dash4 – Transcript body matches Help-text */
+.mss-dashboard-4 .dash-transcript {
+  font-size: 0.88rem;                /* slightly smaller, cleaner */
+  line-height: 1.55;
+  color: var(--mss-text, #111827);
+  white-space: pre-wrap;
+  padding: 4px 6px 10px 2px;
+}
+.mss-dashboard-4 .dash-card-transcript {
+  background: var(--mss-surface-soft, #f9fafb);
+  border-radius: 14px;
+  border: 1px solid var(--mss-border-subtle, #e5e7eb);
+  padding-top: 14px;
+}
+.mss-dashboard-4 .dash-row-bottom {
+  margin-top: 10px;
+}
