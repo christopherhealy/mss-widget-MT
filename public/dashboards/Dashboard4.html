@@ -72,7 +72,11 @@
 </section>      
   </div>
 
-  <!-- Single shared script -->
-  <script src="/js/dashboard-core.js" defer></script>
+  <script>
+  // Default: same-origin (local dev, or when served from Render itself)
+  window.MSS_BACKEND_BASE = window.MSS_BACKEND_BASE || "";
+</script>
+
+<script src="/js/dashboard-core.js" defer></script>
 </body>
 </html>

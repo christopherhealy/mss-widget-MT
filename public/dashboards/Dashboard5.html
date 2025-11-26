@@ -256,5 +256,16 @@
         });
     })();
   </script>
+<script>
+  // Default: same-origin (local dev, or when served from Render)
+  window.MSS_BACKEND_BASE = "";
+
+  // On Vercel → force backend calls to Render server
+  if (location.hostname.includes("vercel.app")) {
+    window.MSS_BACKEND_BASE = "https://mss-widget-mt.onrender.com";
+  }
+</script>
+
+<script src="/js/dashboard-core.js" defer></script>
 </body>
 </html>

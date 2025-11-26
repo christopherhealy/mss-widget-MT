@@ -5,6 +5,8 @@ console.log("✅ dashboard-core.js file loaded");
 (function (global) {
   "use strict";
 
+  const API_BASE =
+    (typeof window !== "undefined" && window.MSS_BACKEND_BASE) || "";
   const Dashboard = {};
 
   /* -----------------------------------------------------------
@@ -233,13 +235,14 @@ console.log("✅ dashboard-core.js file loaded");
   /* -----------------------------------------------------------
      DB loader
   ----------------------------------------------------------- */
-  Dashboard.loadFromDB = async function (slug, submissionId) {
-    const url = `/api/admin/reports/${encodeURIComponent(slug)}?limit=200`;
+   Dashboard.loadFromDB = async function (slug, submissionId) {
+    const url = `${API_BASE}/api/admin/reports/${encodeURIComponent(
+      slug
+    )}?limit=200`;
     console.log("📡 Dashboard.loadFromDB →", { url, slug, submissionId });
 
     const res = await fetch(url);
     const json = await res.json();
-
     console.log("📡 /api/admin/reports response:", json);
 
     if (!json.ok || !Array.isArray(json.tests)) {
