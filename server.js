@@ -300,38 +300,84 @@ app.post("/api/widget/submit", async (req, res) => {
       payload.dashboardVariant ||
       null;
 
-    // 4) Vox score + transcript
-    const voxScore =
-      typeof mss.score === "number" ? mss.score : null;
+   // 4) Vox score + transcript (flexible mapping)
 
-    const transcriptRaw =
-      mss.transcript ||
-      payload.transcript ||
-      null;
+// Try multiple sensible locations for overall score
+const voxScore =
+  // new-style overall score
+  (typeof mss.score === "number" ? mss.score : null) ??
+  (typeof mss.overall_score === "number" ? mss.overall_score : null) ??
+  (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
+  null;
 
-    const transcriptClean = cleanTranscriptText(transcriptRaw);
+// Transcript (stays as-is)
+const transcriptRaw =
+  mss.transcript ||
+  mss.text ||
+  payload.transcript ||
+  null;
 
-    // 5) Elsa / MSS results – match MSS docs
-    const elsa = mss.elsa_results || {};
+const transcriptClean = cleanTranscriptText(transcriptRaw);
 
-    const mss_fluency    = elsa.fluency ?? null;
-    const mss_grammar    = elsa.grammar ?? null;
-    const mss_pron       = elsa.pronunciation ?? null;
-    const mss_vocab      = elsa.vocabulary ?? null;
-    const mss_cefr       = elsa.cefr_level ?? null;
-    const mss_toefl      = elsa.toefl_score ?? null;
-    const mss_ielts      = elsa.ielts_score ?? null;
-    const mss_pte        = elsa.pte_score ?? null;
+// 5) Detailed MSS results – adapt after inspecting `meta`
+const elsa = mss.elsa_results || mss.elsa || {};
+const scores = mss.scores || mss.details || {};
 
-    // No explicit overall from Elsa in docs yet
-    const mss_overall = null;
+// 👉 Once you see the real paths in `meta`, adjust the ?? chain below:
+const mss_fluency =
+  elsa.fluency ??
+  scores.fluency ??
+  null;
 
-    // Legacy columns
-    const toefl = mss_toefl;
-    const ielts = mss_ielts;
-    const pte   = mss_pte;
-    const cefr  = mss_cefr;
+const mss_grammar =
+  elsa.grammar ??
+  scores.grammar ??
+  null;
 
+const mss_pron =
+  elsa.pronunciation ??
+  scores.pronunciation ??
+  null;
+
+const mss_vocab =
+  elsa.vocabulary ??
+  scores.vocabulary ??
+  null;
+
+const mss_cefr =
+  elsa.cefr_level ??
+  mss.cefr ??
+  mss.cefr_level ??
+  scores.cefr ??
+  scores.cefr_level ??
+  null;
+
+const mss_toefl =
+  elsa.toefl_score ??
+  scores.toefl ??
+  null;
+
+const mss_ielts =
+  elsa.ielts_score ??
+  scores.ielts ??
+  null;
+
+const mss_pte =
+  elsa.pte_score ??
+  scores.pte ??
+  null;
+
+// No explicit overall from Elsa in docs yet
+const mss_overall = null;
+
+// Legacy columns
+const toefl = mss_toefl;
+const ielts = mss_ielts;
+const pte   = mss_pte;
+const cefr  = mss_cefr;
+
+// 6) Meta JSON – keep full raw MSS response
+const meta = mss;
     // 6) Meta JSON – keep full raw MSS response
     const meta = mss;
 
