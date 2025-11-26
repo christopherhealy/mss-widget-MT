@@ -1508,10 +1508,6 @@ function onClearFileClick() {
   setStatus("Cleared. You can record or upload a new file.");
 }
 
-/* -----------------------------------------------------------------------
-   SUBMIT
-   ----------------------------------------------------------------------- */
-
 function onSubmitClick() {
   const q = currentQuestion();
   if (!q) {
@@ -1556,7 +1552,7 @@ function onSubmitClick() {
       submitUrl = `${BACKEND_BASE || ""}/${s}`;
     }
   } else {
-    submitUrl = API.SUBMIT_FALLBACK;   // e.g. `${BACKEND_BASE}/api/widget/submit`
+    submitUrl = API.SUBMIT_FALLBACK; // e.g. `${BACKEND_BASE}/api/widget/submit`
   }
 
   // 🔑 Ensure /api/widget/submit also receives slug as a query param
@@ -1593,7 +1589,19 @@ function onSubmitClick() {
   });
 
   fd.append("file", blob, fileNameForUpload);
-  fd.append("questionId", q.id);
+
+  // 🔹 NEW: derive a canonical question text + ID once
+  const questionId = q.id ?? q.question_id ?? null;
+  const questionText = q.question || q.text || q.prompt || "";
+
+  // 🔹 Send BOTH ID and text to the backend (for /api/widget/submit)
+  if (questionId != null) {
+    fd.append("questionId", String(questionId));   // existing field
+    fd.append("question_id", String(questionId));  // DB-style, for safety
+  }
+  if (questionText) {
+    fd.append("question", questionText);
+  }
 
   // ⬇️ still send slug in the body as well (belt + suspenders)
   if (CURRENT_SLUG) fd.append("slug", CURRENT_SLUG);
@@ -1602,7 +1610,10 @@ function onSubmitClick() {
 
   const t0Local = performance.now();
   setStatus("Submitting your answer…");
-  logEvent("submit_start", { questionId: q.id });
+  logEvent("submit_start", {
+    questionId,
+    questionText,
+  });
 
   const headers = {};
   if (CONFIG?.api) {
@@ -1610,7 +1621,7 @@ function onSubmitClick() {
     if (CONFIG.api.secret) headers["X-API-SECRET"] = CONFIG.api.secret;
   }
 
-      fetch(submitUrl, {
+  fetch(submitUrl, {
     method: "POST",
     headers,
     body: fd,
@@ -1630,7 +1641,7 @@ function onSubmitClick() {
         setStatus("We could not submit your answer. Please try again.");
         hideSubmitProgress();
         logEvent("submit_error", {
-          questionId: q.id,
+          questionId,
           status: res.status,
           body: res.body,
         });
@@ -1641,9 +1652,9 @@ function onSubmitClick() {
       const msg = body.message || "Answer submitted successfully.";
 
       // 🔹 Help + variant metadata at submit time
-      const help_level        = getHelpLevelForSubmit();
-      const help_surface      = getHelpSurface();
-      const widget_variant    = getWidgetVariant();
+      const help_level = getHelpLevelForSubmit();
+      const help_surface = getHelpSurface();
+      const widget_variant = getWidgetVariant();
       const dashboard_variant = getDashboardVariant();
 
       setStatus(`${msg} (in ${elapsedSec}s)`);
@@ -1668,13 +1679,17 @@ function onSubmitClick() {
           });
         } else {
           // ✅ MSS scoring cluster → now store in DB via JSON submit
-          const questionText = q.question || q.text || "";
+
+          // (re-use the same canonical text)
+          const questionTextForDb = questionText;
 
           const dbPayload = {
             slug: CURRENT_SLUG,
-            question: questionText,
-            studentId: null, // can wire up later
-            mss: body,       // full MSS result payload
+            question: questionTextForDb,
+            question_id: questionId ?? null,  // 🔹 NEW: DB-style ID
+            questionId: questionId ?? null,   // 🔹 Keep camelCase for legacy server
+            studentId: null,                  // can wire up later
+            mss: body,                        // full MSS result payload
             help_level,
             help_surface,
             widget_variant,
@@ -1697,7 +1712,7 @@ function onSubmitClick() {
             );
             hideSubmitProgress();
             logEvent("submit_db_error", {
-              questionId: q.id,
+              questionId,
               status: dbRes.status,
               body: dbJson,
             });
@@ -1740,7 +1755,8 @@ function onSubmitClick() {
         setRecordingUiEnabled(false);
 
         logEvent("submit_success", {
-          questionId: q.id,
+          questionId,
+          questionText,
           submissionId,
           help_level,
           help_surface,
@@ -1755,7 +1771,7 @@ function onSubmitClick() {
         );
         hideSubmitProgress();
         logEvent("submit_flow_exception", {
-          questionId: q.id,
+          questionId,
           error: String(err),
         });
       }
@@ -1767,11 +1783,11 @@ function onSubmitClick() {
       );
       hideSubmitProgress();
       logEvent("submit_exception", {
-        questionId: q.id,
+        questionId,
         error: String(err),
       });
     });
-} // 
+} // end onSubmitClick
 /* -----------------------------------------------------------------------
    TIMERS / RESET
    ----------------------------------------------------------------------- */
