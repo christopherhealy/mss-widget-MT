@@ -193,7 +193,7 @@ app.post("/api/widget/submit", async (req, res) => {
     // ACCEPT BOTH SHAPES:
     //   A) { slug, question, studentId, mss, ... }
     //   B) { submission: { slug, question, studentId, mss, ... } }
-        const payload =
+    const payload =
       (req.body && (req.body.submission || req.body)) || {};
 
     console.log("Payload keys:", Object.keys(payload));
@@ -249,6 +249,12 @@ app.post("/api/widget/submit", async (req, res) => {
       payload.question ||
       payload.questionText ||
       payload.prompt ||
+      null;
+
+    // 🔹 NEW: question_id support (DB column)
+    const questionId =
+      payload.question_id ||
+      payload.questionId ||
       null;
 
     // 3) MSS result payload (flexible – string or object)
@@ -329,7 +335,16 @@ app.post("/api/widget/submit", async (req, res) => {
     // 6) Meta JSON – keep full raw MSS response
     const meta = mss;
 
-    // 7) Insert into submissions
+    console.log("📊 Scoring snapshot:", {
+      voxScore,
+      mss_cefr,
+      mss_toefl,
+      mss_ielts,
+      mss_pte,
+      hasElsa: !!mss.elsa_results,
+    });
+
+    // 7) Insert into submissions (now includes question_id)
     const insertSql = `
       INSERT INTO submissions (
         school_id,
@@ -355,7 +370,8 @@ app.post("/api/widget/submit", async (req, res) => {
         help_level,
         help_surface,
         widget_variant,
-        dashboard_variant
+        dashboard_variant,
+        question_id
       )
       VALUES (
         $1,$2,$3,
@@ -363,7 +379,7 @@ app.post("/api/widget/submit", async (req, res) => {
         $10,$11,$12,$13,$14,
         $15,$16,$17,$18,
         $19,$20,
-        $21,$22,$23,$24
+        $21,$22,$23,$24,$25
       )
       RETURNING id
     `;
@@ -393,6 +409,7 @@ app.post("/api/widget/submit", async (req, res) => {
       help_surface,      // 22
       widget_variant,    // 23
       dashboard_variant, // 24
+      questionId         // 25 (NEW)
     ];
 
     const result = await pool.query(insertSql, params);
@@ -429,6 +446,7 @@ app.post("/api/widget/submit", async (req, res) => {
 
     console.log("✅ submission stored with id", submissionId, {
       schoolId,
+      questionId,
       mss_cefr,
       mss_toefl,
       mss_ielts,
@@ -455,29 +473,6 @@ app.post("/api/widget/submit", async (req, res) => {
     });
   }
 });
-// POST image upload for widget branding
-app.post(
-  "/api/admin/widget/:slug/image-upload",
-  imageUpload.single("image"),
-  (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ ok: false, error: "No file uploaded" });
-      }
-
-      // This path is relative to the static 'public' root
-      const relUrl = `/uploads/widget-images/${req.file.filename}`;
-
-      return res.json({
-        ok: true,
-        url: relUrl,
-      });
-    } catch (err) {
-      console.error("Image upload error:", err);
-      return res.status(500).json({ ok: false, error: "Server error" });
-    }
-  }
-);
 
 /* ---------------------------------------------------------------
    Reports endpoint for School Portal (uses vw_widget_reports)
