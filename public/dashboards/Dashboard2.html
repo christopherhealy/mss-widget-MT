@@ -9,6 +9,19 @@
   
 </head>
 <body>
+
+<script>
+  // Always initialize
+  window.MSS_BACKEND_BASE = "";
+
+  // Detect Vercel production + previews
+  const host = window.location.hostname;
+
+  if (host.endsWith(".vercel.app") || host.includes("mss-widget")) {
+    window.MSS_BACKEND_BASE = "https://mss-widget-mt.onrender.com";
+  }
+</script>
+
   <div class="dash-root">
     <header class="dash-header">
       <div>
