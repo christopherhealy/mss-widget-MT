@@ -376,8 +376,7 @@ const ielts = mss_ielts;
 const pte   = mss_pte;
 const cefr  = mss_cefr;
 
-// 6) Meta JSON – keep full raw MSS response
-const meta = mss;
+
     // 6) Meta JSON – keep full raw MSS response
     const meta = mss;
 
