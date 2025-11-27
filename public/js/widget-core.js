@@ -1,4 +1,4 @@
-// MSS Widget Core v1.1 — Nov 19 2025 (REGEN Nov 25 2025)
+// MSS Widget Core v1.2 — Nov 19 2025 (REGEN Nov 27 2025)
 // Supports:
 //   • Widget.html      – slider help (MSSHelp overlay)
 //   • WidgetMin.html   – inline MIN-help panel (per-question)
@@ -51,6 +51,76 @@ let objectUrl = null;
 const HELP_CACHE = {};
 
 
+/* -----------------------------------------------------------------------
+   EPHEMERAL DASHBOARD CACHE (localStorage)
+   ----------------------------------------------------------------------- */
+
+/**
+ * Cache a lightweight result object for dashboards in localStorage so that
+ * dashboards can render even when they cannot reach the backend directly
+ * (e.g., Vercel → Render CORS).
+ *
+ * slug:          school slug (CURRENT_SLUG)
+ * submissionId:  numeric id returned by /api/widget/submit
+ * mssResultRaw:  MSS JSON from /api/vox (score, transcript, elsa_results…)
+ */
+function cacheDashboardResult(slug, submissionId, mssResultRaw) {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  if (!slug || submissionId == null || !mssResultRaw) return;
+
+  try {
+    // In some odd shapes we might get { mss: {...} } or { meta: {...} }
+    let mss = mssResultRaw;
+    if (mss.mss && (mss.mss.elsa_results || typeof mss.mss.score === "number")) {
+      mss = mss.mss;
+    }
+    if (mss.meta && (mss.meta.elsa_results || typeof mss.meta.score === "number")) {
+      mss = mss.meta;
+    }
+
+    const elsa   = mss.elsa_results || mss.elsa || {};
+    const overall =
+      typeof mss.score === "number" ? mss.score : null;
+
+    const resultForDash = {
+      sessionId: submissionId,
+      overall,
+      score: overall,
+      cefr:
+        elsa.cefr_level ||
+        mss.cefr_level ||
+        mss.cefr ||
+        null,
+      toefl:
+        typeof elsa.toefl_score === "number" ? elsa.toefl_score : null,
+      ielts:
+        typeof elsa.ielts_score === "number" ? elsa.ielts_score : null,
+      pte:
+        typeof elsa.pte_score === "number" ? elsa.pte_score : null,
+      lengthSec: null, // we can wire a real duration later if we want
+      wpm: null,
+      transcript: mss.transcript || "",
+      note: null,
+    };
+
+    const payload = {
+      slug,
+      submissionId,
+      result: resultForDash,
+    };
+
+    const key = `mss-dash:${slug}:${submissionId}`;
+    localStorage.setItem(key, JSON.stringify(payload));
+    localStorage.setItem("mss-dash:last", JSON.stringify(payload));
+
+    console.log("🧺 Cached dashboard result in localStorage:", {
+      key,
+      payload,
+    });
+  } catch (err) {
+    console.warn("⚠️ cacheDashboardResult error:", err);
+  }
+}
 /* -----------------------------------------------------------------------
    BACKEND BASE (Node / Render)
    ----------------------------------------------------------------------- */
@@ -1677,6 +1747,9 @@ function onSubmitClick() {
             submissionId,
             dashboardUrl,
           });
+
+          // ⚡ Try to cache dashboard data (if body happens to include MSS-like data)
+          cacheDashboardResult(CURRENT_SLUG, submissionId, body);
         } else {
           // ✅ MSS scoring cluster → now store in DB via JSON submit
 
@@ -1698,33 +1771,36 @@ function onSubmitClick() {
 
           console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
 
-          const dbRes = await fetch(API.DB_SUBMIT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(dbPayload),
-          });
+const dbRes = await fetch(API.DB_SUBMIT, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(dbPayload),
+});
 
-          const dbJson = await dbRes.json().catch(() => ({}));
-          if (!dbRes.ok || dbJson.ok === false) {
-            console.error("❌ DB_SUBMIT error:", dbRes.status, dbJson);
-            setStatus(
-              "We scored your answer but could not save it. Please try again later."
-            );
-            hideSubmitProgress();
-            logEvent("submit_db_error", {
-              questionId,
-              status: dbRes.status,
-              body: dbJson,
-            });
-            return;
-          }
+const dbJson = await dbRes.json().catch(() => ({}));
+if (!dbRes.ok || dbJson.ok === false) {
+  console.error("❌ DB_SUBMIT error:", dbRes.status, dbJson);
+  setStatus(
+    "We scored your answer but could not save it. Please try again later."
+  );
+  hideSubmitProgress();
+  logEvent("submit_db_error", {
+    questionId,
+    status: dbRes.status,
+    body: dbJson,
+  });
+  return;
+}
 
-          submissionId = dbJson.submissionId || dbJson.id;
-          dashboardUrl = dbJson.dashboardUrl;
-          console.log("✅ Stored via DB_SUBMIT:", {
-            submissionId,
-            dashboardUrl,
-          });
+submissionId = dbJson.submissionId || dbJson.id;
+dashboardUrl = dbJson.dashboardUrl;
+console.log("✅ Stored via DB_SUBMIT:", {
+  submissionId,
+  dashboardUrl,
+});
+
+// ⚡ Cache the MSS result for dashboards (Vercel, etc.)
+cacheDashboardResult(CURRENT_SLUG, submissionId, body);
         }
 
         // Fallback: make sure we have some dashboard URL
@@ -1933,4 +2009,4 @@ $("toggleDebug")?.addEventListener("click", () => {
   w.style.display = w.style.display === "block" ? "none" : "block";
 });
 
-// EOF — MSS Widget Core v1.1 (Nov 23 2025 REGEN) – WidgetMin + WidgetMax / READMAX with help/dash metadata
+// EOF — MSS Widget Core v1.2 (Nov 27 2025 REGEN) – WidgetMin + WidgetMax / READMAX with help/dash metadata
