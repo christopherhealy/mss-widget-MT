@@ -1685,17 +1685,19 @@ function onSubmitClick() {
     questionText,
   });
 
-  const headers = {};
+    const headers = {};
   if (CONFIG?.api) {
-    if (CONFIG.api.key) headers["API-KEY"] = CONFIG.api.key;
-    if (CONFIG.api.secret) headers["X-API-SECRET"] = CONFIG.api.secret;
+    if (CONFIG.api.key)   headers["API-KEY"]    = CONFIG.api.key;
+    if (CONFIG.api.secret) headers["API-SECRET"] = CONFIG.api.secret;
   }
 
   fetch(submitUrl, {
     method: "POST",
+    // Let the browser set Content-Type for FormData
     headers,
     body: fd,
   })
+
     .then((r) =>
       r
         .json()
