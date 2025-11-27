@@ -1,12 +1,41 @@
-// /public/js/dashboard-core.js Nov 26 AM
-// Unified logic for all dashboards (2, 3, 4…)
+// /public/js/dashboard-core.js Nov 27 AM (REGEN with BACKEND_BASE + cache fallback)
 console.log("✅ dashboard-core.js file loaded");
 
 (function (global) {
   "use strict";
 
+  /* -----------------------------------------------------------
+     BACKEND BASE (same pattern as widget-core)
+  ----------------------------------------------------------- */
+  const BACKEND_BASE = (() => {
+    if (typeof window === "undefined") return "";
+
+    const h = window.location.hostname || "";
+
+    // Local dev: Express serves static + APIs on same origin
+    if (
+      h === "localhost" ||
+      h === "127.0.0.1" ||
+      h === "0.0.0.0" ||
+      h.endsWith(".local")
+    ) {
+      return ""; // same-origin
+    }
+
+    // Vercel: static only → talk to Render backend
+    if (h.endsWith(".vercel.app")) {
+      return "https://mss-widget-mt.onrender.com";
+    }
+
+    // Default: assume we are on the Node/Render host already
+    return "";
+  })();
+
+  // Allow manual override via window.MSS_BACKEND_BASE, else use BACKEND_BASE
   const API_BASE =
-    (typeof window !== "undefined" && window.MSS_BACKEND_BASE) || "";
+    (typeof window !== "undefined" && window.MSS_BACKEND_BASE) ||
+    BACKEND_BASE;
+
   const Dashboard = {};
 
   /* -----------------------------------------------------------
@@ -135,6 +164,44 @@ console.log("✅ dashboard-core.js file loaded");
   }
 
   /* -----------------------------------------------------------
+     LocalStorage cache (optional fallback)
+     Matches cacheDashboardResult() in widget-core
+  ----------------------------------------------------------- */
+  function getCachedDashboardResult(slug, submissionId) {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+
+    try {
+      let payload = null;
+
+      if (slug && submissionId != null) {
+        const key = `mss-dash:${slug}:${submissionId}`;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          payload = JSON.parse(raw);
+        }
+      }
+
+      if (!payload) {
+        const lastRaw = localStorage.getItem("mss-dash:last");
+        if (lastRaw) {
+          payload = JSON.parse(lastRaw);
+        }
+      }
+
+      if (!payload || !payload.result) return null;
+      console.log("🧺 Using cached dashboard result from localStorage:", {
+        slug,
+        submissionId,
+        payload,
+      });
+      return payload.result; // already normalized shape
+    } catch (err) {
+      console.warn("getCachedDashboardResult error:", err);
+      return null;
+    }
+  }
+
+  /* -----------------------------------------------------------
      applyResults – main UI renderer
   ----------------------------------------------------------- */
   Dashboard.applyResults = function (r) {
@@ -173,7 +240,7 @@ console.log("✅ dashboard-core.js file loaded");
 
     if (r.wpm != null) {
       const n = Math.round(Number(r.wpm) || 0);
-      setText("wpmInfo", n + " words per minute");
+      setText("wpmInfo", n + "words per minute");
     } else {
       setText("wpmInfo", "–");
     }
@@ -233,38 +300,56 @@ console.log("✅ dashboard-core.js file loaded");
   }
 
   /* -----------------------------------------------------------
-     DB loader
+     DB loader (with cache fallback)
   ----------------------------------------------------------- */
-   Dashboard.loadFromDB = async function (slug, submissionId) {
+  Dashboard.loadFromDB = async function (slug, submissionId) {
     const url = `${API_BASE}/api/admin/reports/${encodeURIComponent(
       slug
     )}?limit=200`;
-    console.log("📡 Dashboard.loadFromDB →", { url, slug, submissionId });
+    console.log("📡 Dashboard.loadFromDB →", {
+      url,
+      slug,
+      submissionId,
+    });
 
-    const res = await fetch(url);
-    const json = await res.json();
-    console.log("📡 /api/admin/reports response:", json);
+    try {
+      const res = await fetch(url);
+      const json = await res.json();
+      console.log("📡 /api/admin/reports response:", json);
 
-    if (!json.ok || !Array.isArray(json.tests)) {
-      console.error("Dashboard: bad DB payload:", json);
-      return null;
+      if (!json.ok || !Array.isArray(json.tests)) {
+        console.error("Dashboard: bad DB payload:", json);
+        // fall through to cache
+        const cached = getCachedDashboardResult(slug, submissionId);
+        return cached;
+      }
+
+      let row = null;
+
+      if (submissionId != null && !Number.isNaN(submissionId)) {
+        row =
+          json.tests.find((t) => Number(t.id) === submissionId) ||
+          null;
+      }
+
+      if (!row) row = json.tests[0] || null;
+
+      if (!row) {
+        console.warn("Dashboard: no rows for slug", slug);
+        const cached = getCachedDashboardResult(slug, submissionId);
+        return cached;
+      }
+
+      console.log("📡 Dashboard selected row:", row);
+      return Dashboard.mapRow(row);
+    } catch (err) {
+      console.error(
+        "Dashboard.loadFromDB fetch error – trying local cache:",
+        err
+      );
+      const cached = getCachedDashboardResult(slug, submissionId);
+      return cached;
     }
-
-    let row = null;
-
-    if (submissionId != null && !Number.isNaN(submissionId)) {
-      row = json.tests.find((t) => Number(t.id) === submissionId) || null;
-    }
-
-    if (!row) row = json.tests[0] || null;
-
-    if (!row) {
-      console.warn("Dashboard: no rows for slug", slug);
-      return null;
-    }
-
-    console.log("📡 Dashboard selected row:", row);
-    return Dashboard.mapRow(row);
   };
 
   /* -----------------------------------------------------------
@@ -357,6 +442,7 @@ console.log("✅ dashboard-core.js file loaded");
       slug,
       submissionId,
       previewFlag,
+      API_BASE,
     });
 
     setupDebugToggle();
@@ -372,7 +458,9 @@ console.log("✅ dashboard-core.js file loaded");
       if (result) {
         Dashboard.applyResults(result);
       } else {
-        console.warn("Dashboard.init: no result from DB, enabling postMessage fallback.");
+        console.warn(
+          "Dashboard.init: no result from DB or cache, enabling postMessage fallback."
+        );
         Dashboard.enablePostMessage();
       }
       return;
