@@ -11,15 +11,20 @@
 <body class="dash5-body">
 
 <script>
-  // Always initialize
-  window.MSS_BACKEND_BASE = "";
+  // Backend base used by this dashboard:
+  //   - Local dev / Render app: same origin ("")
+  //   - Vercel: go to Render backend directly
+  (function () {
+    const host = window.location.hostname || "";
+    let base = "";
 
-  // Detect Vercel production + previews
-  const host = window.location.hostname;
+    if (host.endsWith(".vercel.app") || host.includes("mss-widget")) {
+      base = "https://mss-widget-mt.onrender.com";
+    }
 
-  if (host.endsWith(".vercel.app") || host.includes("mss-widget")) {
-    window.MSS_BACKEND_BASE = "https://mss-widget-mt.onrender.com";
-  }
+    window.MSS_BACKEND_BASE = base;
+    console.log("🔧 Dashboard5 MSS_BACKEND_BASE =", base || "(same origin)");
+  })();
 </script>
 
   <div class="dash5-shell">
@@ -101,6 +106,11 @@
       const subIdParam = params.get("submissionId") || params.get("id");
       const submissionId = subIdParam ? Number(subIdParam) : null;
 
+      // Backend base ("" = same origin)
+      const API_BASE = (window.MSS_BACKEND_BASE || "").replace(/\/+$/, "");
+      const reportsUrl = `${API_BASE}/api/admin/reports/${encodeURIComponent(slug)}?limit=50`;
+      const widgetUrl  = `${API_BASE}/api/admin/widget/${encodeURIComponent(slug)}`;
+
       if (badgeEl && slug) {
         badgeEl.textContent = `CEFR snapshot • ${slug}`;
       }
@@ -143,15 +153,23 @@
       }
 
       // Load latest submission + widget config
+      console.log("📡 Dashboard5 fetching:", { reportsUrl, widgetUrl });
+
       Promise.all([
         // Use the same reports endpoint as other dashboards
-        fetch(`/api/admin/reports/${encodeURIComponent(slug)}?limit=50`)
+        fetch(reportsUrl)
           .then((r) => r.json())
-          .catch(() => ({ ok: false })),
+          .catch((err) => {
+            console.error("Dashboard5 reports fetch error:", err);
+            return { ok: false };
+          }),
 
-        fetch(`/api/admin/widget/${encodeURIComponent(slug)}`)
+        fetch(widgetUrl)
           .then((r) => r.json())
-          .catch(() => ({})),
+          .catch((err) => {
+            console.warn("Dashboard5 widget fetch error:", err);
+            return {};
+          }),
       ])
         .then(([subRes, widgetRes]) => {
           // ----- submissions -----
@@ -269,16 +287,8 @@
         });
     })();
   </script>
-<script>
-  // Default: same-origin (local dev, or when served from Render)
-  window.MSS_BACKEND_BASE = "";
 
-  // On Vercel → force backend calls to Render server
-  if (location.hostname.includes("vercel.app")) {
-    window.MSS_BACKEND_BASE = "https://mss-widget-mt.onrender.com";
-  }
-</script>
-
-<script src="/js/dashboard-core.js" defer></script>
+  <!-- Optional: still fine to keep dashboard-core.js if you’re using it elsewhere -->
+  <script src="/js/dashboard-core.js" defer></script>
 </body>
 </html>
