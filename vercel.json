@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://mss-widget-mt.onrender.com/api/:path*"
+    }
+  ]
+}
