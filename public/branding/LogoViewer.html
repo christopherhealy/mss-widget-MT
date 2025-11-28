@@ -1,0 +1,795 @@
+<!-- /public/branding/LogoViewer.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – Logo Viewer</title>
+
+  <!-- Shared MSS styling -->
+  <link
+    rel="stylesheet"
+    href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css"
+  />
+  <link rel="stylesheet" href="../themes/MSSStylesheet.css" />
+
+  <style>
+    :root {
+      --lv-bg: var(--mss-bg, #f3f4f6);
+      --lv-surface: var(--mss-surface, #ffffff);
+      --lv-surface-soft: var(--mss-surface-soft, #f9fafb);
+      --lv-border: var(--mss-border, #e5e7eb);
+      --lv-heading: var(--mss-heading, #0f172a);
+      --lv-muted: var(--mss-muted, #6b7280);
+      --lv-primary: var(--mss-primary, #1d4ed8);
+
+      /* current chosen size for widget preview */
+      --lv-logo-size: 64px;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top left, #e5edff 0, #f3f4f6 45%, #e5e7eb 100%);
+      color: var(--lv-heading);
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .lv-shell {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2vh 2vw;
+      box-sizing: border-box;
+    }
+
+    .lv-card {
+      width: 100%;
+      max-width: 1000px;
+      max-height: 100%;
+      background: var(--lv-surface);
+      border-radius: 24px;
+      box-shadow:
+        0 30px 80px rgba(15, 23, 42, 0.25),
+        0 0 0 1px rgba(148, 163, 184, 0.18);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .lv-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.1rem 1.8rem;
+      border-bottom: 1px solid var(--lv-border);
+      background: linear-gradient(to bottom, #f9fafb, #ffffff);
+    }
+
+    .lv-header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      min-width: 0;
+    }
+
+    .lv-header-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .lv-header-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .lv-header-text h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      color: var(--lv-heading);
+    }
+
+    .lv-header-text p {
+      margin: 0.15rem 0 0;
+      font-size: 0.8rem;
+      color: var(--lv-muted);
+    }
+
+    .lv-main {
+      flex: 1 1 auto;
+      padding: 1.4rem 1.8rem 1.2rem;
+      background: var(--lv-bg);
+      overflow: auto;
+    }
+
+    .lv-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.4fr);
+      gap: 1.2rem;
+    }
+
+    .lv-panel {
+      background: var(--lv-surface-soft);
+      border-radius: 18px;
+      padding: 1.1rem 1.2rem 1.3rem;
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16);
+    }
+
+    .lv-panel h2 {
+      margin: 0 0 0.5rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .lv-panel p {
+      margin: 0 0 0.6rem;
+      font-size: 0.78rem;
+      color: var(--lv-muted);
+    }
+
+    .lv-field {
+      margin-bottom: 0.8rem;
+      font-size: 0.82rem;
+    }
+
+    .lv-label {
+      display: block;
+      margin-bottom: 0.25rem;
+      font-weight: 500;
+    }
+
+    .lv-input-file {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .lv-input-file input[type="file"] {
+      font-size: 0.78rem;
+    }
+
+    .lv-muted {
+      font-size: 0.75rem;
+      color: var(--lv-muted);
+      margin-top: 0.25rem;
+    }
+
+    .lv-swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.6rem;
+      margin-top: 0.6rem;
+    }
+
+    .lv-swatch {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 0.55rem;
+      border: 1px solid var(--lv-border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .lv-swatch-title {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--lv-heading);
+    }
+
+    .lv-swatch-size {
+      font-size: 0.75rem;
+      color: var(--lv-muted);
+    }
+
+    .lv-swatch-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      background: #f9fafb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .lv-swatch-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .lv-swatch--thumb .lv-swatch-logo {
+      width: 24px;
+      height: 24px;
+    }
+    .lv-swatch--small .lv-swatch-logo {
+      width: 40px;
+      height: 40px;
+    }
+    .lv-swatch--large .lv-swatch-logo {
+      width: 72px;
+      height: 72px;
+    }
+
+    .lv-size-options {
+      margin-top: 0.9rem;
+      border-top: 1px dashed rgba(148, 163, 184, 0.7);
+      padding-top: 0.7rem;
+    }
+
+    .lv-radio-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 1rem;
+      font-size: 0.8rem;
+    }
+
+    .lv-radio-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      cursor: pointer;
+    }
+
+    .lv-custom-size {
+      margin-top: 0.55rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+    }
+
+    .lv-custom-size input[type="range"] {
+      width: 100%;
+    }
+
+    .lv-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      font-size: 0.76rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+    }
+
+    .lv-stepper-btn {
+      border-radius: 999px;
+      border: 1px solid var(--lv-border);
+      background: #ffffff;
+      padding: 0.08rem 0.55rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .lv-stepper-btn:hover {
+      border-color: var(--lv-primary);
+    }
+
+    /* Right-hand: widget preview */
+
+    .lv-widget-shell {
+      background: #e5edff;
+      border-radius: 16px;
+      padding: 0.5rem;
+    }
+
+    .lv-widget {
+      background: #ffffff;
+      border-radius: 14px;
+      box-shadow:
+        0 16px 40px rgba(15, 23, 42, 0.22),
+        0 0 0 1px rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    .lv-widget-header {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid #e5e7eb;
+      background: linear-gradient(to bottom right, #f9fafb, #ffffff);
+    }
+
+    .lv-widget-logo {
+      width: var(--lv-logo-size);
+      height: var(--lv-logo-size);
+      border-radius: 14px;
+      background: #f3f4f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .lv-widget-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .lv-widget-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--lv-heading);
+      margin-bottom: 0.15rem;
+    }
+
+    .lv-widget-subtitle {
+      font-size: 0.78rem;
+      color: var(--lv-muted);
+    }
+
+    .lv-widget-body {
+      padding: 0.75rem 0.9rem 0.9rem;
+      font-size: 0.8rem;
+      color: var(--lv-muted);
+    }
+
+    .lv-selected-size-label {
+      margin-top: 0.6rem;
+      font-size: 0.78rem;
+      color: var(--lv-muted);
+    }
+
+    .lv-selected-size-label strong {
+      color: var(--lv-heading);
+    }
+
+    .lv-footer {
+      padding: 0.85rem 1.8rem 1.1rem;
+      border-top: 1px solid var(--lv-border);
+      background: #ffffff;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.6rem;
+    }
+
+    .lv-btn {
+      min-width: 110px;
+      height: 2.2rem;
+      border-radius: 999px;
+      padding: 0 1.2rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+
+    .lv-btn-secondary {
+      border-color: var(--lv-border);
+      background: #ffffff;
+      color: var(--lv-heading);
+    }
+
+    .lv-btn-primary {
+      border-color: var(--lv-primary);
+      background: var(--lv-primary);
+      color: #ffffff;
+    }
+
+    .lv-btn-primary:hover {
+      filter: brightness(1.03);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.45);
+    }
+
+    @media (max-width: 840px) {
+      .lv-card {
+        border-radius: 18px;
+      }
+      .lv-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .lv-card {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 0;
+      }
+      .lv-main {
+        padding-inline: 1.1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="lv-shell">
+    <div class="lv-card">
+      <header class="lv-header">
+        <div class="lv-header-left">
+          <div class="lv-header-logo">
+            <!-- Our MSS logo -->
+            <img src="../images/MSSLogo.png" alt="MySpeakingScore logo" />
+          </div>
+          <div class="lv-header-text">
+            <h1>Logo viewer</h1>
+            <p>
+              Upload your school logo, preview it at different sizes, and choose
+              what looks best in the widget header.
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <main class="lv-main">
+        <div class="lv-layout">
+          <!-- Left: controls & size choices -->
+          <section class="lv-panel" aria-label="Logo upload and sizes">
+            <h2>Upload logo</h2>
+            <p>
+              We’ll keep your logo exactly as you upload it – no cropping or
+              editing. You can try different sizes to see what is most
+              readable.
+            </p>
+
+            <div class="lv-field">
+              <span class="lv-label">Image file</span>
+              <div class="lv-input-file">
+                <input
+                  id="logoFile"
+                  type="file"
+                  accept="image/*"
+                />
+              </div>
+              <p class="lv-muted">
+                PNG or SVG recommended. For best results, use a logo with a
+                transparent background.
+              </p>
+            </div>
+
+            <!-- Static size swatches -->
+            <div class="lv-field">
+              <span class="lv-label">Quick size preview</span>
+              <div class="lv-swatch-grid">
+                <div class="lv-swatch lv-swatch--thumb">
+                  <div class="lv-swatch-logo">
+                    <img
+                      id="thumbLogo"
+                      src="../images/MSSLogo.png"
+                      alt="Thumbnail preview"
+                    />
+                  </div>
+                  <div class="lv-swatch-title">Thumbnail</div>
+                  <div class="lv-swatch-size">24 &times; 24 px</div>
+                </div>
+                <div class="lv-swatch lv-swatch--small">
+                  <div class="lv-swatch-logo">
+                    <img
+                      id="smallLogo"
+                      src="../images/MSSLogo.png"
+                      alt="Small preview"
+                    />
+                  </div>
+                  <div class="lv-swatch-title">Small</div>
+                  <div class="lv-swatch-size">40 &times; 40 px</div>
+                </div>
+                <div class="lv-swatch lv-swatch--large">
+                  <div class="lv-swatch-logo">
+                    <img
+                      id="largeLogo"
+                      src="../images/MSSLogo.png"
+                      alt="Large preview"
+                    />
+                  </div>
+                  <div class="lv-swatch-title">Large</div>
+                  <div class="lv-swatch-size">72 &times; 72 px</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Size selection (includes Custom) -->
+            <div class="lv-size-options">
+              <div class="lv-field">
+                <span class="lv-label">Choose your default widget size</span>
+                <div class="lv-radio-row" id="sizeOptions">
+                  <label class="lv-radio-label">
+                    <input
+                      type="radio"
+                      name="logoSize"
+                      value="thumbnail"
+                    />
+                    Thumbnail (24px)
+                  </label>
+                  <label class="lv-radio-label">
+                    <input
+                      type="radio"
+                      name="logoSize"
+                      value="small"
+                      checked
+                    />
+                    Small (40px)
+                  </label>
+                  <label class="lv-radio-label">
+                    <input
+                      type="radio"
+                      name="logoSize"
+                      value="large"
+                    />
+                    Large (72px)
+                  </label>
+                  <label class="lv-radio-label">
+                    <input
+                      type="radio"
+                      name="logoSize"
+                      value="custom"
+                      id="sizeCustomRadio"
+                    />
+                    Custom
+                  </label>
+                </div>
+              </div>
+
+              <div class="lv-custom-size">
+                <div>
+                  <span class="lv-label">Custom size</span>
+                  <input
+                    id="customSizeRange"
+                    type="range"
+                    min="24"
+                    max="120"
+                    value="64"
+                  />
+                </div>
+                <div class="lv-chip">
+                  <span id="customSizeLabel">64 px</span>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    class="lv-stepper-btn"
+                    id="sizeDownBtn"
+                  >–</button>
+                  <button
+                    type="button"
+                    class="lv-stepper-btn"
+                    id="sizeUpBtn"
+                  >+</button>
+                </div>
+              </div>
+
+              <p class="lv-selected-size-label">
+                Selected size: <strong id="selectedSizeText">Small (40px)</strong>
+              </p>
+            </div>
+          </section>
+
+          <!-- Right: widget preview -->
+          <section class="lv-panel" aria-label="Widget preview">
+            <h2>Widget preview</h2>
+            <p>
+              This is roughly how your logo will look in a MySpeakingScore
+              widget header. Only the logo size changes – your widget colours
+              come from your school configuration.
+            </p>
+
+            <div class="lv-widget-shell">
+              <div class="lv-widget">
+                <div class="lv-widget-header">
+                  <div class="lv-widget-logo">
+                    <img
+                      id="widgetLogo"
+                      src="../images/MSSLogo.png"
+                      alt="Logo preview in widget"
+                    />
+                  </div>
+                  <div>
+                    <div class="lv-widget-title">
+                      Andrew’s Academy
+                    </div>
+                    <div class="lv-widget-subtitle">
+                      Know how well you speak English.
+                    </div>
+                  </div>
+                </div>
+                <div class="lv-widget-body">
+                  Students will see this logo at the top of every speaking
+                  practice test. Choose a size that stays clear and readable
+                  even on small screens.
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="lv-footer">
+        <button type="button" class="lv-btn lv-btn-secondary" id="resetBtn">
+          Reset
+        </button>
+        <button type="button" class="lv-btn lv-btn-primary" id="saveBtn">
+          Save selection
+        </button>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    // --- State
+    const PRESET_SIZES = {
+      thumbnail: 24,
+      small: 40,
+      large: 72,
+    };
+
+    let selectedSizeKey = "small"; // default
+    let customSizePx = 64;
+
+    const rootStyle = document.documentElement.style;
+
+    const fileInput = document.getElementById("logoFile");
+    const thumbLogo = document.getElementById("thumbLogo");
+    const smallLogo = document.getElementById("smallLogo");
+    const largeLogo = document.getElementById("largeLogo");
+    const widgetLogo = document.getElementById("widgetLogo");
+
+    const sizeOptions = document.getElementById("sizeOptions");
+    const customRange = document.getElementById("customSizeRange");
+    const customLabel = document.getElementById("customSizeLabel");
+    const selectedSizeText = document.getElementById("selectedSizeText");
+    const customRadio = document.getElementById("sizeCustomRadio");
+    const sizeDownBtn = document.getElementById("sizeDownBtn");
+    const sizeUpBtn = document.getElementById("sizeUpBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const saveBtn = document.getElementById("saveBtn");
+
+    // Apply current size (in px) to the widget logo
+    function applyLogoSize(px) {
+      rootStyle.setProperty("--lv-logo-size", px + "px");
+    }
+
+    function updateSelectedSizeLabel() {
+      let label;
+      if (selectedSizeKey === "custom") {
+        label = `Custom (${customSizePx}px)`;
+      } else {
+        label = `${selectedSizeKey.charAt(0).toUpperCase() + selectedSizeKey.slice(1)} (${PRESET_SIZES[selectedSizeKey]}px)`;
+      }
+      selectedSizeText.textContent = label;
+    }
+
+    function setSizeFromKey(key) {
+      selectedSizeKey = key;
+
+      if (key === "custom") {
+        applyLogoSize(customSizePx);
+      } else {
+        const px = PRESET_SIZES[key] || 40;
+        applyLogoSize(px);
+      }
+      updateSelectedSizeLabel();
+    }
+
+    // --- Upload handling
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const src = reader.result;
+        thumbLogo.src = src;
+        smallLogo.src = src;
+        largeLogo.src = src;
+        widgetLogo.src = src;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // --- Size radio selection
+    sizeOptions.addEventListener("change", (e) => {
+      if (e.target && e.target.name === "logoSize") {
+        const key = e.target.value;
+        setSizeFromKey(key);
+      }
+    });
+
+    // --- Custom size slider / steppers
+    function syncCustomLabel() {
+      customLabel.textContent = `${customSizePx} px`;
+    }
+
+    customRange.addEventListener("input", () => {
+      customSizePx = Number(customRange.value) || 64;
+      syncCustomLabel();
+      // If user touches slider, auto-select "Custom"
+      if (!customRadio.checked) {
+        customRadio.checked = true;
+        selectedSizeKey = "custom";
+      }
+      setSizeFromKey("custom");
+    });
+
+    sizeDownBtn.addEventListener("click", () => {
+      customSizePx = Math.max(24, customSizePx - 4);
+      customRange.value = String(customSizePx);
+      syncCustomLabel();
+      customRadio.checked = true;
+      setSizeFromKey("custom");
+    });
+
+    sizeUpBtn.addEventListener("click", () => {
+      customSizePx = Math.min(120, customSizePx + 4);
+      customRange.value = String(customSizePx);
+      syncCustomLabel();
+      customRadio.checked = true;
+      setSizeFromKey("custom");
+    });
+
+    // --- Reset and Save
+    resetBtn.addEventListener("click", () => {
+      fileInput.value = "";
+      const defaultSrc = "../images/MSSLogo.png";
+      thumbLogo.src = defaultSrc;
+      smallLogo.src = defaultSrc;
+      largeLogo.src = defaultSrc;
+      widgetLogo.src = defaultSrc;
+
+      // reset size
+      document.querySelector('input[name="logoSize"][value="small"]').checked = true;
+      selectedSizeKey = "small";
+      customSizePx = 64;
+      customRange.value = "64";
+      syncCustomLabel();
+      setSizeFromKey("small");
+    });
+
+    saveBtn.addEventListener("click", () => {
+      const sizePx =
+        selectedSizeKey === "custom"
+          ? customSizePx
+          : PRESET_SIZES[selectedSizeKey] || 40;
+
+      const summary = {
+        sizeKey: selectedSizeKey,
+        sizePx,
+        // In a later step we can also send file metadata or upload token here.
+      };
+
+      console.log("✅ Logo choice ready to save:", summary);
+      alert(
+        `We would now save this to your school config:\n\nSize: ${summary.sizeKey} (${summary.sizePx}px)\n\nIn the next step we’ll wire this to the real backend.`
+      );
+    });
+
+    // --- Initial state
+    applyLogoSize(PRESET_SIZES.small);
+    updateSelectedSizeLabel();
+    syncCustomLabel();
+  </script>
+</body>
+</html>
