@@ -1,0 +1,577 @@
+<!-- /public/signup/SchoolSignUp.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – School Sign-up</title>
+
+  <!-- Shared MSS styling -->
+  <link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css" />
+  <link rel="stylesheet" href="../themes/MSSStylesheet.css" />
+
+  <style>
+    :root {
+      --ss-bg: var(--mss-bg, #f3f4f6);
+      --ss-surface: var(--mss-surface, #ffffff);
+      --ss-surface-soft: var(--mss-surface-soft, #f9fafb);
+      --ss-border: var(--mss-border, #e5e7eb);
+      --ss-heading: var(--mss-heading, #0f172a);
+      --ss-muted: var(--mss-muted, #6b7280);
+      --ss-primary: var(--mss-primary, #1d4ed8);
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top left, #e5edff 0, #f3f4f6 45%, #e5e7eb 100%);
+      color: var(--ss-heading);
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ss-shell {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2vh 2vw;
+      box-sizing: border-box;
+    }
+
+    .ss-card {
+      width: 100%;
+      max-width: 900px;
+      max-height: 100%;
+      background: var(--ss-surface);
+      border-radius: 24px;
+      box-shadow:
+        0 30px 80px rgba(15, 23, 42, 0.25),
+        0 0 0 1px rgba(148, 163, 184, 0.18);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* HEADER + LOGO ---------------------------------------------------- */
+
+    .ss-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;   /* text on left, logo on right */
+      gap: 1.25rem;
+      padding: 1.2rem 1.8rem;
+      border-bottom: 1px solid var(--ss-border);
+      background: linear-gradient(to bottom, #f9fafb, #ffffff);
+    }
+
+    .ss-header-text {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .ss-header-text h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      color: var(--ss-heading);
+    }
+
+    .ss-header-text p {
+      margin: 0.25rem 0 0;
+      font-size: 0.85rem;
+      color: var(--ss-muted);
+      max-width: 36rem;
+    }
+
+    /* Big, readable MSS logo */
+    .ss-header-logo {
+      flex-shrink: 0;
+      width: 150px;          /* tweak as needed */
+      height: auto;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .ss-header-logo img {
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* MAIN + FORM ------------------------------------------------------ */
+
+    .ss-main {
+      flex: 1 1 auto;
+      padding: 1.6rem 1.8rem 1.4rem;
+      background: var(--ss-bg);
+      overflow: auto;
+    }
+
+    .ss-form-shell {
+      background: var(--ss-surface-soft);
+      border-radius: 18px;
+      padding: 1.4rem 1.5rem 1.6rem;
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16);
+    }
+
+    .ss-section {
+      margin-bottom: 1.4rem;
+    }
+
+    .ss-section:last-of-type {
+      margin-bottom: 0;
+    }
+
+    .ss-section-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin: 0 0 0.4rem;
+      color: var(--ss-heading);
+    }
+
+    .ss-grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.75rem 1rem;
+    }
+
+    .ss-grid-1 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.75rem;
+    }
+
+    .ss-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .ss-label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--ss-heading);
+    }
+
+    .ss-label span.req {
+      color: #dc2626;
+      margin-left: 0.1rem;
+    }
+
+    .ss-hint {
+      font-size: 0.75rem;
+      color: var(--ss-muted);
+    }
+
+    .ss-input,
+    .ss-textarea,
+    .ss-select {
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: 10px;
+      border: 1px solid var(--ss-border);
+      padding: 0.45rem 0.6rem;
+      font-size: 0.85rem;
+      outline: none;
+      background: #ffffff;
+      color: var(--ss-heading);
+    }
+
+    .ss-input:focus,
+    .ss-textarea:focus,
+    .ss-select:focus {
+      border-color: var(--ss-primary);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35);
+    }
+
+    .ss-textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    .ss-checkbox-row,
+    .ss-radio-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 1.25rem;
+      margin-top: 0.25rem;
+    }
+
+    .ss-check-label,
+    .ss-radio-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      color: var(--ss-heading);
+      cursor: pointer;
+    }
+
+    .ss-footer {
+      padding: 0.9rem 1.8rem 1.2rem;
+      border-top: 1px solid var(--ss-border);
+      background: #ffffff;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .ss-btn-primary {
+      min-width: 150px;
+      height: 2.4rem;
+      border-radius: 999px;
+      border: 1px solid var(--ss-primary);
+      background: var(--ss-primary);
+      color: #ffffff;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0 1.4rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ss-btn-primary:hover {
+      filter: brightness(1.03);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.45);
+    }
+
+    @media (max-width: 768px) {
+      .ss-card {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 0;
+      }
+
+      .ss-main {
+        padding-inline: 1.1rem;
+      }
+
+      .ss-form-shell {
+        padding: 1.1rem 1.1rem 1.4rem;
+      }
+
+      .ss-grid-2 {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .ss-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .ss-header-logo {
+        justify-content: flex-start;
+        width: 130px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ss-shell">
+    <div class="ss-card">
+      <header class="ss-header">
+        <div class="ss-header-text">
+          <h1>School sign-up</h1>
+          <p>
+            Tell us a bit about your program and we’ll set up your MySpeakingScore school
+            portal for you, and show you how to get started in just minutes.
+          </p>
+        </div>
+        <div class="ss-header-logo">
+          <!-- MSS brand logo (wide, readable) -->
+          <img src="../images/MSSLogo.png" alt="MySpeakingScore" />
+        </div>
+      </header>
+
+      <main class="ss-main">
+        <form class="ss-form-shell" id="schoolSignUpForm">
+          <!-- School / Program details -->
+          <section class="ss-section" aria-labelledby="sec-details">
+            <h2 id="sec-details" class="ss-section-title">
+              School / program details
+            </h2>
+
+            <div class="ss-grid-2">
+              <div class="ss-field">
+                <label class="ss-label" for="schoolName">
+                  School / institution name <span class="req">*</span>
+                </label>
+                <input id="schoolName" name="schoolName" type="text" class="ss-input" required />
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="websiteUrl">
+                  Website URL <span class="req">*</span>
+                </label>
+                <input
+                  id="websiteUrl"
+                  name="websiteUrl"
+                  type="url"
+                  class="ss-input"
+                  placeholder="https://example.edu"
+                  required
+                />
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="country">
+                  Country <span class="req">*</span>
+                </label>
+                <input
+                  id="country"
+                  name="country"
+                  type="text"
+                  class="ss-input"
+                  placeholder="Canada, Japan, Brazil…"
+                  required
+                />
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="timeZone">Time zone</label>
+                <input
+                  id="timeZone"
+                  name="timeZone"
+                  type="text"
+                  class="ss-input"
+                  placeholder="America/Toronto, Asia/Tokyo…"
+                />
+                <p class="ss-hint">
+                  If you’re not sure, you can leave this blank and we’ll set it for you.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Primary contact -->
+          <section class="ss-section" aria-labelledby="sec-contact">
+            <h2 id="sec-contact" class="ss-section-title">
+              Primary contact
+            </h2>
+
+            <div class="ss-grid-2">
+              <div class="ss-field">
+                <label class="ss-label" for="contactName">
+                  Contact name <span class="req">*</span>
+                </label>
+                <input id="contactName" name="contactName" type="text" class="ss-input" required />
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="contactEmail">
+                  Contact email <span class="req">*</span>
+                </label>
+                <input id="contactEmail" name="contactEmail" type="email" class="ss-input" required />
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="roleTitle">
+                  Role / title <span class="req">*</span>
+                </label>
+                <input
+                  id="roleTitle"
+                  name="roleTitle"
+                  type="text"
+                  class="ss-input"
+                  placeholder="Program director, TOEFL lead…"
+                  required
+                />
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="teacherCount">
+                  Number of teachers <span class="req">*</span>
+                </label>
+                <input
+                  id="teacherCount"
+                  name="teacherCount"
+                  type="number"
+                  min="1"
+                  class="ss-input"
+                  placeholder="e.g. 5"
+                  required
+                />
+                <p class="ss-hint">
+                  Approximate number of teachers who may use MySpeakingScore.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- How did you hear about us -->
+          <section class="ss-section" aria-labelledby="sec-heard">
+            <h2 id="sec-heard" class="ss-section-title">
+              How did you hear about MySpeakingScore?
+            </h2>
+
+            <div class="ss-field">
+              <label class="ss-label" for="heard">Main source</label>
+              <select id="heard" name="heard" class="ss-input">
+                <option value="">Select one…</option>
+                <option>Google Search</option>
+                <option>YouTube</option>
+                <option>Facebook or Instagram</option>
+                <option>TikTok or short-form video</option>
+                <option>Teacher referral</option>
+                <option>Student referral</option>
+                <option>Reddit / online forum</option>
+                <option>Conference or webinar</option>
+                <option>Already using MSS as a student</option>
+                <option>Other</option>
+              </select>
+            </div>
+          </section>
+
+          <!-- Program profile -->
+          <section class="ss-section" aria-labelledby="sec-profile">
+            <h2 id="sec-profile" class="ss-section-title">
+              Program profile
+            </h2>
+
+            <div class="ss-grid-1">
+              <div class="ss-field">
+                <label class="ss-label" for="programDescription">
+                  Brief description of your program <span class="req">*</span>
+                </label>
+                <textarea
+                  id="programDescription"
+                  name="programDescription"
+                  class="ss-textarea"
+                  placeholder="For example: We run TOEFL and IELTS prep classes for 3rd–4th year undergrads, plus intensive speaking labs for working professionals…"
+                  required
+                ></textarea>
+              </div>
+
+              <div class="ss-field">
+                <span class="ss-label">
+                  Which exams are you preparing students for?
+                </span>
+                <div class="ss-checkbox-row">
+                  <label class="ss-check-label">
+                    <input type="checkbox" name="exams" value="TOEFL" />
+                    TOEFL
+                  </label>
+                  <label class="ss-check-label">
+                    <input type="checkbox" name="exams" value="IELTS" />
+                    IELTS
+                  </label>
+                  <label class="ss-check-label">
+                    <input type="checkbox" name="exams" value="PTE" />
+                    PTE
+                  </label>
+                  <label class="ss-check-label">
+                    <input type="checkbox" name="exams" value="Duolingo" />
+                    Duolingo English Test
+                  </label>
+                  <label class="ss-check-label">
+                    <input type="checkbox" name="exams" value="Other" />
+                    Other / local exams
+                  </label>
+                </div>
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="testsPerMonth">
+                  Approximate number of speaking tests per month
+                </label>
+                <input
+                  id="testsPerMonth"
+                  name="testsPerMonth"
+                  type="number"
+                  min="0"
+                  class="ss-input"
+                  placeholder="e.g. 100"
+                />
+                <p class="ss-hint">
+                  This just helps us size things correctly. A rough estimate is fine.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Student funnel -->
+          <section class="ss-section" aria-labelledby="sec-funnel">
+            <h2 id="sec-funnel" class="ss-section-title">
+              Student funnel
+            </h2>
+
+            <div class="ss-grid-1">
+              <div class="ss-field">
+                <span class="ss-label">
+                  Do you want an anonymous testing funnel?
+                </span>
+                <div class="ss-radio-row">
+                  <label class="ss-radio-label">
+                    <input type="radio" name="anonymousFunnel" value="yes" checked />
+                    Yes – students can take a test without logging in, then we
+                    collect their contact details afterwards.
+                  </label>
+                  <label class="ss-radio-label">
+                    <input type="radio" name="anonymousFunnel" value="no" />
+                    No – we prefer named student accounts from the start.
+                  </label>
+                </div>
+              </div>
+
+              <div class="ss-field">
+                <label class="ss-label" for="funnelUrl">
+                  If “Yes”, where should we send students after their test?
+                </label>
+                <input
+                  id="funnelUrl"
+                  name="funnelUrl"
+                  type="url"
+                  class="ss-input"
+                  placeholder="https://example.edu/apply"
+                />
+                <p class="ss-hint">
+                  This could be your sign-up page, contact form, or booking page.
+                  We’ll use this as the main call-to-action in reports and the dashboard.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Anything else -->
+          <section class="ss-section" aria-labelledby="sec-notes">
+            <h2 id="sec-notes" class="ss-section-title">
+              Anything else we should know?
+            </h2>
+
+            <div class="ss-field">
+              <label class="ss-label" for="notes">
+                Notes / special requirements
+              </label>
+              <textarea
+                id="notes"
+                name="notes"
+                class="ss-textarea"
+                placeholder="For example: We have two campuses and want separate widgets, we need Spanish/Japanese UI, or we already use LMS X and would love a future integration…"
+              ></textarea>
+            </div>
+          </section>
+        </form>
+      </main>
+
+      <footer class="ss-footer">
+        <button type="submit" form="schoolSignUpForm" class="ss-btn-primary">
+          Submit school details
+        </button>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>
