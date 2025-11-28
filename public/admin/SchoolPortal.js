@@ -1,4 +1,4 @@
-// /admin/SchoolPortal.js — v0.11 Portal logic, Build: 2025-11-28
+// /admin/SchoolPortal.js — v0.12 Portal logic, Build: 2025-11-28
 // - Uses /api/admin/reports/:slug (view-backed) for the Tests/Reports table
 // - Uses /api/list-dashboards to list *all* dashboards in /public/dashboards
 // - "Dashboard view" opens DashboardViewer.html in a new tab/window
@@ -106,28 +106,35 @@ console.log("✅ SchoolPortal.js loaded");
     iframeEl.src = url;
   }
 
+  // ---- Embed snippet builder (for teachers embedding on their site) ----
   function buildEmbedSnippet() {
-  if (!embedSnippetEl) return;
+    if (!embedSnippetEl) return;
 
-  let base;
-  if (/^https?:\/\//i.test(widgetPath)) {
-    // full URL already (e.g. https://mss-widget-mt.onrender.com/widgets/Widget.html)
-    base = widgetPath;
-  } else {
-    // assume leading "/" path (e.g. /widgets/Widget.html)
-    base = `${window.location.origin}${widgetPath}`;
-  }
+    // Canonical host for the student-facing widget (where mic is allowed)
+    const baseEmbedOrigin = "https://mss-widget-mt.vercel.app";
 
-  const url = `${base}?slug=${encodeURIComponent(SLUG)}`;
+    let base;
+    if (/^https?:\/\//i.test(widgetPath)) {
+      // widgetPath already a full URL (rare, but allow it)
+      base = widgetPath;
+    } else {
+      // ensure leading slash, then prepend Vercel origin
+      const path = widgetPath.startsWith("/") ? widgetPath : `/${widgetPath}`;
+      base = `${baseEmbedOrigin}${path}`;
+    }
 
-  embedSnippetEl.value = `<iframe
+    const url = `${base}?slug=${encodeURIComponent(SLUG)}`;
+
+    embedSnippetEl.value = `<iframe
   src="${url}"
   width="420"
   height="720"
   style="border:0;max-width:100%;"
-  allow="microphone; autoplay; encrypted-media">
+  allow="microphone; camera; autoplay; encrypted-media"
+  loading="lazy"
+  referrerpolicy="strict-origin-when-cross-origin">
 </iframe>`;
-}
+  }
 
   function copyEmbedToClipboard() {
     if (!embedSnippetEl) return;
