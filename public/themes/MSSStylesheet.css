@@ -2169,3 +2169,335 @@ body.mssMorningSky {
 .portal-main {
   display: block !important;
 }
+/* ===== Dashboard picker modal – full-screen-ish layout ===== */
+
+.portal-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(15, 23, 42, 0.55); /* soft dark overlay */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.portal-modal {
+  background: var(--mss-surface);
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  max-width: 96vw;
+  width: 1120px;              /* nice desktop width */
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.portal-modal-header {
+  padding: 1.25rem 1.75rem 0.75rem;
+  border-bottom: 1px solid var(--mss-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.portal-modal-title {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--mss-heading);
+}
+
+.portal-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--mss-muted);
+}
+
+.portal-modal-body {
+  padding: 1rem 1.75rem 1.25rem;
+  flex: 1;                               /* take all remaining height */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;                         /* allow iframe to flex */
+}
+
+/* Row with label + dashboard select */
+.portal-field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.portal-field-row .portal-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--mss-muted);
+}
+
+.portal-field-row .portal-select {
+  min-width: 220px;
+}
+
+/* Frame wrapper fills the rest of the modal body */
+.portal-dashboard-frame-wrap {
+  flex: 1;
+  min-height: 0;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  background: var(--mss-surface-soft);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+}
+
+/* Let the dashboard use ALL the space */
+.portal-dashboard-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Footer pinned to bottom, buttons right-aligned */
+.portal-modal-footer {
+  padding: 0.75rem 1.75rem 1.25rem;
+  border-top: 1px solid var(--mss-border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Small-screen tweak */
+@media (max-width: 768px) {
+  .portal-modal {
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .portal-modal-body {
+    padding-inline: 1rem;
+  }
+}
+
+/* =======================================================================
+   GENERIC PORTAL MODALS 
+   (Transcript, Prompt, Delete Confirm, etc.)
+   ======================================================================= */
+
+.portal-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.portal-modal.hidden {
+  display: none;
+}
+
+.portal-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+/* Main container for normal modals */
+.portal-modal-dialog {
+  position: relative;
+  z-index: 1001;
+  background: #ffffff;
+  border-radius: 1.25rem;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+  padding: 1.5rem 1.75rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.portal-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.portal-modal-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--mss-heading);
+}
+
+.portal-modal-close {
+  margin-left: 0.25rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--mss-muted);
+}
+
+.portal-modal-close:hover {
+  color: var(--mss-heading);
+}
+
+/* Body */
+.portal-modal-body {
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Footer */
+.portal-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--mss-border-subtle);
+}
+
+/* Lock scroll when modals open */
+body.portal-modal-open {
+  overflow: hidden;
+}
+
+
+/* =======================================================================
+   JONNY IVE SIGNATURE DASHBOARD MODAL 
+   (For dashboard preview only)
+   ======================================================================= */
+
+#dashboardModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.32);
+  display: none;                      /* opened via JS */
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+
+#dashboardModal.active {
+  display: flex;
+}
+
+.dashboard-modal-shell {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Main dialog wrapper, 95% of viewport */
+.dashboard-modal-dialog {
+  width: 95vw;
+  height: 95vh;
+  max-width: 1200px;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.30);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.dashboard-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.6rem;
+  border-bottom: 1px solid var(--mss-border, #e5e7eb);
+  background: #f9fafb;
+}
+
+.dashboard-modal-title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mss-heading, #0f172a);
+}
+
+.dashboard-layout-select {
+  min-width: 7rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--mss-border, #e5e7eb);
+  background: #fff;
+  font-size: 0.85rem;
+}
+
+.dashboard-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0 0 0.5rem;
+  color: var(--mss-muted, #6b7280);
+}
+
+.dashboard-modal-close:hover {
+  color: var(--mss-heading);
+}
+
+/* Middle content area */
+.dashboard-modal-main {
+  flex: 1 1 auto;
+  padding: 1rem 1.6rem;
+  background: var(--mss-bg, #f3f4f6);
+  display: flex;
+}
+
+/* Inner dashboard “canvas” */
+.dashboard-frame-shell {
+  flex: 1 1 auto;
+  background: var(--mss-surface-soft, #f9fafb);
+  border-radius: 18px;
+  padding: 0.75rem;
+  overflow: hidden;
+  display: flex;
+}
+
+/* Dashboard iframe */
+#dashboardPreviewFrame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 14px;
+  display: block;
+  background: #ffffff;
+}
+
+/* Footer */
+.dashboard-modal-footer {
+  padding: 0.8rem 1.6rem 1.1rem;
+  border-top: 1px solid var(--mss-border, #e5e7eb);
+  background: #ffffff;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.dashboard-modal-footer button {
+  min-width: 88px;
+}
+
+/* Mobile tweaks */
+@media (max-width: 768px) {
+  .dashboard-modal-dialog {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+}

@@ -650,21 +650,33 @@ console.log("✅ ConfigAdmin.js loaded");
     }
   }
 
-  /* ------------------------------------------------------------------ */
+   /* ------------------------------------------------------------------ */
   /* IMAGE UPLOAD                                                       */
   /* ------------------------------------------------------------------ */
 
   function wireImageUpload() {
     if (!imgUploadBtn || !imgFileInput) return;
 
-    imgUploadBtn.addEventListener("click", () => {
+    // Click button → open file picker
+    imgUploadBtn.addEventListener("click", (e) => {
+      e.preventDefault();
       imgFileInput.click();
     });
 
+    // When a file is chosen, upload immediately
     imgFileInput.addEventListener("change", async () => {
       const file = imgFileInput.files && imgFileInput.files[0];
       if (!file) return;
 
+      if (!SLUG) {
+        console.error("[ConfigAdmin] Image upload: SLUG is missing");
+        if (imgUploadStatus) {
+          imgUploadStatus.textContent = "Missing slug – cannot upload.";
+        }
+        return;
+      }
+
+      // Quick local preview so the admin sees what they picked
       if (imgPreview && imgPreviewPlaceholder) {
         const localUrl = URL.createObjectURL(file);
         imgPreview.src = localUrl;
@@ -676,33 +688,77 @@ console.log("✅ ConfigAdmin.js loaded");
 
       try {
         const formData = new FormData();
+        // field name "image" – make sure backend expects this
         formData.append("image", file);
 
-        const res = await fetch(
-          `/api/admin/widget/${encodeURIComponent(SLUG)}/image-upload`,
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const url = `/api/admin/widget/${encodeURIComponent(SLUG)}/image`;
 
-        const data = await res.json();
-        if (!data.ok || !data.url) {
-          throw new Error("Upload response missing url");
+        console.log("[ConfigAdmin] 📤 Uploading widget image", {
+          url,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        });
+
+        const res = await fetch(url, {
+          method: "POST",
+          body: formData,
+        });
+
+        const raw = await res.text();
+        let data;
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          console.warn(
+            "[ConfigAdmin] Image upload: non-JSON response",
+            raw
+          );
+          data = { ok: res.ok, raw };
         }
 
-        STATE.image = STATE.image || {};
-        STATE.image.url = data.url;
+        if (!res.ok || data.ok === false) {
+          console.error("[ConfigAdmin] ❌ Image upload failed", {
+            status: res.status,
+            data,
+          });
+          if (imgUploadStatus) {
+            imgUploadStatus.textContent = "Upload failed. See console.";
+          }
+          return;
+        }
 
+        const imageUrl =
+          data.url || data.imageUrl || data.image || data.path;
+
+        if (!imageUrl) {
+          console.warn(
+            "[ConfigAdmin] Upload succeeded but no URL returned",
+            data
+          );
+          if (imgUploadStatus) {
+            imgUploadStatus.textContent =
+              "Upload complete, but server did not return an image URL.";
+          }
+          return;
+        }
+
+        console.log("[ConfigAdmin] ✅ Image upload success", imageUrl);
+
+        // Persist into STATE.image so Save → PUT stores it in Postgres
+        STATE.image = STATE.image || {};
+        STATE.image.url = imageUrl;
+
+        // Update preview to use the real URL (not the local blob)
         refreshImagePreview();
         setDirty();
 
         if (imgUploadStatus) {
-          imgUploadStatus.textContent = "Image uploaded. Don't forget to Save.";
+          imgUploadStatus.textContent =
+            "Image uploaded. Don’t forget to Save.";
         }
       } catch (err) {
-        console.error("Image upload error", err);
+        console.error("[ConfigAdmin] Image upload error", err);
         if (imgUploadStatus) {
           imgUploadStatus.textContent = "Upload failed. See console.";
         }

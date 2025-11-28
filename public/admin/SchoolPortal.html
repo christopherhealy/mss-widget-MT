@@ -270,62 +270,52 @@
   </div>
 </div>
 
-<!-- AI Prompt Dialog (for teachers) -->
-<div
-  id="mssPromptOverlay"
-  class="mss-prompt-overlay"
-  hidden
-></div>
+<!-- Dashboard preview modal -->
+<div id="dashboardModal" class="portal-modal hidden">
+  <div class="dashboard-modal-shell">
+    <div class="dashboard-modal-dialog">
+      
+      <!-- Top panel: title + layout select + X -->
+      <header class="dashboard-modal-header">
+        <h2 class="dashboard-modal-title">Dashboard view</h2>
 
-<div
-  id="mssPromptModal"
-  class="mss-prompt-modal"
-  role="dialog"
-  aria-modal="true"
-  aria-labelledby="mssPromptTitle"
-  hidden
->
-  <div class="mss-prompt-header">
-    <div>
-      <h2 id="mssPromptTitle">AI Feedback Prompt</h2>
-      <p class="mss-prompt-subtitle">
-        Copy this text and paste it into ChatGPT or your favourite AI tool.
-        It will generate feedback and an email you can send to the student.
-      </p>
+        <!-- no label, just the select -->
+        <select id="dashboardLayoutSelect" class="dashboard-layout-select"></select>
+
+        <button
+          id="dashboardModalClose"
+          class="dashboard-modal-close"
+          type="button"
+          aria-label="Close dashboard view"
+        >
+          ×
+        </button>
+      </header>
+
+      <!-- Middle panel: iframe in a padded shell -->
+      <main class="dashboard-modal-main">
+        <div class="dashboard-frame-shell">
+          <iframe
+            id="dashboardPreviewFrame"
+            src=""
+            allow="fullscreen"
+            referrerpolicy="no-referrer"
+          ></iframe>
+        </div>
+      </main>
+
+      <!-- Bottom panel: actions -->
+      <footer class="dashboard-modal-footer">
+        <button id="dashboardReloadBtn" type="button">Reload</button>
+        <button id="dashboardPrintBtn" type="button">Print</button>
+        <button id="dashboardCloseBtn" class="btn-primary" type="button">
+          Close
+        </button>
+      </footer>
+
     </div>
-    <button
-      id="mssPromptClose"
-      class="mss-btn-ghost mss-prompt-close"
-      type="button"
-      aria-label="Close"
-    >
-      ✕
-    </button>
-  </div>
-
-  <div class="mss-prompt-body">
-    <label for="mssPromptText" class="mss-prompt-label">
-      Prompt text
-    </label>
-    <textarea
-      id="mssPromptText"
-      class="mss-prompt-textarea"
-      readonly
-    ></textarea>
-  </div>
-
-  <div class="mss-prompt-footer">
-    <button
-      id="mssPromptCopy"
-      class="mss-btn-primary"
-      type="button"
-    >
-      Copy prompt
-    </button>
-    <span id="mssPromptStatus" class="mss-prompt-status"></span>
   </div>
 </div>
-
   <!-- Single include of SchoolPortal.js -->
   <script src="/admin/SchoolPortal.js"></script>
 </body>

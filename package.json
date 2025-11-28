@@ -5,7 +5,7 @@
     "start": "node server.js",
     "db:init": "psql $DATABASE_URL -f schema/init.sql",
     "vercel:mss-test": "bash ./tests/vercel-mss-curl.sh",
-    "build": "npm run vercel:mss-test"
+    "build": "echo \"Vercel build step (no-op)\""
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -98,8 +98,59 @@ const storage = multer.diskStorage({
   },
 });
 
+
+
 const imageUpload = multer({ storage });
 
+// === Nov 28 image upload patch ====
+
+function handleWidgetImageUpload(req, res) {
+  try {
+    const { slug } = req.params;
+
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "NO_FILE", message: "No image uploaded" });
+    }
+
+    // File path: <root>/uploads/widget-images/<slug>-<timestamp>.<ext>
+    const filename = req.file.filename;
+    const url = `/uploads/widget-images/${filename}`;
+
+    console.log("[ImageUpload] Stored widget image for slug", slug, {
+      path: req.file.path,
+      url,
+    });
+
+    return res.json({ ok: true, url });
+  } catch (err) {
+    console.error("Image upload handler error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "UPLOAD_FAILED",
+      message: err.message || "Image upload failed",
+    });
+  }
+}
+
+// ======================================================
+// Image upload routes — support both `/image-upload` and legacy `/image` Nov 28
+// ======================================================
+
+// New canonical route
+app.post(
+  "/api/admin/widget/:slug/image-upload",
+  imageUpload.single("image"),
+  handleWidgetImageUpload
+);
+
+// Legacy route (ConfigAdmin still calling `/image`)
+app.post(
+  "/api/admin/widget/:slug/image",
+  imageUpload.single("image"),
+  handleWidgetImageUpload
+);
 
 
 // === ADMIN: list available widgets (public/widgets/*.html) ============
@@ -665,17 +716,16 @@ app.get("/api/dashboard/submissions", async (req, res) => {
   console.log("📥 Dashboard request:", { slug, submissionId, limit });
 
   try {
-    // Use your unified view (vw_widget_reports)
-    const rows = await db.any(
-      `
+    const sql = `
       SELECT *
       FROM vw_widget_reports
       WHERE school_slug = $1
       ORDER BY submitted_at DESC
       LIMIT $2
-    `,
-      [slug, limit]
-    );
+    `;
+
+    const result = await pool.query(sql, [slug, limit]);
+    const rows = result.rows || [];
 
     if (!rows.length) {
       return res.json({
@@ -703,6 +753,7 @@ app.get("/api/dashboard/submissions", async (req, res) => {
     });
   }
 });
+
 /* ---------- QUESTION HELP DEFAULT PROMPT ---------- */
 
 const DEFAULT_HELP_PROMPT = `
@@ -736,6 +787,24 @@ async function ensureSrcDir() {
     // ignore
   }
 }
+
+// List all dashboard HTML templates in /public/dashboards
+app.get("/api/list-dashboards", async (req, res) => {
+  try {
+    const dashboardsDir = path.join(PUBLIC_DIR, "dashboards");
+    const files = await fs.readdir(dashboardsDir);
+
+    const dashboards = files
+      .filter((name) => name.endsWith(".html"))
+      .filter((name) => !name.startsWith("_"))
+      .map((name) => name.replace(".html", ""));
+
+    res.json({ dashboards });
+  } catch (err) {
+    console.error("Error listing dashboards:", err);
+    res.status(500).json({ error: "Server error listing dashboards" });
+  }
+});
 
 function slugifySchoolName(name) {
   const base =
@@ -934,6 +1003,46 @@ app.put("/config/images", async (req, res) => {
   } catch (e) {
     console.error("PUT /config/images error:", e);
     res.status(500).json({ ok: false, error: "failed to write images" });
+  }
+});
+
+
+// List dashboard files dynamically
+app.get("/api/list-dashboards", (req, res) => {
+  try {
+    const dashboardsDir = path.join(process.cwd(), "public", "dashboards");
+
+    const files = fs
+      .readdirSync(dashboardsDir)
+      .filter((f) => f.endsWith(".html") && !f.startsWith("_template"))
+      .sort(); // alphabetical (Dashboard1, Dashboard2, etc)
+
+    // Return names without extension, like "Dashboard3"
+    const dashboards = files.map((f) => path.basename(f, ".html"));
+
+    res.json({ dashboards });
+  } catch (err) {
+    console.error("Error listing dashboards:", err);
+    res.status(500).json({ dashboards: [] });
+  }
+});
+
+// List all dashboard HTML templates in /public/dashboards
+app.get("/api/list-dashboards", async (req, res) => {
+  try {
+    const dashboardsDir = path.join(PUBLIC_DIR, "dashboards");
+    const files = await fs.readdir(dashboardsDir);
+
+    const dashboards = files
+      .filter((name) => name.endsWith(".html"))
+      .filter((name) => !name.startsWith("_")) // skip _template, etc
+      .map((name) => name.replace(".html", ""));
+
+    // Example: ["Dashboard1", "Dashboard2", "Dashboard3"]
+    res.json({ dashboards });
+  } catch (err) {
+    console.error("Error listing dashboards:", err);
+    res.status(500).json({ dashboards: [] });
   }
 });
 
@@ -1145,6 +1254,8 @@ app.get("/api/assessments/:assessmentId/questions", async (req, res) => {
   }
 });
 
+//==== Nov 28 Qs not saving bug =====//
+
 app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
   const assessmentId = Number(req.params.assessmentId);
   if (!Number.isFinite(assessmentId)) {
@@ -1175,9 +1286,10 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
     const schoolId = assessRow.rows[0].school_id;
 
     // IDs coming in from client (existing questions only)
+    // Normalize to numbers so includes() works with DB ids
     const incomingIds = questions
-      .map((q) => q.id)
-      .filter((id) => id != null);
+      .map((q) => (q.id != null ? Number(q.id) : null))
+      .filter((id) => Number.isInteger(id));
 
     // 1) Update existing questions
     for (let idx = 0; idx < questions.length; idx++) {
@@ -1196,35 +1308,50 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
             updated_at = NOW()
         WHERE id = $3 AND assessment_id = $4
         `,
-        [order, text, q.id, assessmentId]
+        [order, text, Number(q.id), assessmentId]
       );
     }
 
-    // 2) Insert new questions
+    // 2) Insert new questions (and add their ids to incomingIds)
     for (let idx = 0; idx < questions.length; idx++) {
       const q = questions[idx];
-      if (q.id) continue; // already handled
+      if (q.id) continue; // already handled above
 
       const text = (q.question || "").toString().trim();
       if (!text) continue;
 
       const order = idx + 1;
 
-      await client.query(
+      const insertRes = await client.query(
         `
-        INSERT INTO questions (school_id, assessment_id, position, sort_order, question, is_active)
+        INSERT INTO questions (
+          school_id,
+          assessment_id,
+          position,
+          sort_order,
+          question,
+          is_active
+        )
         VALUES ($1, $2, $3, $3, $4, TRUE)
+        RETURNING id
         `,
         [schoolId, assessmentId, order, text]
       );
+
+      const newId = insertRes.rows[0]?.id;
+      if (Number.isInteger(newId)) {
+        incomingIds.push(newId);
+      }
     }
 
-    // 3) Delete questions that are no longer present
+    // 3) Delete questions that are no longer present in the client list
     const existingRes = await client.query(
       `SELECT id FROM questions WHERE assessment_id = $1`,
       [assessmentId]
     );
-    const existingIds = existingRes.rows.map((r) => r.id);
+    const existingIds = existingRes.rows
+      .map((r) => Number(r.id))
+      .filter((id) => Number.isInteger(id));
 
     const idsToDelete = existingIds.filter(
       (id) => !incomingIds.includes(id)
@@ -1254,7 +1381,6 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
     client.release();
   }
 });
-
 /* ---------- ADMIN: ASSESSMENT FROM SLUG ---------- */
 
 app.get("/api/admin/assessments/:slug", async (req, res) => {

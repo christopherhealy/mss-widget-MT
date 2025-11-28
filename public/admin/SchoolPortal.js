@@ -1,5 +1,8 @@
-// /admin/SchoolPortal.js — v0.7 Portal logic, Build: 2025-11-24
-// Uses /api/admin/reports/:slug (view-backed) for the Tests/Reports table
+// /admin/SchoolPortal.js — v0.11 Portal logic, Build: 2025-11-28
+// - Uses /api/admin/reports/:slug (view-backed) for the Tests/Reports table
+// - Uses /api/list-dashboards to list *all* dashboards in /public/dashboards
+// - "Dashboard view" opens DashboardViewer.html in a new tab/window
+
 console.log("✅ SchoolPortal.js loaded");
 
 (function () {
@@ -51,10 +54,10 @@ console.log("✅ SchoolPortal.js loaded");
   const testsTbody = $("tests-tbody");
 
   // ---- State ----
-  
+
   // Defaults if config is missing
-   let widgetPath = "/widgets/WidgetMin.html";  // light theme preview
-   let dashboardPath = "/dashboards/Dashboard3.html";
+  let widgetPath = "/widgets/WidgetMin.html"; // light theme preview
+  let dashboardPath = "/dashboards/Dashboard3.html";
 
   let assessmentId = ASSESSMENT_ID_FROM_URL
     ? Number(ASSESSMENT_ID_FROM_URL)
@@ -68,6 +71,14 @@ console.log("✅ SchoolPortal.js loaded");
 
   // holds IDs waiting for confirmation in the delete modal
   let pendingDeleteIds = [];
+
+  // Current report view mode from the global dropdown:
+  // "transcript", "dashboard3", "dashboard4", etc.
+  let REPORT_VIEW_MODE = "transcript";
+
+  // Cached dashboard options loaded from /api/list-dashboards
+  // [{ value: "dashboard3", label: "Dashboard3" }, ...]
+  let DASHBOARD_OPTIONS = [];
 
   /* -----------------------------------------------------------------------
      Helpers
@@ -96,26 +107,27 @@ console.log("✅ SchoolPortal.js loaded");
   }
 
   function buildEmbedSnippet() {
-    if (!embedSnippetEl) return;
+  if (!embedSnippetEl) return;
 
-    let base;
-    if (/^https?:\/\//i.test(widgetPath)) {
-      // full URL already
-      base = widgetPath;
-    } else {
-      // assume leading "/" path
-      base = `${window.location.origin}${widgetPath}`;
-    }
+  let base;
+  if (/^https?:\/\//i.test(widgetPath)) {
+    // full URL already (e.g. https://mss-widget-mt.onrender.com/widgets/Widget.html)
+    base = widgetPath;
+  } else {
+    // assume leading "/" path (e.g. /widgets/Widget.html)
+    base = `${window.location.origin}${widgetPath}`;
+  }
 
-    const url = `${base}?slug=${encodeURIComponent(SLUG)}`;
+  const url = `${base}?slug=${encodeURIComponent(SLUG)}`;
 
-    embedSnippetEl.value = `<iframe
+  embedSnippetEl.value = `<iframe
   src="${url}"
   width="420"
   height="720"
-  style="border:0;max-width:100%;">
+  style="border:0;max-width:100%;"
+  allow="microphone; autoplay; encrypted-media">
 </iframe>`;
-  }
+}
 
   function copyEmbedToClipboard() {
     if (!embedSnippetEl) return;
@@ -161,16 +173,79 @@ console.log("✅ SchoolPortal.js loaded");
   }
 
   /* -----------------------------------------------------------------------
+     Global report view selector (top dropdown)
+     --------------------------------------------------------------------- */
+
+  // Populate #reportViewSelect from /api/list-dashboards
+  async function loadDashboardOptionsIntoSelect() {
+    const select = document.getElementById("reportViewSelect");
+    const hasSelect = !!select;
+
+    if (hasSelect) {
+      // Keep transcript first
+      select.innerHTML = `
+        <option value="transcript">Transcript + AI Prompt</option>
+      `;
+    }
+
+    try {
+      const resp = await fetch("/api/list-dashboards");
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const json = await resp.json();
+      DASHBOARD_OPTIONS = [];
+
+      if (Array.isArray(json.dashboards)) {
+        json.dashboards.forEach((dashName) => {
+          // e.g. "Dashboard3"
+          const value = dashName.toLowerCase(); // "dashboard3"
+          const label = dashName;
+
+          DASHBOARD_OPTIONS.push({ value, label });
+
+          if (hasSelect) {
+            select.insertAdjacentHTML(
+              "beforeend",
+              `<option value="${value}">${label}</option>`
+            );
+          }
+        });
+      }
+
+      console.log("📊 Dashboard options loaded:", DASHBOARD_OPTIONS);
+    } catch (err) {
+      console.warn("Could not load dashboards:", err);
+    }
+  }
+
+  function initReportViewMode() {
+    const select = document.getElementById("reportViewSelect");
+    if (!select) {
+      REPORT_VIEW_MODE = "transcript";
+      return;
+    }
+
+    // Initial value after options have loaded
+    REPORT_VIEW_MODE = select.value || "transcript";
+
+    select.addEventListener("change", () => {
+      REPORT_VIEW_MODE = select.value;
+      console.log("📊 Report view mode:", REPORT_VIEW_MODE);
+    });
+  }
+
+  /* -----------------------------------------------------------------------
      Tests table rendering
      --------------------------------------------------------------------- */
+
   function renderTestsTable() {
     const safe = (v) =>
       v === null || v === undefined || v === "" ? "—" : v;
 
     if (!tests || tests.length === 0) {
-      // 1 (Select) + 20 data columns + 2 action columns (Transcript + Prompt) = 23
+      // 1 (Select) + 1 (Actions) + 19 other data columns = 21
       testsTbody.innerHTML =
-        `<tr><td colspan="23" class="muted">No data for this period.</td></tr>`;
+        `<tr><td colspan="21" class="muted">No data for this period.</td></tr>`;
       testsCountLabel.textContent = "0 tests";
       return;
     }
@@ -191,6 +266,14 @@ console.log("✅ SchoolPortal.js loaded");
             data-id="${safe(t.id)}"
           />
         </td>
+        <td>
+          <select class="row-action-select" data-id="${safe(t.id)}">
+            <option value="">Actions…</option>
+            <option value="transcript">Transcript</option>
+            <option value="prompt">AI Prompt</option>
+            <option value="dashboard">Dashboard view</option>
+          </select>
+        </td>
         <td>${safe(t.id)}</td>
         <td>${safe(date)}</td>
         <td>${safe(t.student_id)}</td>
@@ -210,24 +293,6 @@ console.log("✅ SchoolPortal.js loaded");
         <td>${safe(t.mss_toefl)}</td>
         <td>${safe(t.mss_ielts)}</td>
         <td>${safe(t.mss_pte)}</td>
-        <td>
-          <button 
-            type="button" 
-            class="link-button btn-transcript" 
-            data-id="${safe(t.id)}"
-          >
-            Transcript
-          </button>
-        </td>
-        <td>
-          <button 
-            type="button" 
-            class="link-button btn-prompt" 
-            data-id="${safe(t.id)}"
-          >
-            Prompt
-          </button>
-        </td>
       </tr>`;
     });
 
@@ -236,45 +301,51 @@ console.log("✅ SchoolPortal.js loaded");
       tests.length === 1 ? "" : "s"
     }`;
 
-    wireTranscriptButtons();
-    wirePromptButtons();
+    wireRowActionSelects();
   }
 
-  function wireTranscriptButtons() {
-    const buttons = testsTbody.querySelectorAll(".btn-transcript");
-    if (!buttons.length) return;
+  function wireRowActionSelects() {
+    const selects = testsTbody.querySelectorAll(".row-action-select");
+    if (!selects.length) return;
 
-    buttons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.dataset.id;
-        if (!id) return;
-        const row = tests.find((t) => String(t.id) === String(id));
-        if (!row) return;
-        showTranscript(row);
-      });
-    });
-  }
+    selects.forEach((select) => {
+      select.addEventListener("change", () => {
+        const value = select.value;
+        if (!value) return;
 
-  function wirePromptButtons() {
-    const buttons = testsTbody.querySelectorAll(".btn-prompt");
-    if (!buttons.length) return;
-
-    buttons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.dataset.id;
-        if (!id) return;
-        const row = tests.find((t) => String(t.id) === String(id));
-        if (!row) return;
-
-        const promptText = buildAIPromptFromRow(row);
-        if (window.mssShowPrompt) {
-          window.mssShowPrompt(promptText);
-        } else {
-          console.warn("mssShowPrompt not available; prompt:", promptText);
-          alert(
-            "Prompt dialog is not available. Please check the portal setup."
-          );
+        const id = select.dataset.id;
+        if (!id) {
+          select.value = "";
+          return;
         }
+
+        const row = tests.find((t) => String(t.id) === String(id));
+        if (!row) {
+          select.value = "";
+          return;
+        }
+
+        if (value === "transcript") {
+          // Transcript dialog
+          showTranscript(row);
+        } else if (value === "prompt") {
+          // AI prompt modal
+          const promptText = buildAIPromptFromRow(row);
+          if (window.mssShowPrompt) {
+            window.mssShowPrompt(promptText);
+          } else {
+            console.warn("mssShowPrompt not available; prompt:", promptText);
+            alert(
+              "Prompt dialog is not available. Please check the portal setup."
+            );
+          }
+        } else if (value === "dashboard") {
+          // Open DashboardViewer for this row
+          openDashboardPickerForRow(row);
+        }
+
+        // Reset dropdown so user can choose again
+        select.value = "";
       });
     });
   }
@@ -326,6 +397,54 @@ console.log("✅ SchoolPortal.js loaded");
       },
       { once: true }
     );
+  }
+
+  /* -----------------------------------------------------------------------
+     DashboardViewer integration
+     --------------------------------------------------------------------- */
+
+  // Build URL for the new DashboardViewer.html
+  function buildDashboardViewerUrl(row, explicitLayout) {
+    const baseLayout =
+      explicitLayout && explicitLayout !== "transcript"
+        ? explicitLayout
+        : REPORT_VIEW_MODE && REPORT_VIEW_MODE.startsWith("dashboard")
+        ? REPORT_VIEW_MODE
+        : "dashboard3";
+
+    const params = new URLSearchParams({
+      slug: row.school_slug || SLUG,
+      submissionId: row.id,
+      layout: baseLayout, // e.g. "dashboard3"
+    });
+
+    return `/DashboardViewer.html?${params.toString()}`;
+  }
+
+  // Per-row dashboard view: ALWAYS use DashboardViewer (new tab)
+  function openDashboardPickerForRow(row) {
+    if (!row) return;
+
+    const url = buildDashboardViewerUrl(row);
+    console.log("🧭 Opening DashboardViewer:", url);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  // Used by any future "Open report" button that respects REPORT_VIEW_MODE
+  function openReportForRow(row) {
+    if (!row) return;
+
+    if (!REPORT_VIEW_MODE || REPORT_VIEW_MODE === "transcript") {
+      showTranscript(row);
+      return;
+    }
+
+    const url = buildDashboardViewerUrl(row, REPORT_VIEW_MODE);
+    console.log("🧭 Opening DashboardViewer (global mode):", {
+      REPORT_VIEW_MODE,
+      url,
+    });
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   /* -----------------------------------------------------------------------
@@ -801,7 +920,9 @@ console.log("✅ SchoolPortal.js loaded");
     }
   }
 
-  // ---------- Prompt dialog helpers ----------
+  /* -----------------------------------------------------------------------
+     Prompt dialog helpers
+     --------------------------------------------------------------------- */
 
   (function () {
     const overlay = document.getElementById("mssPromptOverlay");
@@ -858,7 +979,8 @@ console.log("✅ SchoolPortal.js loaded");
       overlay.addEventListener("click", closePrompt);
     }
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !modal.hidden) {
+      const modalVisible = modal && !modal.hidden;
+      if (e.key === "Escape" && modalVisible) {
         closePrompt();
       }
     });
@@ -1051,6 +1173,12 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
   async function init() {
     wireEvents();
     initDefaultDateFilters();
+
+    // Populate global report view dropdown from /api/list-dashboards
+    await loadDashboardOptionsIntoSelect();
+
+    // Track current selection ("transcript", "dashboard3", etc.)
+    initReportViewMode();
 
     await fetchWidgetMeta();
     await fetchAssessmentMeta();
