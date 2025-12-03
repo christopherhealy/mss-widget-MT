@@ -99,26 +99,34 @@ console.log("✅ ConfigAdmin.js loaded");
 
   // Decide which origin to call for admin APIs
   // Dec 3
+   // Decide which origin to call for admin APIs
+  // - Local + Render full-stack → same origin
+  // - Vercel front-end         → call Render backend
   function getAdminApiBase() {
-  const origin = window.location.origin || "";
+    const origin = window.location.origin || "";
 
-  // Local dev + Render full-stack use same origin
-  if (
-    origin.includes("localhost") ||
-    origin.includes("127.0.0.1") ||
-    origin.includes("mss-widget-mt.onrender.com")
-  ) {
+    if (
+      origin.includes("localhost") ||
+      origin.includes("127.0.0.1") ||
+      origin.includes("mss-widget-mt.onrender.com")
+    ) {
+      return "";
+    }
+
+    if (origin.includes("mss-widget-mt.vercel.app")) {
+      return "https://mss-widget-mt.onrender.com";
+    }
+
     return "";
   }
 
-  // Vercel front-end must call the Render backend
-  if (origin.includes("mss-widget-mt.vercel.app")) {
-    return "https://mss-widget-mt.onrender.com";
-  }
+  const ADMIN_API_BASE = getAdminApiBase();
 
-  // Fallback: same origin
-  return "";
-}
+  function absolutizeImageUrl(path) {
+    if (!path) return "";
+    if (/^https?:\/\//i.test(path)) return path;      // already absolute
+    return `${ADMIN_API_BASE}${path}`;               // resolve to backend
+  }
 
 const ADMIN_API_BASE = getAdminApiBase();
 
@@ -180,15 +188,13 @@ function absolutizeImageUrl(path) {
     try {
       setStatus("Renaming school…");
       const res = await fetch(
-        `/api/admin/school/${encodeURIComponent(SLUG)}/rename`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ newName }),
-        }
-      );
+  `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
+  {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }
+);
 
       const data = await res.json();
       if (!data.ok) {
@@ -233,14 +239,14 @@ function absolutizeImageUrl(path) {
     if (!schoolSelector) return;
 
     try {
-      const res = await fetch(`${ADMIN_API_BASE}/api/admin/schools`);
-      if (!res.ok) {
-        console.warn(
-          "[ConfigAdmin] /api/admin/schools returned",
-          res.status
-        );
-        return;
-      }
+      const res = await fetch(
+  `${ADMIN_API_BASE}/api/admin/school/${encodeURIComponent(SLUG)}/rename`,
+  {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newName }),
+  }
+);
 
       const data = await res.json();
       const list =
@@ -624,7 +630,7 @@ function absolutizeImageUrl(path) {
     if (!dashboardTemplateSelect) return;
 
     try {
-      const res = await fetch(`${ADMIN_API_BASE}/api/admin/dasboards`);
+      const res = await fetch(`${ADMIN_API_BASE}/api/admin/dashboards`);
       if (!res.ok) throw new Error(`dashboards HTTP ${res.status}`);
 
       const data = await res.json();
@@ -829,11 +835,13 @@ function absolutizeImageUrl(path) {
     }
     uploadInput.disabled = !allow;
   }
-
-  function refreshImagePreview() {
+//Dec 3
+      function refreshImagePreview() {
     if (!imgPreview || !imgPreviewPlaceholder) return;
 
-    const url = (STATE.image && STATE.image.url) || "";
+    const raw = (STATE.image && STATE.image.url) || "";
+    const url = absolutizeImageUrl(raw);
+
     if (url) {
       imgPreview.src = url;
       imgPreview.style.display = "block";
@@ -852,31 +860,15 @@ function absolutizeImageUrl(path) {
   function wireImageUpload() {
     if (!imgUploadBtn || !imgFileInput) return;
 
-   imgUploadBtn.addEventListener("click", async () => {
-  if (!SLUG || !imgFileInput || !imgFileInput.files.length) return;
+    // 1) Clicking the button always opens the file chooser
+    imgUploadBtn.addEventListener("click", () => {
+      imgFileInput.click();
+    });
 
-  const file = imgFileInput.files[0];
-
-  // show local preview immediately
-  const blobUrl = URL.createObjectURL(file);
-  imgPreview.src = blobUrl;
-  imgPreviewPlaceholder.style.display = "none";
-
-  try {
-    imgUploadStatus.textContent = "Uploading...";
-    const finalUrl = await uploadImageForSlug(SLUG, file);
-
-    STATE.image = { url: finalUrl };
-    imgPreview.src = finalUrl; // backend URL
-    imgUploadStatus.textContent = "Image uploaded. Don’t forget to Save.";
-  } catch (err) {
-    console.error("Image upload failed:", err);
-    imgUploadStatus.textContent = "Upload failed. Please try again.";
-  }
-});
-
+    // 2) When a file is chosen, upload it
     imgFileInput.addEventListener("change", async () => {
-      const file = imgFileInput.files && imgFileInput.files[0];
+      const file =
+        imgFileInput.files && imgFileInput.files[0];
       if (!file) return;
 
       if (!SLUG) {
@@ -887,6 +879,7 @@ function absolutizeImageUrl(path) {
         return;
       }
 
+      // Local, instant preview
       if (imgPreview && imgPreviewPlaceholder) {
         const localUrl = URL.createObjectURL(file);
         imgPreview.src = localUrl;
@@ -900,7 +893,9 @@ function absolutizeImageUrl(path) {
         const formData = new FormData();
         formData.append("image", file);
 
-        const url = `/api/admin/widget/${encodeURIComponent(SLUG)}/image`;
+        const url = `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(
+          SLUG
+        )}/image`;
 
         console.log("[ConfigAdmin] 📤 Uploading widget image", {
           url,
@@ -969,7 +964,6 @@ function absolutizeImageUrl(path) {
       }
     });
   }
-
   /* ------------------------------------------------------------------ */
   /* INIT                                                               */
   /* ------------------------------------------------------------------ */
