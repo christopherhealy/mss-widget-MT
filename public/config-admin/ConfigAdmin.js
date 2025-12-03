@@ -97,6 +97,40 @@ console.log("✅ ConfigAdmin.js loaded");
     statusEl.classList.toggle("error", !!isError);
   }
 
+  // Decide which origin to call for admin APIs
+  function getAdminApiBase() {
+    const origin = window.location.origin || "";
+
+    // Local dev + Render full-stack use same origin
+    if (
+      origin.includes("localhost") ||
+      origin.includes("127.0.0.1") ||
+      origin.includes("onrender.com")
+    ) {
+      return "";
+    }
+
+    // Vercel front-end must call the Render backend
+    if (origin.includes("mss-widget-mt.vercel.app")) {
+      // ⬅️ PUT YOUR REAL RENDER URL HERE
+      return "https://YOUR-RENDER-APP.onrender.com";
+    }
+
+    // Fallback: same origin
+    return "";
+  }
+
+// Vercel Image loader helper Dec 3 //
+
+  const ADMIN_API_BASE = getAdminApiBase();
+
+  // Normalise image URLs coming back from the server
+  function absolutizeImageUrl(path) {
+    if (!path) return "";
+    if (/^https?:\/\//i.test(path)) return path; // already absolute
+    return `${ADMIN_API_BASE}${path}`;
+  }
+
   /* ------------------------------------------------------------------ */
   /* SLUG / SCHOOL HELPERS                                              */
   /* ------------------------------------------------------------------ */
@@ -292,7 +326,7 @@ console.log("✅ ConfigAdmin.js loaded");
     setStatus("Loading settings from server…");
 
     try {
-      const res = await fetch(`/api/admin/widget/${encodeURIComponent(SLUG)}`);
+      const res = await fetch(`${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}/image`);
       if (!res.ok) {
         if (res.status === 404) {
           console.warn("No settings found for slug, using defaults only.");
@@ -821,10 +855,28 @@ console.log("✅ ConfigAdmin.js loaded");
   function wireImageUpload() {
     if (!imgUploadBtn || !imgFileInput) return;
 
-    imgUploadBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      imgFileInput.click();
-    });
+   imgUploadBtn.addEventListener("click", async () => {
+  if (!SLUG || !imgFileInput || !imgFileInput.files.length) return;
+
+  const file = imgFileInput.files[0];
+
+  // show local preview immediately
+  const blobUrl = URL.createObjectURL(file);
+  imgPreview.src = blobUrl;
+  imgPreviewPlaceholder.style.display = "none";
+
+  try {
+    imgUploadStatus.textContent = "Uploading...";
+    const finalUrl = await uploadImageForSlug(SLUG, file);
+
+    STATE.image = { url: finalUrl };
+    imgPreview.src = finalUrl; // backend URL
+    imgUploadStatus.textContent = "Image uploaded. Don’t forget to Save.";
+  } catch (err) {
+    console.error("Image upload failed:", err);
+    imgUploadStatus.textContent = "Upload failed. Please try again.";
+  }
+});
 
     imgFileInput.addEventListener("change", async () => {
       const file = imgFileInput.files && imgFileInput.files[0];
