@@ -98,38 +98,35 @@ console.log("✅ ConfigAdmin.js loaded");
   }
 
   // Decide which origin to call for admin APIs
+  // Dec 3
   function getAdminApiBase() {
-    const origin = window.location.origin || "";
+  const origin = window.location.origin || "";
 
-    // Local dev + Render full-stack use same origin
-    if (
-      origin.includes("localhost") ||
-      origin.includes("127.0.0.1") ||
-      origin.includes("onrender.com")
-    ) {
-      return "";
-    }
-
-    // Vercel front-end must call the Render backend
-    if (origin.includes("mss-widget-mt.vercel.app")) {
-      // ⬅️ PUT YOUR REAL RENDER URL HERE
-      return "https://YOUR-RENDER-APP.onrender.com";
-    }
-
-    // Fallback: same origin
+  // Local dev + Render full-stack use same origin
+  if (
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1") ||
+    origin.includes("mss-widget-mt.onrender.com")
+  ) {
     return "";
   }
 
-// Vercel Image loader helper Dec 3 //
-
-  const ADMIN_API_BASE = getAdminApiBase();
-
-  // Normalise image URLs coming back from the server
-  function absolutizeImageUrl(path) {
-    if (!path) return "";
-    if (/^https?:\/\//i.test(path)) return path; // already absolute
-    return `${ADMIN_API_BASE}${path}`;
+  // Vercel front-end must call the Render backend
+  if (origin.includes("mss-widget-mt.vercel.app")) {
+    return "https://mss-widget-mt.onrender.com";
   }
+
+  // Fallback: same origin
+  return "";
+}
+
+const ADMIN_API_BASE = getAdminApiBase();
+
+function absolutizeImageUrl(path) {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path; // already absolute
+  return `${ADMIN_API_BASE}${path}`;
+}
 
   /* ------------------------------------------------------------------ */
   /* SLUG / SCHOOL HELPERS                                              */
@@ -236,7 +233,7 @@ console.log("✅ ConfigAdmin.js loaded");
     if (!schoolSelector) return;
 
     try {
-      const res = await fetch("/api/admin/schools");
+      const res = await fetch(`${ADMIN_API_BASE}/api/admin/schools`);
       if (!res.ok) {
         console.warn(
           "[ConfigAdmin] /api/admin/schools returned",
@@ -627,7 +624,7 @@ console.log("✅ ConfigAdmin.js loaded");
     if (!dashboardTemplateSelect) return;
 
     try {
-      const res = await fetch("/api/admin/dashboards");
+      const res = await fetch(`${ADMIN_API_BASE}/api/admin/dasboards`);
       if (!res.ok) throw new Error(`dashboards HTTP ${res.status}`);
 
       const data = await res.json();
@@ -728,7 +725,7 @@ console.log("✅ ConfigAdmin.js loaded");
     console.log("[ConfigAdmin] loadWidgetTemplates() starting");
 
     try {
-      const res = await fetch("/api/admin/widgets");
+      const res = await fetch(`${ADMIN_API_BASE}/api/admin/widgets`);
       if (!res.ok) throw new Error(`widgets HTTP ${res.status}`);
 
       const data = await res.json();
