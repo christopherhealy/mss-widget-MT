@@ -128,7 +128,7 @@ console.log("✅ ConfigAdmin.js loaded");
     return `${ADMIN_API_BASE}${path}`;               // resolve to backend
   }
 
-const ADMIN_API_BASE = getAdminApiBase();
+
 
 function absolutizeImageUrl(path) {
   if (!path) return "";
