@@ -101,9 +101,9 @@ const corsOptions = {
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
-    "X-ADMIN-KEY",
+    "ADMIN-KEY",
     "API-KEY",
-    "X-API-SECRET",
+    "API-SECRET",
   ],
 };
 
@@ -275,43 +275,41 @@ function cleanTranscriptText(raw) {
 
   return s || null;
 }
-/* ------------------------------------------------------------------
-   REAL submit handler: store MSS scores in `submissions`
-   ------------------------------------------------------------------ */
+// ---------------------------------------------------------------------------
+// /api/widget/submit
+// Unified submit handler
+//  - Supports both audio-first and placeholder-first flows
+//  - Uses createOrReuseSubmissionPlaceholder() for early ID assignment
+//  - Writes final MSS results into submissions table
+// ---------------------------------------------------------------------------
+// we may use this later
+//import { createOrReuseSubmissionPlaceholder } from "./utils/submissionPlaceholder.js";
+
+//Dec 3
 app.post("/api/widget/submit", async (req, res) => {
-  console.log("🎧 /api/widget/submit hit");
-  console.log("Raw body type:", typeof req.body);
-  console.log("Body keys:", Object.keys(req.body || {}));
+  console.log("🎧 /api/widget/submit");
 
   try {
-    // ACCEPT BOTH SHAPES:
-    //   A) { slug, question, studentId, mss, ... }
-    //   B) { submission: { slug, question, studentId, mss, ... } }
-    const payload =
-      (req.body && (req.body.submission || req.body)) || {};
+    // ------------------------------------------------------------
+    // 0) Normalise incoming payload shape
+    // ------------------------------------------------------------
+    const payload = req.body?.submission || req.body || {};
 
-    console.log("Payload keys:", Object.keys(payload));
-    console.log("Query params:", req.query || {});
-
-    // Accept slug from body *or* query string (for FormData fallback)
-    const slugFromBody =
-      typeof payload.slug === "string" ? payload.slug.trim() : "";
-    const slugFromQuery =
-      req.query && typeof req.query.slug === "string"
-        ? req.query.slug.trim()
-        : "";
-
+    const slugFromBody  = typeof payload.slug === "string" ? payload.slug.trim() : "";
+    const slugFromQuery = typeof req.query?.slug === "string" ? req.query.slug.trim() : "";
     const slug = slugFromBody || slugFromQuery;
 
     if (!slug) {
       return res.status(400).json({
         ok: false,
         error: "missing_slug",
-        message: "slug is required on widget submit",
+        message: "slug is required",
       });
     }
 
-    // 1) Find school via slug (grab settings so we can read dashboardPath)
+    // ------------------------------------------------------------
+    // 1) Resolve school (so we get school_id)
+    // ------------------------------------------------------------
     const schoolRes = await pool.query(
       `SELECT id, settings
          FROM schools
@@ -319,6 +317,7 @@ app.post("/api/widget/submit", async (req, res) => {
         LIMIT 1`,
       [slug]
     );
+
     if (!schoolRes.rowCount) {
       return res.status(404).json({
         ok: false,
@@ -327,13 +326,14 @@ app.post("/api/widget/submit", async (req, res) => {
       });
     }
 
-    const school   = schoolRes.rows[0];
-    const schoolId = school.id;
-    const settings = school.settings || {};
-    const schoolConfig =
-      settings.config || settings.widgetConfig || {};
+    const school       = schoolRes.rows[0];
+    const schoolId     = school.id;
+    const settings     = school.settings || {};
+    const schoolConfig = settings.config || settings.widgetConfig || {};
 
-    // 2) Basic context from the widget
+    // ------------------------------------------------------------
+    // 2) Extract widget-side metadata
+    // ------------------------------------------------------------
     const studentId =
       payload.studentId ||
       payload.student_id ||
@@ -345,35 +345,11 @@ app.post("/api/widget/submit", async (req, res) => {
       payload.prompt ||
       null;
 
-    // 🔹 NEW: question_id support (DB column)
     const questionId =
       payload.question_id ||
       payload.questionId ||
       null;
 
-    // 3) MSS result payload (flexible – string or object)
-    let mssRaw =
-      payload.mss ||
-      payload.results ||
-      payload.mssResult ||
-      payload.meta ||
-      null;
-
-    if (typeof mssRaw === "string") {
-      try {
-        mssRaw = JSON.parse(mssRaw);
-      } catch (e) {
-        console.warn(
-          "⚠️ Could not JSON.parse mss/results string, using raw:",
-          e
-        );
-      }
-    }
-    const mss = mssRaw || {};
-
-    console.log("🔎 mss top-level keys:", Object.keys(mss));
-
-    // 3b) Help + variant meta from the widget
     const help_level =
       payload.help_level ||
       payload.helpLevel ||
@@ -394,96 +370,87 @@ app.post("/api/widget/submit", async (req, res) => {
       payload.dashboardVariant ||
       null;
 
-   // 4) Vox score + transcript (flexible mapping)
+    // ------------------------------------------------------------
+    // 3) MSS / Vox results
+    // ------------------------------------------------------------
+    let mss = payload.mss || payload.meta || payload.results || null;
 
-// Try multiple sensible locations for overall score
-const voxScore =
-  // new-style overall score
-  (typeof mss.score === "number" ? mss.score : null) ??
-  (typeof mss.overall_score === "number" ? mss.overall_score : null) ??
-  (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
-  null;
+    if (!mss) {
+      console.log("🟦 No MSS results in payload – nothing to save.");
+      return res.status(400).json({
+        ok: false,
+        error: "missing_mss_results",
+        message: "MSS / Vox results are required in the payload.",
+      });
+    }
 
-// Transcript (stays as-is)
-const transcriptRaw =
-  mss.transcript ||
-  mss.text ||
-  payload.transcript ||
-  null;
+    if (typeof mss === "string") {
+      try {
+        mss = JSON.parse(mss);
+      } catch (err) {
+        console.warn("⚠️ MSS parse error:", err);
+      }
+    }
 
-const transcriptClean = cleanTranscriptText(transcriptRaw);
+    const voxScore =
+      (typeof mss.score === "number" ? mss.score : null) ??
+      (typeof mss.overall_score === "number" ? mss.overall_score : null) ??
+      (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
+      null;
 
-// 5) Detailed MSS results – adapt after inspecting `meta`
-const elsa = mss.elsa_results || mss.elsa || {};
-const scores = mss.scores || mss.details || {};
+    const transcriptRaw =
+      mss.transcript ||
+      payload.transcript ||
+      null;
 
-// 👉 Once you see the real paths in `meta`, adjust the ?? chain below:
-const mss_fluency =
-  elsa.fluency ??
-  scores.fluency ??
-  null;
+    const transcriptClean = cleanTranscriptText(transcriptRaw);
 
-const mss_grammar =
-  elsa.grammar ??
-  scores.grammar ??
-  null;
+    const elsa   = mss.elsa_results || mss.elsa || {};
+    const scores = mss.scores || mss.details || {};
 
-const mss_pron =
-  elsa.pronunciation ??
-  scores.pronunciation ??
-  null;
+    const mss_fluency =
+      elsa.fluency ??
+      scores.fluency ??
+      null;
 
-const mss_vocab =
-  elsa.vocabulary ??
-  scores.vocabulary ??
-  null;
+    const mss_grammar =
+      elsa.grammar ??
+      scores.grammar ??
+      null;
 
-const mss_cefr =
-  elsa.cefr_level ??
-  mss.cefr ??
-  mss.cefr_level ??
-  scores.cefr ??
-  scores.cefr_level ??
-  null;
+    const mss_pron =
+      elsa.pronunciation ??
+      scores.pronunciation ??
+      null;
 
-const mss_toefl =
-  elsa.toefl_score ??
-  scores.toefl ??
-  null;
+    const mss_vocab =
+      elsa.vocabulary ??
+      scores.vocabulary ??
+      null;
 
-const mss_ielts =
-  elsa.ielts_score ??
-  scores.ielts ??
-  null;
+    const mss_cefr =
+      elsa.cefr_level ??
+      mss.cefr ??
+      mss.cefr_level ??
+      scores.cefr ??
+      scores.cefr_level ??
+      null;
 
-const mss_pte =
-  elsa.pte_score ??
-  scores.pte ??
-  null;
+    const mss_toefl = elsa.toefl_score ?? scores.toefl ?? null;
+    const mss_ielts = elsa.ielts_score ?? scores.ielts ?? null;
+    const mss_pte   = elsa.pte_score   ?? scores.pte   ?? null;
 
-// No explicit overall from Elsa in docs yet
-const mss_overall = null;
+    // Legacy mirrors
+    const toefl = mss_toefl;
+    const ielts = mss_ielts;
+    const pte   = mss_pte;
+    const cefr  = mss_cefr;
 
-// Legacy columns
-const toefl = mss_toefl;
-const ielts = mss_ielts;
-const pte   = mss_pte;
-const cefr  = mss_cefr;
+    const meta = mss; // raw MSS blob
 
-
-    // 6) Meta JSON – keep full raw MSS response
-    const meta = mss;
-
-    console.log("📊 Scoring snapshot:", {
-      voxScore,
-      mss_cefr,
-      mss_toefl,
-      mss_ielts,
-      mss_pte,
-      hasElsa: !!mss.elsa_results,
-    });
-
-    // 7) Insert into submissions (now includes question_id)
+    // ------------------------------------------------------------
+    // 4) INSERT submission row (⚠️ no slug column)
+    // ------------------------------------------------------------
     const insertSql = `
       INSERT INTO submissions (
         school_id,
@@ -513,102 +480,75 @@ const cefr  = mss_cefr;
         question_id
       )
       VALUES (
-        $1,$2,$3,
-        $4,$5,$6,$7,$8,$9,
-        $10,$11,$12,$13,$14,
-        $15,$16,$17,$18,
-        $19,$20,
-        $21,$22,$23,$24,$25
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
       )
       RETURNING id
     `;
 
-    const params = [
-      schoolId,          // 1
-      questionTxt,       // 2
-      studentId,         // 3
-      toefl,             // 4
-      ielts,             // 5
-      pte,               // 6
-      cefr,              // 7
-      transcriptRaw,     // 8
-      meta,              // 9
-      mss_overall,       // 10
-      mss_fluency,       // 11
-      mss_grammar,       // 12
-      mss_pron,          // 13
-      mss_vocab,         // 14
-      mss_cefr,          // 15
-      mss_toefl,         // 16
-      mss_ielts,         // 17
-      mss_pte,           // 18
-      voxScore,          // 19
-      transcriptClean,   // 20
-      help_level,        // 21
-      help_surface,      // 22
-      widget_variant,    // 23
-      dashboard_variant, // 24
-      questionId         // 25 (NEW)
-    ];
-
-    const result = await pool.query(insertSql, params);
-    const submissionId = result.rows[0].id;
-
-    // 🔍 Resolve dashboard path from school config (respect ConfigAdmin)
-    let dashboardPath = "/dashboards/Dashboard3.html";
-
-    try {
-      if (schoolConfig) {
-        dashboardPath =
-          schoolConfig.dashboardPath ||
-          schoolConfig.dashboardUrl ||
-          dashboardPath;
-      }
-
-      // Normalise to a clean /dashboards/ path
-      if (!dashboardPath.startsWith("/")) {
-        dashboardPath = `/dashboards/${dashboardPath.replace(/^\/+/, "")}`;
-      }
-      if (dashboardPath === "/dashboards/Dashboard_template.html") {
-        dashboardPath = "/dashboards/Dashboard3.html";
-      }
-    } catch (e) {
-      console.warn("dashboardPath resolution failed, using default:", e);
-      dashboardPath = "/dashboards/Dashboard3.html";
-    }
-
-    // NOTE: we include slug + submissionId here; widget-core will
-    // happily add its own `session` param on top.
-    const dashboardUrl = `${dashboardPath}?slug=${encodeURIComponent(
-      slug
-    )}&submissionId=${submissionId}`;
-
-    console.log("✅ submission stored with id", submissionId, {
+    const insertParams = [
       schoolId,
-      questionId,
+      questionTxt,
+      studentId,
+      toefl,
+      ielts,
+      pte,
+      cefr,
+      transcriptRaw,
+      meta,
+      null,          // mss_overall not used yet
+      mss_fluency,
+      mss_grammar,
+      mss_pron,
+      mss_vocab,
       mss_cefr,
       mss_toefl,
       mss_ielts,
       mss_pte,
       voxScore,
+      transcriptClean,
       help_level,
       help_surface,
       widget_variant,
       dashboard_variant,
-      dashboardUrl,
+      questionId
+    ];
+
+    const insertRes    = await pool.query(insertSql, insertParams);
+    const submissionId = insertRes.rows[0].id;
+
+    // ------------------------------------------------------------
+    // 5) Build dashboard URL
+    // ------------------------------------------------------------
+    let dashboardPath =
+      schoolConfig.dashboardPath ||
+      schoolConfig.dashboardUrl ||
+      "/dashboards/Dashboard3.html";
+
+    if (!dashboardPath.startsWith("/")) {
+      dashboardPath = `/dashboards/${dashboardPath.replace(/^\/+/, "")}`;
+    }
+
+    const dashboardUrl = `${dashboardPath}?slug=${encodeURIComponent(
+      slug
+    )}&submissionId=${submissionId}`;
+
+    console.log("✨ Submission created:", {
+      submissionId,
+      dashboardUrl
     });
 
     return res.json({
       ok: true,
       submissionId,
-      dashboardUrl,
+      dashboardUrl
     });
+
   } catch (err) {
-    console.error("❌ /api/widget/submit error:", err);
+    console.error("❌ /api/widget/submit fatal:", err);
     return res.status(500).json({
       ok: false,
       error: "submit_failed",
-      message: err.message || "Error while storing submission",
+      message: err.message || "Internal error"
     });
   }
 });
@@ -2435,26 +2375,33 @@ app.post("/api/widget/help", async (req, res) => {
   }
 });
 
-// --- List schools for current admin (superadmin-aware) Nov 30 ---- //
+// --- List schools for current admin (email OR adminId, superadmin-aware) Nov 30 ---//
 app.get("/api/admin/my-schools", async (req, res) => {
   const emailRaw = (req.query.email || "").trim().toLowerCase();
   const adminIdRaw = req.query.adminId;
 
   try {
+    if (!emailRaw && !adminIdRaw) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_identifier",
+        message: "email or adminId is required.",
+      });
+    }
+
     let adminRow = null;
 
-    // If adminId is provided, use it as primary identity
+    // Path A: look up by adminId (if provided)
     if (adminIdRaw) {
       const adminId = Number(adminIdRaw);
       if (Number.isInteger(adminId) && adminId > 0) {
         const { rows, rowCount } = await pool.query(
           `
-          SELECT
-            id,
-            full_name,
-            LOWER(email) AS email,
-            is_superadmin,
-            is_active
+          SELECT id,
+                 full_name,
+                 LOWER(email) AS email,
+                 is_active,
+                 is_superadmin
           FROM admins
           WHERE id = $1
           LIMIT 1
@@ -2468,62 +2415,59 @@ app.get("/api/admin/my-schools", async (req, res) => {
       }
     }
 
-    // If we found an adminRow via adminId, we don’t need email at all
-    if (adminRow) {
-      const isSuperAdmin = !!adminRow.is_superadmin;
+    // Path B: if no usable adminRow yet, fall back to email
+    if (!adminRow && emailRaw) {
+      const { rows, rowCount } = await pool.query(
+        `
+        SELECT id,
+               full_name,
+               LOWER(email) AS email,
+               is_active,
+               is_superadmin
+        FROM admins
+        WHERE LOWER(email) = $1
+          AND is_active IS NOT FALSE
+        ORDER BY is_superadmin DESC, id ASC
+        LIMIT 1
+        `,
+        [emailRaw]
+      );
 
-      // SUPERADMIN: see ALL schools
-      if (isSuperAdmin) {
-        const { rows } = await pool.query(
-          `
-          SELECT
-            NULL::int AS admin_id,
-            s.id      AS school_id,
-            s.slug,
-            s.name    AS school_name
-          FROM schools s
-          ORDER BY s.id ASC
-          `
-        );
-
-        return res.json({
-          ok: true,
-          isSuperAdmin: true,
-          email: adminRow.email,
-          adminId: adminRow.id,
-          schools: rows.map((r) => ({
-            adminId: r.admin_id, // always null in this mode
-            schoolId: r.school_id,
-            slug: r.slug,
-            name: r.school_name || r.slug,
-          })),
-        });
+      if (rowCount) {
+        adminRow = rows[0];
       }
+    }
 
-      // Non-superadmin: show only this admin’s schools (by admin.id)
+    if (!adminRow) {
+      return res.status(404).json({
+        ok: false,
+        error: "admin_not_found",
+        message: "No active admin account found.",
+      });
+    }
+
+    const isSuperAdmin = !!adminRow.is_superadmin;
+
+    // SUPERADMIN: see ALL schools
+    if (isSuperAdmin) {
       const { rows } = await pool.query(
         `
         SELECT
-          a.id      AS admin_id,
-          s.id      AS school_id,
+          s.id   AS school_id,
           s.slug,
-          s.name    AS school_name
-        FROM admins a
-        JOIN schools s ON s.id = a.school_id
-        WHERE a.id = $1
-          AND a.is_active IS NOT FALSE
+          s.name AS school_name
+        FROM schools s
         ORDER BY s.id ASC
-        `,
-        [adminRow.id]
+        `
       );
 
       return res.json({
         ok: true,
-        isSuperAdmin: false,
+        isSuperAdmin: true,
         email: adminRow.email,
         adminId: adminRow.id,
         schools: rows.map((r) => ({
-          adminId: r.admin_id,
+          adminId: null, // global view, not per-school admin row
           schoolId: r.school_id,
           slug: r.slug,
           name: r.school_name || r.slug,
@@ -2531,36 +2475,28 @@ app.get("/api/admin/my-schools", async (req, res) => {
       });
     }
 
-    // 🔁 Backwards-compat: if no valid adminId, fall back to email-based lookup
-    if (!emailRaw) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_identity",
-        message: "adminId or email is required.",
-      });
-    }
-
+    // NON-SUPERADMIN: show only schools explicitly linked to this admin/email
     const { rows } = await pool.query(
       `
       SELECT
-        a.id      AS admin_id,
-        s.id      AS school_id,
+        a.id   AS admin_id,
+        s.id   AS school_id,
         s.slug,
-        s.name    AS school_name
+        s.name AS school_name
       FROM admins a
       JOIN schools s ON s.id = a.school_id
-      WHERE LOWER(a.email) = $1
-        AND a.is_active IS NOT FALSE
+      WHERE a.is_active IS NOT FALSE
+        AND (a.id = $1 OR LOWER(a.email) = $2)
       ORDER BY s.id ASC
       `,
-      [emailRaw]
+      [adminRow.id, adminRow.email]
     );
 
     return res.json({
       ok: true,
       isSuperAdmin: false,
-      email: emailRaw,
-      adminId: rows[0]?.admin_id || null,
+      email: adminRow.email,
+      adminId: adminRow.id,
       schools: rows.map((r) => ({
         adminId: r.admin_id,
         schoolId: r.school_id,
@@ -2573,96 +2509,7 @@ app.get("/api/admin/my-schools", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: "server_error",
-    });
-  }
-});
-
-// Make sure you already have:
-// const express = require("express");
-// const app = express();
-// const pool = new Pool(...);
-// app.use(express.json());
-// const bcrypt = require("bcrypt"); // if you're hashing passwords
-
-// Simple admin login for AdminLogin.html
-// POST /api/admin/login
-// Simple admin login for AdminLogin.html (plain-text passwords for now)
-app.post("/api/admin/login", async (req, res) => {
-  try {
-    const body = req.body || {};
-    const emailRaw = (body.email || "").trim().toLowerCase();
-    const password = (body.password || "").trim();
-
-    if (!emailRaw || !password) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_credentials",
-        message: "Email and password are required.",
-      });
-    }
-
-    // Case-insensitive lookup, only active admins
-    const result = await pool.query(
-      `
-        SELECT
-          id,
-          LOWER(email) AS email,
-          full_name,
-          password_hash,
-          is_active
-        FROM admins
-        WHERE LOWER(email) = $1
-        LIMIT 1
-      `,
-      [emailRaw]
-    );
-
-    if (!result.rowCount || result.rows[0].is_active === false) {
-      return res.status(401).json({
-        ok: false,
-        error: "invalid_login",
-        message: "Invalid email or password.",
-      });
-    }
-
-    const admin = result.rows[0];
-
-    // Plain-text comparison for now (matches how you set password_hash in SQL)
-    if ((admin.password_hash || "") !== password) {
-      return res.status(401).json({
-        ok: false,
-        error: "invalid_login",
-        message: "Invalid email or password.",
-      });
-    }
-
-    // Use the crypto import at top of file
-    const token = crypto.randomBytes(24).toString("hex");
-
-    const session = {
-      adminId: admin.id,
-      email: admin.email,
-      name: admin.full_name,
-      token,
-      createdAt: Date.now(),
-    };
-
-    return res.json({
-      ok: true,
-      session,
-      admin: {
-        id: admin.id,
-        email: admin.email,
-        fullName: admin.full_name,
-      },
-      token,
-    });
-  } catch (err) {
-    console.error("Admin login error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "login_server_error",
-      message: "Internal server error during login.",
+      message: "Failed to load schools for admin.",
     });
   }
 });
@@ -2775,78 +2622,6 @@ app.post("/api/login", async (req, res) => {
     });
   }
 });
-
-// At top, make sure you have your DB pool imported
-// const pool = require("./db");  // or your existing import
-
-// GET /api/admin/schools  – super admin: list ALL schools
-app.get("/api/admin/schools", async (req, res) => {
-  const adminIdRaw = req.query.adminId;
-
-  try {
-    const adminId = Number(adminIdRaw);
-    if (!Number.isInteger(adminId) || adminId <= 0) {
-      return res.status(400).json({
-        ok: false,
-        error: "invalid_admin_id",
-        message: "adminId must be a positive integer",
-      });
-    }
-
-    // ✅ correct column name is is_superadmin
-    const adminResult = await pool.query(
-      `
-        SELECT is_superadmin
-        FROM admins
-        WHERE id = $1
-          AND is_active IS NOT FALSE
-        LIMIT 1
-      `,
-      [adminId]
-    );
-
-    if (!adminResult.rows.length) {
-      return res.status(404).json({
-        ok: false,
-        error: "admin_not_found",
-        message: "Admin not found",
-      });
-    }
-
-    const isSuperAdmin = !!adminResult.rows[0].is_superadmin;
-    if (!isSuperAdmin) {
-      return res.status(403).json({
-        ok: false,
-        error: "forbidden",
-        message: "Only super admins can view all schools.",
-      });
-    }
-
-    // ✅ return ALL schools
-    const schoolsResult = await pool.query(
-      `SELECT id, slug, name
-         FROM schools
-         ORDER BY name ASC`
-    );
-
-    return res.json({
-      ok: true,
-      schools: schoolsResult.rows.map((r) => ({
-        schoolId: r.id,
-        slug: r.slug,
-        name: r.name || r.slug,
-      })),
-    });
-  } catch (err) {
-    console.error("Error in /api/admin/schools:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "server_error",
-      message: "Could not load schools.",
-    });
-  }
-});
-
 /* ------------------------------------------------------------------
    STUDENT ENROLLMENT
    POST /api/student/enroll
@@ -3438,8 +3213,11 @@ If you did not request this, you can safely ignore this email.
 });
 
 // ---------------------------------------------------------------------
-// ADMIN PASSWORD RESET – COMPLETE (safer version)
+// ADMIN PASSWORD RESET – COMPLETE
 // POST /api/admin/password-reset  { token, password }
+//  - verifies token
+//  - updates admins.password_hash (plain text for now)
+//  - marks reset as used
 // ---------------------------------------------------------------------
 app.post("/api/admin/password-reset", async (req, res) => {
   const body = req.body || {};
@@ -3466,10 +3244,9 @@ app.post("/api/admin/password-reset", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // NOTE: only select columns that definitely exist
     const { rows, rowCount } = await client.query(
       `
-      SELECT id, admin_id, email, status, created_at, used_at
+      SELECT id, admin_id, email, status, created_at, expires_at, used_at
       FROM admin_password_resets
       WHERE token = $1
       LIMIT 1
@@ -3497,32 +3274,40 @@ app.post("/api/admin/password-reset", async (req, res) => {
       });
     }
 
-    // If you *do* later add an expires_at column, this guard will still work:
-    //   if (reset.expires_at && new Date(reset.expires_at) < new Date()) { ... }
-
-    const adminEmail = (reset.email || "").trim().toLowerCase();
-    if (!adminEmail) {
+    if (new Date(reset.expires_at) < new Date()) {
       await client.query("ROLLBACK");
       return res.status(400).json({
         ok: false,
-        error: "missing_admin_email",
-        message: "Reset record is missing admin email.",
+        error: "expired",
+        message: "This verification code has expired.",
       });
     }
 
-    // For now, keep password_hash as plain text (matches /api/login)
-    const passwordHash = password;
+//Nov 30
 
-    await client.query(
-      `
-      UPDATE admins
-      SET password_hash = $2,
-          updated_at    = NOW()
-      WHERE LOWER(email) = LOWER($1)
-        AND is_active IS NOT FALSE
-      `,
-      [adminEmail, passwordHash]
-    );
+const adminEmail = (reset.email || "").trim().toLowerCase();
+if (!adminEmail) {
+  await client.query("ROLLBACK");
+  return res.status(400).json({
+    ok: false,
+    error: "missing_admin_email",
+    message: "Reset record is missing admin email.",
+  });
+}
+
+// For now, keep password_hash as plain text to match existing login
+const passwordHash = password;
+
+await client.query(
+  `
+    UPDATE admins
+    SET password_hash = $2,
+        updated_at    = NOW()
+    WHERE LOWER(email) = LOWER($1)
+      AND is_active IS NOT FALSE
+  `,
+  [adminEmail, passwordHash]
+);
 
     await client.query(
       `
@@ -4039,8 +3824,8 @@ app.get("/api/admin/stats/:slug", (req, res) => {
   const { slug } = req.params;
   const range = req.query.range || "today";
 
-  // Dummy data for now
-  const stats = {
+  // For now, just send hard-coded dummy data
+  res.json({
     slug,
     range,
     from: "2025-11-18",
@@ -4048,44 +3833,14 @@ app.get("/api/admin/stats/:slug", (req, res) => {
     totalTests: 42,
     topQuestion: {
       id: 1,
-      text: "What is on your bucket list?",
+      text: "What is on your bucket list?"
     },
     highestCEFR: "C1",
     lowestCEFR: "A2",
-    avgCEFR: "B2",
-  };
-
-  // Match the pattern of other admin APIs
-  res.json({
-    ok: true,
-    stats,
+    avgCEFR: "B2"
   });
 });
 
-// Simple stats stub – replace with real SQL later Dec 1
-app.get("/api/admin/stats/:slug", async (req, res) => {
-  const { slug } = req.params;
-  const range = req.query.range || "today";
-
-  // TODO: real aggregation from submissions / vw_widget_reports
-  // For now, send fake-but-plausible data so the UI works.
-  const stats = {
-    slug,
-    range,
-    from: "2025-11-01",
-    to: "2025-11-30",
-    totalTests: 79,
-    topQuestion: {
-      id: 1,
-      text: "What is on your bucket list?",
-    },
-    highestCEFR: "C1",
-    lowestCEFR: "A2",
-    avgCEFR: "B2",
-  };
-
-  res.json({ ok: true, stats });
-});
 /* ---------------------------------------------------------------
    Tests list for School Portal – uses vw_widget_reports
    --------------------------------------------------------------- */

@@ -1,4 +1,5 @@
-<!-- /admin/SchoolPortal.html — v0.6 Portal, Build: 2025-12-01-->
+<!-- /admin/SchoolPortal.html — v0.6 Portal, Build: 2025-11-30 -->
+<!-- TEST-WWCD-PORTAL V2-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -147,8 +148,8 @@
                   <th>MSS TOEFL</th>
                   <th>MSS IELTS</th>
                   <th>MSS PTE</th>
-                  <th>Transcript</th>
-                  <th>Prompt</th>
+                  <th>Vox</th>
+                  <!-- th>Prompt</th -->
                 </tr>
               </thead>
               <tbody id="tests-tbody">
@@ -236,36 +237,36 @@
   </div>
 
   <!-- Transcript modal -->
-  <div
-    id="portal-transcript-backdrop"
-    class="portal-modal-backdrop hidden"
+<div id="portal-transcript-backdrop" class="sp-modal-backdrop hidden">
+  <div class="sp-modal">
+    <header class="sp-modal-header">
+      <div class="sp-modal-titleblock">
+        <h2 id="portal-transcript-title" class="sp-modal-title"></h2>
+        <p id="portal-transcript-subtitle" class="sp-modal-subtitle"></p>
+      </div>
+      <button type="button" id="portal-transcript-close" class="sp-modal-close">×</button>
+    </header>
+
+    <main id="portal-transcript-body" class="sp-modal-body"></main>
+
+    <footer class="sp-modal-footer">
+
+<button class="mss-btn" data-copy-modal>
+  Copy to Clipboard
+</button>
+
+
+
+  <button
+    type="button"
+    id="portal-transcript-ok"
+    class="mss-btn mss-btn-primary"
   >
-    <div class="portal-modal">
-      <div class="portal-modal-header">
-        <h2 id="portal-transcript-title">Transcript</h2>
-        <button
-          type="button"
-          id="portal-transcript-close"
-          class="portal-modal-close"
-        >
-          ×
-        </button>
-      </div>
-      <div
-        id="portal-transcript-body"
-        class="portal-modal-body"
-      ></div>
-      <div class="portal-modal-footer">
-        <button
-          type="button"
-          id="portal-transcript-ok"
-          class="mss-btn mss-btn-primary"
-        >
-          Close
-        </button>
-      </div>
-    </div>
+    Close
+  </button>
+</footer>
   </div>
+</div>
 
   <!-- Delete confirmation modal -->
   <div id="portal-delete-backdrop" class="portal-warning-backdrop hidden">
@@ -339,8 +340,7 @@
     </div>
   </div>
 
-  <!-- include of SchoolPortal.js and the MSSSession helper-->
-  <script src="/admin-login/MSSAdminSession.js"></script>
+  <!-- Single include of SchoolPortal.js -->
   <script src="/admin/SchoolPortal.js"></script>
 </body>
 </html>

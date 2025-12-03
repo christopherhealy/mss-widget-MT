@@ -1,4 +1,4 @@
-// MSS Widget Core v1.1 — Nov 19 2025 (REGEN Nov 25 2025)
+// MSS Widget Core v1.2 — Nov 19 2025 (REGEN Nov 27 2025) - repurposed Dec 3
 // Supports:
 //   • Widget.html      – slider help (MSSHelp overlay)
 //   • WidgetMin.html   – inline MIN-help panel (per-question)
@@ -51,6 +51,76 @@ let objectUrl = null;
 const HELP_CACHE = {};
 
 
+/* -----------------------------------------------------------------------
+   EPHEMERAL DASHBOARD CACHE (localStorage)
+   ----------------------------------------------------------------------- */
+
+/**
+ * Cache a lightweight result object for dashboards in localStorage so that
+ * dashboards can render even when they cannot reach the backend directly
+ * (e.g., Vercel → Render CORS).
+ *
+ * slug:          school slug (CURRENT_SLUG)
+ * submissionId:  numeric id returned by /api/widget/submit
+ * mssResultRaw:  MSS JSON from /api/vox (score, transcript, elsa_results…)
+ */
+function cacheDashboardResult(slug, submissionId, mssResultRaw) {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  if (!slug || submissionId == null || !mssResultRaw) return;
+
+  try {
+    // In some odd shapes we might get { mss: {...} } or { meta: {...} }
+    let mss = mssResultRaw;
+    if (mss.mss && (mss.mss.elsa_results || typeof mss.mss.score === "number")) {
+      mss = mss.mss;
+    }
+    if (mss.meta && (mss.meta.elsa_results || typeof mss.meta.score === "number")) {
+      mss = mss.meta;
+    }
+
+    const elsa   = mss.elsa_results || mss.elsa || {};
+    const overall =
+      typeof mss.score === "number" ? mss.score : null;
+
+    const resultForDash = {
+      sessionId: submissionId,
+      overall,
+      score: overall,
+      cefr:
+        elsa.cefr_level ||
+        mss.cefr_level ||
+        mss.cefr ||
+        null,
+      toefl:
+        typeof elsa.toefl_score === "number" ? elsa.toefl_score : null,
+      ielts:
+        typeof elsa.ielts_score === "number" ? elsa.ielts_score : null,
+      pte:
+        typeof elsa.pte_score === "number" ? elsa.pte_score : null,
+      lengthSec: null, // we can wire a real duration later if we want
+      wpm: null,
+      transcript: mss.transcript || "",
+      note: null,
+    };
+
+    const payload = {
+      slug,
+      submissionId,
+      result: resultForDash,
+    };
+
+    const key = `mss-dash:${slug}:${submissionId}`;
+    localStorage.setItem(key, JSON.stringify(payload));
+    localStorage.setItem("mss-dash:last", JSON.stringify(payload));
+
+    console.log("🧺 Cached dashboard result in localStorage:", {
+      key,
+      payload,
+    });
+  } catch (err) {
+    console.warn("⚠️ cacheDashboardResult error:", err);
+  }
+}
 /* -----------------------------------------------------------------------
    BACKEND BASE (Node / Render)
    ----------------------------------------------------------------------- */
@@ -1508,7 +1578,11 @@ function onClearFileClick() {
   setStatus("Cleared. You can record or upload a new file.");
 }
 
-function onSubmitClick() {
+/* -----------------------------------------------------------------------
+   SUBMIT Dec 3
+   ----------------------------------------------------------------------- */
+
+async function onSubmitClick() {
   const q = currentQuestion();
   if (!q) {
     setStatus("There is no question loaded.");
@@ -1590,20 +1664,19 @@ function onSubmitClick() {
 
   fd.append("file", blob, fileNameForUpload);
 
-  // 🔹 NEW: derive a canonical question text + ID once
+  // 🔹 Canonical question text + ID
   const questionId = q.id ?? q.question_id ?? null;
   const questionText = q.question || q.text || q.prompt || "";
 
-  // 🔹 Send BOTH ID and text to the backend (for /api/widget/submit)
   if (questionId != null) {
-    fd.append("questionId", String(questionId));   // existing field
-    fd.append("question_id", String(questionId));  // DB-style, for safety
+    fd.append("questionId", String(questionId));   // camelCase
+    fd.append("question_id", String(questionId));  // snake_case
   }
   if (questionText) {
     fd.append("question", questionText);
   }
 
-  // ⬇️ still send slug in the body as well (belt + suspenders)
+  // Also send slug + other metadata
   if (CURRENT_SLUG) fd.append("slug", CURRENT_SLUG);
   if (SCHOOL_ID) fd.append("schoolId", SCHOOL_ID);
   if (CONFIG.assessmentId) fd.append("assessmentId", CONFIG.assessmentId);
@@ -1615,179 +1688,155 @@ function onSubmitClick() {
     questionText,
   });
 
-  const headers = {};
-  if (CONFIG?.api) {
-    if (CONFIG.api.key) headers["API-KEY"] = CONFIG.api.key;
-    if (CONFIG.api.secret) headers["x-api-secret"] = CONFIG.api.secret;
+  // 🔑 Build MSS-required headers for FormData POST
+const headers = {};
+
+// MSS primary authentication:
+if (CONFIG?.api?.secret) {
+  headers["x-api-secret"] = CONFIG.api.secret;
+}
+
+// Secondary key (some MSS clusters require both):
+if (CONFIG?.api?.key) {
+  headers["API-KEY"] = CONFIG.api.key;
+}
+
+  let res;
+  try {
+    const r = await fetch(submitUrl, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    let body;
+    try {
+      body = await r.json();
+    } catch (e) {
+      body = {};
+    }
+    res = { ok: r.ok, status: r.status, body };
+  } catch (networkErr) {
+    console.error("❌ Submit network error:", networkErr);
+    hideSubmitProgress();
+    setStatus("Network error while submitting. Please try again.");
+    logEvent("submit_error", {
+      questionId,
+      status: "network_error",
+      body: String(networkErr),
+    });
+    return;
   }
 
-  fetch(submitUrl, {
-    method: "POST",
-    headers,
-    body: fd,
-  })
-    .then((r) =>
-      r
-        .json()
-        .catch(() => ({}))
-        .then((body) => ({ ok: r.ok, status: r.status, body }))
-    )
-    .then(async (res) => {
-      const elapsedSec = ((performance.now() - t0Local) / 1000).toFixed(1);
-      console.log("🎯 Submit response from MSS:", res);
+  const elapsedSec = ((performance.now() - t0Local) / 1000).toFixed(1);
+  console.log("🎯 Submit response from MSS:", res);
 
-      if (!res.ok) {
-        console.error("❌ Submit error:", res.status, res.body);
-        setStatus("We could not submit your answer. Please try again.");
-        hideSubmitProgress();
-        logEvent("submit_error", {
-          questionId,
-          status: res.status,
-          body: res.body,
-        });
-        return;
-      }
-
-      const body = res.body || {};
-      const msg = body.message || "Answer submitted successfully.";
-
-      // 🔹 Help + variant metadata at submit time
-      const help_level = getHelpLevelForSubmit();
-      const help_surface = getHelpSurface();
-      const widget_variant = getWidgetVariant();
-      const dashboard_variant = getDashboardVariant();
-
-      setStatus(`${msg} (in ${elapsedSec}s)`);
-
-      // Are we POSTing directly to /api/widget/submit ?
-      const norm = (s) => (s || "").replace(/\/+$/, "");
-      const isDirectWidgetSubmit =
-        norm(submitUrl) === norm(API.DB_SUBMIT) ||
-        /\/api\/widget\/submit\/?$/.test(submitUrl);
-
-      try {
-        let submissionId;
-        let dashboardUrl;
-
-        if (isDirectWidgetSubmit && body.ok && body.submissionId) {
-          // ✅ We already hit our Node submit handler
-          submissionId = body.submissionId;
-          dashboardUrl = body.dashboardUrl;
-          console.log("✅ Direct widget submit stored:", {
-            submissionId,
-            dashboardUrl,
-          });
-        } else {
-          // ✅ MSS scoring cluster → now store in DB via JSON submit
-
-          // (re-use the same canonical text)
-          const questionTextForDb = questionText;
-
-          const dbPayload = {
-            slug: CURRENT_SLUG,
-            question: questionTextForDb,
-            question_id: questionId ?? null,  // 🔹 NEW: DB-style ID
-            questionId: questionId ?? null,   // 🔹 Keep camelCase for legacy server
-            studentId: null,                  // can wire up later
-            mss: body,                        // full MSS result payload
-            help_level,
-            help_surface,
-            widget_variant,
-            dashboard_variant,
-          };
-
-          console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
-
-          const dbRes = await fetch(API.DB_SUBMIT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(dbPayload),
-          });
-
-          const dbJson = await dbRes.json().catch(() => ({}));
-          if (!dbRes.ok || dbJson.ok === false) {
-            console.error("❌ DB_SUBMIT error:", dbRes.status, dbJson);
-            setStatus(
-              "We scored your answer but could not save it. Please try again later."
-            );
-            hideSubmitProgress();
-            logEvent("submit_db_error", {
-              questionId,
-              status: dbRes.status,
-              body: dbJson,
-            });
-            return;
-          }
-
-          submissionId = dbJson.submissionId || dbJson.id;
-          dashboardUrl = dbJson.dashboardUrl;
-          console.log("✅ Stored via DB_SUBMIT:", {
-            submissionId,
-            dashboardUrl,
-          });
-        }
-
-        // Fallback: make sure we have some dashboard URL
-        if (!dashboardUrl) {
-          dashboardUrl = getDashboardPath(body.dashboardUrl);
-        }
-
-        // Inline dashboard if possible, otherwise popup
-        const expanded = expandDashboard(dashboardUrl, submissionId);
-        if (!expanded) {
-          dashboardWindow = window.open(
-            dashboardUrl,
-            "_blank",
-            "noopener,noreferrer"
-          );
-          logEvent("dashboard_popup_open", {
-            submissionId,
-            url: dashboardUrl,
-          });
-        }
-
-        // Optionally lock session if full help was used
-        if (help_level === "max") {
-          SESSION_LOCKED = true;
-        }
-
-        hideSubmitProgress();
-        setRecordingUiEnabled(false);
-
-        logEvent("submit_success", {
-          questionId,
-          questionText,
-          submissionId,
-          help_level,
-          help_surface,
-          widget_variant,
-          dashboard_variant,
-          elapsedSec,
-        });
-      } catch (err) {
-        console.error("submit success-flow error:", err);
-        setStatus(
-          "We scored your answer but ran into a problem showing the results."
-        );
-        hideSubmitProgress();
-        logEvent("submit_flow_exception", {
-          questionId,
-          error: String(err),
-        });
-      }
-    })
-    .catch((err) => {
-      console.error("Submit fetch error:", err);
-      setStatus(
-        "Network error while submitting. Please check your connection."
-      );
-      hideSubmitProgress();
-      logEvent("submit_exception", {
-        questionId,
-        error: String(err),
-      });
+  if (!res.ok) {
+    console.error("❌ Submit error:", res.status, res.body);
+    hideSubmitProgress();
+    setStatus("We could not submit your answer. Please try again.");
+    logEvent("submit_error", {
+      questionId,
+      status: res.status,
+      body: res.body,
     });
-} // end onSubmitClick
+    return;
+  }
+
+  const body = res.body || {};
+  const msg = body.message || "Answer submitted successfully.";
+
+  // 🔹 Help + variant metadata at submit time
+  const help_level = getHelpLevelForSubmit();
+  const help_surface = getHelpSurface();
+  const widget_variant = getWidgetVariant();
+  const dashboard_variant = getDashboardVariant();
+
+  setStatus(`${msg} (in ${elapsedSec}s)`);
+
+  // Are we POSTing directly to /api/widget/submit ?
+  const norm = (s) => (s || "").replace(/\/+$/, "");
+  const isDirectWidgetSubmit =
+    norm(submitUrl) === norm(API.DB_SUBMIT) ||
+    /\/api\/widget\/submit\/?$/.test(submitUrl);
+
+  try {
+    let submissionId;
+    let dashboardUrl;
+
+    if (isDirectWidgetSubmit && body.ok && body.submissionId) {
+      // ✅ We already hit our Node submit handler
+      submissionId = body.submissionId;
+      dashboardUrl = body.dashboardUrl;
+      console.log("✅ Direct widget submit stored:", {
+        submissionId,
+        dashboardUrl,
+      });
+
+      // Try to cache dashboard data (if body includes MSS-like data)
+      cacheDashboardResult(CURRENT_SLUG, submissionId, body);
+    } else {
+      // ✅ MSS scoring cluster → now store in DB via JSON submit
+      const questionTextForDb = questionText;
+
+      const dbPayload = {
+        slug: CURRENT_SLUG,
+        question: questionTextForDb,
+        question_id: questionId ?? null,
+        questionId: questionId ?? null,
+        studentId: null,
+        mss: body,
+        help_level,
+        help_surface,
+        widget_variant,
+        dashboard_variant,
+      };
+
+      console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
+
+      const dbRes = await fetch(API.DB_SUBMIT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dbPayload),
+      });
+
+      let dbJson = {};
+      try {
+        dbJson = await dbRes.json();
+      } catch (e) {
+        dbJson = {};
+      }
+
+      if (!dbRes.ok) {
+        console.error("❌ DB submit error:", dbRes.status, dbJson);
+      } else {
+        submissionId = dbJson.submissionId;
+        dashboardUrl = dbJson.dashboardUrl;
+        console.log("✅ DB submit stored:", { submissionId, dashboardUrl });
+
+        // Cache for dashboard if payload looks usable
+        cacheDashboardResult(CURRENT_SLUG, submissionId, dbJson);
+      }
+    }
+
+    logEvent("submit_success", {
+      questionId,
+      submissionId,
+    });
+  } catch (err) {
+    console.error("❌ Error during DB submit flow:", err);
+    logEvent("submit_error_dbflow", {
+      questionId,
+      error: String(err),
+    });
+  } finally {
+    hideSubmitProgress();
+    // Lock this question and clear playback state
+    try {
+      clearRecordedAudio();
+    } catch (_) {}
+    SESSION_LOCKED = true;
+  }
+}
 /* -----------------------------------------------------------------------
    TIMERS / RESET
    ----------------------------------------------------------------------- */
@@ -1933,4 +1982,4 @@ $("toggleDebug")?.addEventListener("click", () => {
   w.style.display = w.style.display === "block" ? "none" : "block";
 });
 
-// EOF — MSS Widget Core v1.1 (Nov 23 2025 REGEN) – WidgetMin + WidgetMax / READMAX with help/dash metadata
+// EOF — MSS Widget Core v1.2 (Nov 27 2025 REGEN) – WidgetMin + WidgetMax / READMAX with help/dash metadata

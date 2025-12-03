@@ -2501,19 +2501,3 @@ body.portal-modal-open {
     border-radius: 0;
   }
 }
-
-/* Forgot Password link – login page */
-.forgot-link {
-  display: block;
-  text-align: center;
-  font-size: 0.9rem;
-  color: #6b7280;          /* Tailwind gray-500 */
-  margin: 6px 0 14px 0;    /* top:6 / bottom:14 for breathing room */
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-.forgot-link:hover {
-  color: #374151;          /* gray-700 on hover */
-  text-decoration: underline;
-}

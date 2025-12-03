@@ -1,75 +1,4 @@
-// /questions-admin/WidgetSurvey.js – with admin session guard
 (function () {
-  "use strict";
-
-// --------------------------------------------------------------
-// Dec 1 — Support selected widget variant from SchoolPortal
-// --------------------------------------------------------------
-
-// Parse ?widget=WidgetMin.html or Widget.html or WidgetMax.html
-function getWidgetVariantFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const widget = params.get("widget");
-
-  if (!widget) return "Widget.html"; // default
-
-  // Hardening: strip path, accept only known files
-  const safe = widget.replace(/[^A-Za-z0-9._-]/g, "").trim();
-  if (!safe) return "Widget.html";
-
-  // Allow only known variants
-  const allowed = [
-    "Widget.html",
-    "WidgetMin.html",
-    "WidgetMax.html",
-    "WidgetReadmax.html"
-  ];
-
-  return allowed.includes(safe) ? safe : "Widget.html";
-}
-
-const WIDGET_VARIANT = getWidgetVariantFromUrl();
-console.log("🔎 WidgetSurvey: widget variant =", WIDGET_VARIANT);
-
-  /* ----------------------------------------------------
-     SECURITY HELPERS
-  ---------------------------------------------------- */
-
-  function requireSessionOrRedirect() {
-    if (!window.MSSAdminSession) {
-      console.warn("MSSAdminSession missing – redirecting to admin login.");
-      window.location.href = "/admin-login/AdminLogin.html";
-      return null;
-    }
-
-    const session = window.MSSAdminSession.getSession();
-    if (!session || !session.adminId) {
-      console.warn("No valid admin session – redirecting to login.");
-
-      const returnTo = encodeURIComponent(
-        window.location.pathname + window.location.search
-      );
-      window.location.href = `/admin-login/AdminLogin.html?returnTo=${returnTo}`;
-      return null;
-    }
-
-    return session;
-  }
-
-  function attachCrossTabLogoutWatcher() {
-    window.addEventListener("storage", (event) => {
-      if (event.key === "MSS_ADMIN_SESSION" && !event.newValue) {
-        // Session was cleared in another tab
-        alert("Your admin session has ended. Please sign in again.");
-        window.location.href = "/admin-login/AdminLogin.html";
-      }
-    });
-  }
-
-  /* ----------------------------------------------------
-     PAGE INITIAL SETUP
-  ---------------------------------------------------- */
-
   const params = new URLSearchParams(window.location.search);
   let assessmentId = params.get("assessmentId");
   const slug = params.get("slug");
@@ -84,19 +13,7 @@ console.log("🔎 WidgetSurvey: widget variant =", WIDGET_VARIANT);
   // tracks whether we successfully loaded from server
   let questionsLoadedOk = false;
 
-  // 🔒 Require a valid admin session before doing anything
-  const SESSION = requireSessionOrRedirect();
-  if (!SESSION) {
-    // We’re being redirected to login, so don’t wire up the page.
-    return;
-  }
-
-  // 🔒 Listen for logout in another tab
-  attachCrossTabLogoutWatcher();
-
-  /* ----------------------------------------------------
-     HELPERS
-  ---------------------------------------------------- */
+  // --- helpers ---
 
   function setLoading(isLoading) {
     loadingText.style.display = isLoading ? "inline" : "none";
@@ -124,7 +41,7 @@ console.log("🔎 WidgetSurvey: widget variant =", WIDGET_VARIANT);
     const orderInput = document.createElement("input");
     orderInput.type = "text";
     orderInput.value =
-      question.position != null && question.position !== ""
+      (question.position != null && question.position !== "")
         ? question.position
         : "";
     orderInput.placeholder = "#";
@@ -282,6 +199,7 @@ console.log("🔎 WidgetSurvey: widget variant =", WIDGET_VARIANT);
       return;
     }
 
+    
     const questions = getQuestionsFromTable();
     console.log("Saving questions payload:", JSON.stringify(questions, null, 2));
 
@@ -321,9 +239,7 @@ console.log("🔎 WidgetSurvey: widget variant =", WIDGET_VARIANT);
     }
   }
 
-  /* ----------------------------------------------------
-     INIT
-  ---------------------------------------------------- */
+  // --- initialisation ---
 
   async function init() {
     if (!assessmentId && !slug) {
@@ -335,8 +251,7 @@ console.log("🔎 WidgetSurvey: widget variant =", WIDGET_VARIANT);
     }
 
     if (assessmentId) {
-      assessmentInfoEl.textContent =
-  `Editing questions for school "${slug}", widget: ${WIDGET_VARIANT}, assessment #${assessmentId} (${data.assessment?.name || "Unnamed"})`;
+      assessmentInfoEl.textContent = `Editing questions for assessment #${assessmentId}`;
     } else if (slug) {
       assessmentInfoEl.textContent = `Resolving assessment for school "${slug}"…`;
     }
@@ -352,22 +267,5 @@ console.log("🔎 WidgetSurvey: widget variant =", WIDGET_VARIANT);
     saveQuestions();
   });
 
-  updatePreviewWidget();
-
   init();
 })();
-
-// Optional preview iframe support
-function updatePreviewWidget() {
-  const iframe = document.getElementById("widgetPreviewFrame");
-  if (!iframe) return;
-
-  const slug = (slug || "").trim();
-  if (!slug) {
-    iframe.src = "about:blank";
-    return;
-  }
-
-  iframe.src = `/widgets/${WIDGET_VARIANT}?slug=${encodeURIComponent(slug)}`;
-  console.log("🔎 WidgetSurvey preview →", iframe.src);
-}
