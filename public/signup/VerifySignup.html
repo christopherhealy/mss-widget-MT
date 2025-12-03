@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Verify your MySpeakingScore school sign-up</title>
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+  <style>
+    .verify-shell {
+      max-width: 600px;
+      margin: 3rem auto;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+      background: #ffffff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+    .verify-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    .verify-status {
+      margin-top: 1.5rem;
+      font-size: 0.95rem;
+    }
+    .verify-status.ok {
+      color: #166534;
+    }
+    .verify-status.err {
+      color: #b91c1c;
+    }
+    .verify-link {
+      margin-top: 1.5rem;
+    }
+    .verify-link a {
+      display: inline-block;
+      padding: 0.6rem 1.2rem;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 600;
+      border: none;
+      background: #2563eb;
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body class="mss-body">
+  <div class="verify-shell">
+    <h1 class="verify-title">Verifying your school sign-up…</h1>
+    <p id="verifyMessage">Please wait while we confirm your email.</p>
+    <div id="verifyStatus" class="verify-status"></div>
+    <div id="verifyLink" class="verify-link" style="display:none;"></div>
+  </div>
+
+  <script src="/signup/SchoolSignUp.js"></script>
+</body>
+</html>

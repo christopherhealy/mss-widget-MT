@@ -1,6 +1,8 @@
 // /config-admin/ConfigAdmin.js — Admin + Image Upload + Dashboards + Widgets
-// Regen Nov 24 2025 – uses settings.{config,form,image} in Postgres
+// Single-school mode + School rename + optional multi-school selector
+// Uses settings.{config,form,image} in Postgres
 // Canonical keys: config.widgetPath, config.dashboardPath, config.afterDashboard.*
+
 console.log("✅ ConfigAdmin.js loaded");
 
 (function () {
@@ -8,9 +10,24 @@ console.log("✅ ConfigAdmin.js loaded");
 
   const $ = (id) => document.getElementById(id);
 
-  const slugLabel = $("slugLabel");
-  const saveBtn   = $("saveBtn");
-  const statusEl  = $("status");
+  // Header + School Settings
+  const slugLabel        = $("slugLabel");
+  const currentSlugLabel = $("currentSlugLabel");   // rename panel label
+  const schoolNameInput  = $("schoolNameInput");    // rename panel input
+  const schoolRenameBtn  = $("schoolRenameBtn");    // rename panel button
+  const schoolSelector   = $("schoolSelector");     // optional multi-school selector
+
+  const saveBtn  = $("saveBtn");
+  const statusEl = $("status");
+
+  let SLUG  = null;
+  let dirty = false;
+
+  const STATE = {
+    config: {},   // widget + dashboard config
+    form:   {},
+    image:  {},
+  };
 
   // Dashboard + widget selectors
   const dashboardTemplateSelect = $("dashboardTemplate");
@@ -25,19 +42,8 @@ console.log("✅ ConfigAdmin.js loaded");
   const imgPreviewPlaceholder = $("img-previewPlaceholder");
 
   // After-dashboard fields
-  const afterSignupUrlInput   = $("afterDashboard-signupUrl");
-  const afterCtaMessageInput  = $("afterDashboard-ctaMessage");
-
-  let SLUG = null;
-
-  // Single source of truth for admin state
-  const STATE = {
-    config: {},
-    form: {},
-    image: {},
-  };
-
-  let dirty = false;
+  const afterSignupUrlInput  = $("afterDashboard-signupUrl");
+  const afterCtaMessageInput = $("afterDashboard-ctaMessage");
 
   // Default values if DB is empty
   const DEFAULTS = {
@@ -48,10 +54,10 @@ console.log("✅ ConfigAdmin.js loaded");
       primaryColor: "#1d4ed8",
       allowUpload: true,
       allowRecording: true,
-      // ✅ canonical defaults (paths, not full URLs)
+      // canonical defaults (paths, not full URLs)
       widgetPath: "/widgets/Widget.html",
       dashboardPath: "/dashboards/Dashboard3.html",
-      // ✅ new after-dashboard config
+      // after-dashboard config
       afterDashboard: {
         signupUrl: "",
         ctaMessage: "",
@@ -82,33 +88,195 @@ console.log("✅ ConfigAdmin.js loaded");
   };
 
   /* ------------------------------------------------------------------ */
-  /* INIT                                                               */
+  /* STATUS HELPER                                                      */
   /* ------------------------------------------------------------------ */
 
-  function init() {
-    console.log("[ConfigAdmin] init() starting");
-    const params = new URLSearchParams(window.location.search);
-    SLUG = params.get("slug") || "mss-demo";
+  function setStatus(msg, isError) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.classList.toggle("error", !!isError);
+  }
 
-    if (slugLabel) slugLabel.textContent = SLUG;
+  /* ------------------------------------------------------------------ */
+  /* SLUG / SCHOOL HELPERS                                              */
+  /* ------------------------------------------------------------------ */
 
-    wireFormEvents();
-    wireAfterDashboardEvents();
-    wireSave();
-    wireImageUpload();
-    wireDashboardSelector();
-    wireWidgetSelector();
+  function updateSlugUi(slug, name) {
+    SLUG = slug;
+    if (slugLabel)        slugLabel.textContent = slug || "—";
+    if (currentSlugLabel) currentSlugLabel.textContent = slug || "—";
 
-    // Load DB settings first, THEN load dashboards & widgets list
-    loadFromServer()
-      .catch((err) => {
-        console.warn("[ConfigAdmin] loadFromServer error, using defaults", err);
-      })
-      .finally(() => {
-        console.log("[ConfigAdmin] loading dashboards + widgets lists");
-        loadDashboardTemplates();
-        loadWidgetTemplates();
+    if (schoolNameInput && name) {
+      schoolNameInput.value = name;
+    }
+
+    // Keep the selector in sync if present
+    if (schoolSelector && slug) {
+      const opt = schoolSelector.querySelector(`option[value="${slug}"]`);
+      if (opt) schoolSelector.value = slug;
+    }
+  }
+
+  function updateSlugInUrl(slug) {
+    if (!slug) return;
+    try {
+      const url    = new URL(window.location.href);
+      const params = url.searchParams;
+      params.set("slug", slug);
+      url.search = params.toString();
+      window.history.replaceState({}, "", url.toString());
+    } catch (e) {
+      console.warn("[ConfigAdmin] Could not update URL slug", e);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* SCHOOL RENAME                                                      */
+  /* ------------------------------------------------------------------ */
+
+  async function onSchoolRenameClick() {
+    if (!SLUG) return;
+    if (!schoolNameInput) return;
+
+    const newName = (schoolNameInput.value || "").trim();
+    if (!newName) {
+      alert("Please enter a new school name.");
+      return;
+    }
+
+    const oldSlug = SLUG;
+
+    try {
+      setStatus("Renaming school…");
+      const res = await fetch(
+        `/api/admin/school/${encodeURIComponent(SLUG)}/rename`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ newName }),
+        }
+      );
+
+      const data = await res.json();
+      if (!data.ok) {
+        console.error("Rename failed:", data);
+        setStatus("Rename failed.");
+        return;
+      }
+
+      // Backend should return { ok: true, slug, name } (and optionally school)
+      const newSlug = (data.slug || (data.school && data.school.slug)) || SLUG;
+      const name    = (data.name || (data.school && data.school.name)) || newName;
+
+      // Update UI + global slug
+      updateSlugUi(newSlug, name);
+      updateSlugInUrl(newSlug);
+
+      // If selector exists, update the current option text/value
+      if (schoolSelector) {
+        const opt =
+          schoolSelector.querySelector(`option[value="${oldSlug}"]`) ||
+          schoolSelector.selectedOptions[0];
+
+        if (opt) {
+          opt.value = newSlug;
+          opt.textContent = name || newSlug;
+          schoolSelector.value = newSlug;
+        }
+      }
+
+      setStatus("School name & slug updated.");
+    } catch (err) {
+      console.error("onSchoolRenameClick error:", err);
+      setStatus("Error renaming school.");
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* MULTI-SCHOOL SELECTOR (OPTIONAL)                                   */
+  /* ------------------------------------------------------------------ */
+
+  async function loadSchoolsForSelector() {
+    if (!schoolSelector) return;
+
+    try {
+      const res = await fetch("/api/admin/schools");
+      if (!res.ok) {
+        console.warn(
+          "[ConfigAdmin] /api/admin/schools returned",
+          res.status
+        );
+        return;
+      }
+
+      const data = await res.json();
+      const list =
+        Array.isArray(data)
+          ? data
+          : Array.isArray(data.schools)
+          ? data.schools
+          : [];
+
+      if (!list.length) return;
+
+      schoolSelector.innerHTML = "";
+      list.forEach((s) => {
+        if (!s || !s.slug) return;
+        const opt = document.createElement("option");
+        opt.value = s.slug;
+        opt.textContent = s.name || s.slug;
+        schoolSelector.appendChild(opt);
       });
+
+      // Try to keep current slug selected
+      if (SLUG && list.some((s) => s.slug === SLUG)) {
+        schoolSelector.value = SLUG;
+      } else if (schoolSelector.options.length) {
+        // If our SLUG wasn't in the list, adopt the first option
+        SLUG = schoolSelector.value;
+      }
+    } catch (err) {
+      console.warn("[ConfigAdmin] Could not load schools", err);
+    }
+  }
+
+  function wireSchoolSelector() {
+    if (!schoolSelector) return;
+
+    schoolSelector.addEventListener("change", async () => {
+      const nextSlug = schoolSelector.value;
+      if (!nextSlug || nextSlug === SLUG) return;
+
+      if (dirty) {
+        const ok = window.confirm(
+          "You have unsaved changes. Switch school and discard them?"
+        );
+        if (!ok) {
+          // revert selector
+          schoolSelector.value = SLUG || "";
+          return;
+        }
+      }
+
+      SLUG = nextSlug;
+      updateSlugUi(nextSlug, schoolNameInput ? schoolNameInput.value : null);
+      updateSlugInUrl(nextSlug);
+
+      // Reset state + reload settings for new school
+      STATE.config = { ...DEFAULTS.config };
+      STATE.form   = { ...DEFAULTS.form };
+      STATE.image  = { ...DEFAULTS.image };
+      hydrateFormFromState();
+      setPristine();
+
+      try {
+        await loadFromServer();
+      } catch (err) {
+        console.warn("[ConfigAdmin] loadFromServer error on school change", err);
+      }
+    });
   }
 
   /* ------------------------------------------------------------------ */
@@ -116,6 +284,11 @@ console.log("✅ ConfigAdmin.js loaded");
   /* ------------------------------------------------------------------ */
 
   async function loadFromServer() {
+    if (!SLUG) {
+      console.warn("[ConfigAdmin] loadFromServer called with no SLUG");
+      return;
+    }
+
     setStatus("Loading settings from server…");
 
     try {
@@ -134,7 +307,7 @@ console.log("✅ ConfigAdmin.js loaded");
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const data = await res.json();
+      const data     = await res.json();
       const settings = data.settings || {};
 
       // Merge with defaults
@@ -142,7 +315,7 @@ console.log("✅ ConfigAdmin.js loaded");
       const rawForm   = settings.form || {};
       const rawImage  = settings.image || {};
 
-      // 🔁 Legacy field migration: widgetUrl/dashboardUrl → widgetPath/dashboardPath
+      // Legacy migration: widgetUrl/dashboardUrl → widgetPath/dashboardPath
       const migratedConfig = { ...rawConfig };
 
       if (!migratedConfig.widgetPath && migratedConfig.widgetUrl) {
@@ -155,7 +328,6 @@ console.log("✅ ConfigAdmin.js loaded");
       STATE.config = {
         ...DEFAULTS.config,
         ...migratedConfig,
-        // shallow-merge afterDashboard so defaults exist even if DB only has some keys
         afterDashboard: {
           ...(DEFAULTS.config.afterDashboard || {}),
           ...(migratedConfig.afterDashboard || {}),
@@ -169,6 +341,11 @@ console.log("✅ ConfigAdmin.js loaded");
         ...DEFAULTS.image,
         ...rawImage,
       };
+
+      // If server returns school info, update rename panel + selector
+      if (data.school && data.school.slug) {
+        updateSlugUi(data.school.slug, data.school.name || null);
+      }
 
       hydrateFormFromState();
       setPristine();
@@ -201,9 +378,11 @@ console.log("✅ ConfigAdmin.js loaded");
 
       if (type === "checkbox" || el.type === "checkbox") {
         el.checked = !!value;
-      } else if (el.tagName === "TEXTAREA" ||
-                 el.tagName === "INPUT" ||
-                 el.tagName === "SELECT") {
+      } else if (
+        el.tagName === "TEXTAREA" ||
+        el.tagName === "INPUT" ||
+        el.tagName === "SELECT"
+      ) {
         el.value = value != null ? String(value) : "";
       }
     });
@@ -260,7 +439,8 @@ console.log("✅ ConfigAdmin.js loaded");
     if (afterSignupUrlInput) {
       afterSignupUrlInput.addEventListener("input", () => {
         STATE.config.afterDashboard =
-          STATE.config.afterDashboard || { ...(DEFAULTS.config.afterDashboard || {}) };
+          STATE.config.afterDashboard ||
+          { ...(DEFAULTS.config.afterDashboard || {}) };
         STATE.config.afterDashboard.signupUrl = afterSignupUrlInput.value;
         setDirty();
       });
@@ -269,7 +449,8 @@ console.log("✅ ConfigAdmin.js loaded");
     if (afterCtaMessageInput) {
       afterCtaMessageInput.addEventListener("input", () => {
         STATE.config.afterDashboard =
-          STATE.config.afterDashboard || { ...(DEFAULTS.config.afterDashboard || {}) };
+          STATE.config.afterDashboard ||
+          { ...(DEFAULTS.config.afterDashboard || {}) };
         STATE.config.afterDashboard.ctaMessage = afterCtaMessageInput.value;
         setDirty();
       });
@@ -327,7 +508,6 @@ console.log("✅ ConfigAdmin.js loaded");
     setStatus("Saving to Postgres…");
 
     try {
-      // 🔹 make a copy so we can normalise widget/dashboard paths
       const cfg = { ...(STATE.config || {}) };
 
       if (cfg.widgetUrl && !cfg.widgetPath) {
@@ -344,7 +524,6 @@ console.log("✅ ConfigAdmin.js loaded");
         cfg.dashboardUrl = cfg.dashboardPath;
       }
 
-      // Ensure afterDashboard exists & is a flat object with just the keys we care about
       const after = cfg.afterDashboard || {};
       cfg.afterDashboard = {
         signupUrl: (after.signupUrl || "").trim(),
@@ -380,16 +559,6 @@ console.log("✅ ConfigAdmin.js loaded");
       saveBtn.disabled = false;
       setStatus("Error saving settings. See console / network.", true);
     }
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* STATUS HELPER                                                      */
-  /* ------------------------------------------------------------------ */
-
-  function setStatus(msg, isError) {
-    if (!statusEl) return;
-    statusEl.textContent = msg;
-    statusEl.classList.toggle("error", !!isError);
   }
 
   /* ------------------------------------------------------------------ */
@@ -430,7 +599,6 @@ console.log("✅ ConfigAdmin.js loaded");
       const data = await res.json();
       const list = Array.isArray(data.dashboards) ? data.dashboards : [];
 
-      // Start from state/default, but migrate legacy "/Dashboard.html"
       let current =
         STATE.config.dashboardPath ||
         STATE.config.dashboardUrl ||
@@ -459,9 +627,7 @@ console.log("✅ ConfigAdmin.js loaded");
           filename = pathOrObj.file || url.split("/").pop() || url;
         }
 
-        // 🚫 Hide any template dashboards
         if (filename.toLowerCase().endsWith("_template.html")) return;
-        // Only show /dashboards/*
         if (!url.startsWith("/dashboards/")) return;
 
         if (seen.has(url)) return;
@@ -475,15 +641,13 @@ console.log("✅ ConfigAdmin.js loaded");
 
       list.forEach(addDashboard);
 
-      // Ensure default exists in list
+      // Always ensure default is present
       addDashboard(DEFAULTS.config.dashboardPath);
 
-      // Ensure current is present, if it passes filters
       if (current && !seen.has(current)) {
         addDashboard(current);
       }
 
-      // Set selection
       dashboardTemplateSelect.value = current;
       if (!dashboardTemplateSelect.value && seen.size) {
         dashboardTemplateSelect.selectedIndex = 0;
@@ -650,20 +814,18 @@ console.log("✅ ConfigAdmin.js loaded");
     }
   }
 
-   /* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
   /* IMAGE UPLOAD                                                       */
   /* ------------------------------------------------------------------ */
 
   function wireImageUpload() {
     if (!imgUploadBtn || !imgFileInput) return;
 
-    // Click button → open file picker
     imgUploadBtn.addEventListener("click", (e) => {
       e.preventDefault();
       imgFileInput.click();
     });
 
-    // When a file is chosen, upload immediately
     imgFileInput.addEventListener("change", async () => {
       const file = imgFileInput.files && imgFileInput.files[0];
       if (!file) return;
@@ -676,7 +838,6 @@ console.log("✅ ConfigAdmin.js loaded");
         return;
       }
 
-      // Quick local preview so the admin sees what they picked
       if (imgPreview && imgPreviewPlaceholder) {
         const localUrl = URL.createObjectURL(file);
         imgPreview.src = localUrl;
@@ -688,7 +849,6 @@ console.log("✅ ConfigAdmin.js loaded");
 
       try {
         const formData = new FormData();
-        // field name "image" – make sure backend expects this
         formData.append("image", file);
 
         const url = `/api/admin/widget/${encodeURIComponent(SLUG)}/image`;
@@ -710,10 +870,7 @@ console.log("✅ ConfigAdmin.js loaded");
         try {
           data = raw ? JSON.parse(raw) : {};
         } catch (e) {
-          console.warn(
-            "[ConfigAdmin] Image upload: non-JSON response",
-            raw
-          );
+          console.warn("[ConfigAdmin] Image upload: non-JSON response", raw);
           data = { ok: res.ok, raw };
         }
 
@@ -745,11 +902,9 @@ console.log("✅ ConfigAdmin.js loaded");
 
         console.log("[ConfigAdmin] ✅ Image upload success", imageUrl);
 
-        // Persist into STATE.image so Save → PUT stores it in Postgres
         STATE.image = STATE.image || {};
         STATE.image.url = imageUrl;
 
-        // Update preview to use the real URL (not the local blob)
         refreshImagePreview();
         setDirty();
 
@@ -766,6 +921,49 @@ console.log("✅ ConfigAdmin.js loaded");
     });
   }
 
-  // Kick things off
+  /* ------------------------------------------------------------------ */
+  /* INIT                                                               */
+  /* ------------------------------------------------------------------ */
+
+  async function init() {
+    console.log("[ConfigAdmin] init() starting");
+
+    const params      = new URLSearchParams(window.location.search);
+    const initialSlug = params.get("slug") || "mss-demo";
+
+    SLUG = initialSlug;
+    updateSlugUi(initialSlug, null);
+
+    wireFormEvents();
+    wireAfterDashboardEvents();
+    wireSave();
+    wireImageUpload();
+    wireDashboardSelector();
+    wireWidgetSelector();
+    wireSchoolSelector();
+
+    if (schoolRenameBtn) {
+      schoolRenameBtn.addEventListener("click", onSchoolRenameClick);
+    }
+
+    // Load school list for selector (if endpoint exists)
+    await loadSchoolsForSelector();
+
+    try {
+      await loadFromServer();
+    } catch (err) {
+      console.warn("[ConfigAdmin] loadFromServer error, using defaults", err);
+    }
+
+    try {
+      await loadDashboardTemplates();
+      await loadWidgetTemplates();
+    } catch (err) {
+      console.warn("[ConfigAdmin] template loading error", err);
+    }
+
+    console.log("[ConfigAdmin] init() complete");
+  }
+
   document.addEventListener("DOMContentLoaded", init);
 })();

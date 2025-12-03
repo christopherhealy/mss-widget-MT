@@ -46,8 +46,17 @@
           type="password"
           class="mss-input"
           placeholder="••••••••"
+          autocomplete="current-password"
           required
         />
+
+        <div class="admin-login-footer-row">
+          <a href="/admin-login/PasswordResetRequest.html" class="admin-link">
+            <a href="/forgot" class="forgot-link">Forgot your password?</a>
+          </a>
+        </div>
+
+        <p id="login-status" class="admin-status" style="display:none;"></p>
 
         <button type="submit" class="admin-login-btn">Sign in</button>
       </form>
@@ -58,6 +67,8 @@
     </footer>
   </div>
 
-  <script src="/admin-login/AdminLogin.js"></script>
+ <script src="/admin-login/MSSAdminSession.js"></script>
+ <script src="/admin-login/AdminLogin.js"></script>
+
 </body>
 </html>

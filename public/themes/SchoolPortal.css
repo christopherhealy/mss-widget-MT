@@ -546,3 +546,36 @@
       text-decoration: underline;
       font-size: 13px;
     }
+/* ---------------------------------------------------------- */
+/* School picker (dropdown)                                   */
+/* ---------------------------------------------------------- */
+
+.portal-school-picker {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.portal-school-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--mss-muted, #4b5563);
+}
+
+.portal-school-select {
+  min-width: 200px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background-color: #ffffff;
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.portal-school-select:focus {
+  border-color: var(--mss-primary, #1d4ed8);
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.25);
+}

@@ -1,4 +1,4 @@
-<!-- /config-admin/ConfigAdmin.html — Single-column Admin + Dynamic Dashboards (Nov 24, no inline styles) -->
+<!-- /config-admin/ConfigAdmin.html — Single-column Admin + Dynamic Dashboards (Nov 30, School Settings) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/themes/ConfigAdmin.css">
 </head>
 <body>
+
   <div class="page">
     <header>
       <h1>MSS Widget – Config Admin</h1>
@@ -21,6 +22,49 @@
         <strong id="slugLabel">–</strong>
       </div>
     </header>
+
+    <!-- SCHOOL SETTINGS (nice card styles) -->
+    <section class="card">
+      <h2>School Settings</h2>
+      <div class="field-grid">
+        <!-- Optional multi-school selector -->
+        <div class="field">
+          <label for="schoolSelector">Select School</label>
+          <select id="schoolSelector" class="field-input"></select>
+          <div class="hint">
+            If your account manages multiple schools, choose which one to edit.
+          </div>
+        </div>
+
+        <!-- School name -->
+        <div class="field">
+          <label for="schoolNameInput">School Name</label>
+          <input
+            id="schoolNameInput"
+            type="text"
+            class="field-input"
+            placeholder="Enter school name"
+          />
+          <div class="hint">
+            This name appears in the School Portal and dashboards.
+          </div>
+        </div>
+
+        <!-- Slug + rename -->
+        <div class="field">
+          <label>Slug (URL key)</label>
+          <div class="inline-row">
+            <span id="currentSlugLabel" class="badge badge-soft">–</span>
+            <button id="schoolRenameBtn" type="button" class="secondary">
+              Rename school / change slug
+            </button>
+          </div>
+          <div class="hint">
+            Used in widget and dashboard URLs, e.g. <code>/widgets/&lt;slug&gt;</code>.
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- CONFIG SECTION -->
     <section class="card">
@@ -233,46 +277,47 @@
         </div>
 
         <!-- After-dashboard experience -->
-       <section class="mss-section">
-  <h2 class="mss-section-title">After-dashboard experience</h2>
-  <p class="hint">
-    Where should students go after seeing their results? Use this to invite them
-    to your signup page and offer a free report.
-  </p>
+        <section class="mss-section">
+          <h2 class="mss-section-title">After-dashboard experience</h2>
+          <p class="hint">
+            Where should students go after seeing their results? Use this to invite them
+            to your signup page and offer a free report.
+          </p>
 
-  <!-- Signup URL field -->
-  <div class="mss-field">
-    <label for="afterDashboard-signupUrl" class="mss-label">Signup page URL</label>
-    <input
-      id="afterDashboard-signupUrl"
-      type="url"
-      class="mss-input"
-      placeholder="https://your-school.com/signup"
-    />
-    <p class="hint">
-      Students will be redirected to this page after the dashboard to sign up
-      and receive their detailed report.
-    </p>
-  </div>
+          <!-- Signup URL field -->
+          <div class="mss-field">
+            <label for="afterDashboard-signupUrl" class="mss-label">Signup page URL</label>
+            <input
+              id="afterDashboard-signupUrl"
+              type="url"
+              class="mss-input"
+              placeholder="https://your-school.com/signup"
+            />
+            <p class="hint">
+              Students will be redirected to this page after the dashboard to sign up
+              and receive their detailed report.
+            </p>
+          </div>
 
-  <!-- CTA Message -->
-  <div class="mss-field">
-    <label for="afterDashboard-ctaMessage" class="hint">
-      Message to show with “Get my free report”
-    </label>
-    <textarea
-      id="afterDashboard-ctaMessage"
-      class="mss-textarea"
-      rows="3"
-      placeholder="Get a free, detailed speaking report and advice from one of our teachers."
-    ></textarea>
+          <!-- CTA Message -->
+          <div class="mss-field">
+            <label for="afterDashboard-ctaMessage" class="hint">
+              Message to show with “Get my free report”
+            </label>
+            <textarea
+              id="afterDashboard-ctaMessage"
+              class="mss-textarea"
+              rows="3"
+              placeholder="Get a free, detailed speaking report and advice from one of our teachers."
+            ></textarea>
 
-    <p class="hint">
-      This message appears on your summary screen or beside the call-to-action in
-      your student flow.
-    </p>
-  </div>
-</section>
+            <p class="hint">
+              This message appears on your summary screen or beside the call-to-action in
+              your student flow.
+            </p>
+          </div>
+        </section>
+
         <!-- RECORDING STATE -->
         <div class="field">
           <label for="form-notRecordingLabel">Not Recording Label</label>

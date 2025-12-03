@@ -370,6 +370,37 @@
                 <input id="contactName" name="contactName" type="text" class="ss-input" required />
               </div>
 
+<div class="ss-field">
+  <label class="ss-label" for="adminPassword">
+    Admin password <span class="req">*</span>
+  </label>
+  <input
+    id="adminPassword"
+    name="adminPassword"
+    type="password"
+    class="ss-input"
+    autocomplete="new-password"
+    required
+  />
+  <p class="ss-hint">
+    This will be the password for your school admin portal.
+  </p>
+</div>
+
+<div class="ss-field">
+  <label class="ss-label" for="adminPasswordConfirm">
+    Confirm password <span class="req">*</span>
+  </label>
+  <input
+    id="adminPasswordConfirm"
+    name="adminPasswordConfirm"
+    type="password"
+    class="ss-input"
+    autocomplete="new-password"
+    required
+  />
+</div>
+
               <div class="ss-field">
                 <label class="ss-label" for="contactEmail">
                   Contact email <span class="req">*</span>
@@ -564,6 +595,8 @@
             </div>
           </section>
         </form>
+        <!-- status line for success/error messages -->
+        <p id="signupStatus" class="ss-hint" style="margin-top:0.75rem;"></p>
       </main>
 
       <footer class="ss-footer">
@@ -573,5 +606,6 @@
       </footer>
     </div>
   </div>
+ <script src="/signup/SchoolSignUp.js"></script>
 </body>
 </html>
