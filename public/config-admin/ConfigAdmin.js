@@ -845,22 +845,20 @@ console.log("✅ ConfigAdmin.js loaded");
   }
 
   function refreshImagePreview() {
-    if (!imgPreview || !imgPreviewPlaceholder) return;
+  if (!imgPreview || !imgPreviewPlaceholder) return;
 
-    const raw = (STATE.image && STATE.image.url) || "";
-    const url = absolutizeImageUrl(raw);
+  const url = (STATE.image && STATE.image.url) || "";
 
-    if (url) {
-      imgPreview.src = url;
-      imgPreview.style.display = "block";
-      imgPreviewPlaceholder.style.display = "none";
-    } else {
-      imgPreview.src = "";
-      imgPreview.style.display = "none";
-      imgPreviewPlaceholder.style.display = "inline";
-    }
+  if (url) {
+    imgPreview.src = url;               // use stored URL as-is
+    imgPreview.style.display = "block";
+    imgPreviewPlaceholder.style.display = "none";
+  } else {
+    imgPreview.src = "";
+    imgPreview.style.display = "none";
+    imgPreviewPlaceholder.style.display = "inline";
   }
-
+}
   /* ------------------------------------------------------------------ */
   /* IMAGE UPLOAD                                                       */
   /* ------------------------------------------------------------------ */
@@ -937,28 +935,45 @@ console.log("✅ ConfigAdmin.js loaded");
         }
 
         const imageUrl =
-          data.url || data.imageUrl || data.image || data.path;
+  data.url || data.imageUrl || data.image || data.path;
 
-        if (!imageUrl) {
-          console.warn(
-            "[ConfigAdmin] Upload succeeded but no URL returned",
-            data
-          );
-          if (imgUploadStatus) {
-            imgUploadStatus.textContent =
-              "Upload complete, but server did not return an image URL.";
-          }
-          return;
-        }
+if (!imageUrl) {
+  console.warn(
+    "[ConfigAdmin] Upload succeeded but no URL returned",
+    data
+  );
+  if (imgUploadStatus) {
+    imgUploadStatus.textContent =
+      "Upload complete, but server did not return an image URL.";
+  }
+  return;
+}
 
-        console.log("[ConfigAdmin] ✅ Image upload success (raw)", imageUrl);
+console.log("[ConfigAdmin] ✅ Image upload success (raw)", imageUrl);
 
-        // Normalise and store
-        STATE.image = STATE.image || {};
-        STATE.image.url = imageUrl; // we store what backend sends
-        refreshImagePreview();
-        setDirty();
+// 🔗 Normalise to something that works everywhere
+let storedUrl = imageUrl;
 
+// If it's not already absolute (http/https)…
+if (!/^https?:\/\//i.test(storedUrl)) {
+  // If it's just a bare filename, assume it lives under /uploads/
+  if (!storedUrl.startsWith("/")) {
+    storedUrl = `/uploads/${storedUrl}`;
+  }
+
+  // On Vercel, ADMIN_API_BASE is the Render backend; on local/Render it's ""
+  if (ADMIN_API_BASE) {
+    storedUrl = `${ADMIN_API_BASE}${storedUrl}`;
+  }
+}
+
+console.log("[ConfigAdmin] 🔗 Storing image URL:", storedUrl);
+
+STATE.image = STATE.image || {};
+STATE.image.url = storedUrl;   // store absolute (or root-relative) URL
+
+refreshImagePreview();
+setDirty();
         if (imgUploadStatus) {
           imgUploadStatus.textContent =
             "Image uploaded. Don’t forget to Save.";
