@@ -930,38 +930,47 @@ function absolutizeImageUrl(path) {
         }
 
         const imageUrl =
-          data.url || data.imageUrl || data.image || data.path;
+  data.url || data.imageUrl || data.image || data.path;
 
-        if (!imageUrl) {
-          console.warn(
-            "[ConfigAdmin] Upload succeeded but no URL returned",
-            data
-          );
-          if (imgUploadStatus) {
-            imgUploadStatus.textContent =
-              "Upload complete, but server did not return an image URL.";
-          }
-          return;
-        }
+if (!imageUrl) {
+  console.warn(
+    "[ConfigAdmin] Upload succeeded but no URL returned",
+    data
+  );
+  if (imgUploadStatus) {
+    imgUploadStatus.textContent =
+      "Upload complete, but server did not return an image URL.";
+  }
+  return;
+}
 
-        console.log("[ConfigAdmin] ✅ Image upload success", imageUrl);
+console.log("[ConfigAdmin] ✅ Image upload success (raw)", imageUrl);
 
-        STATE.image = STATE.image || {};
-        STATE.image.url = imageUrl;
+// 🔑 Normalise to an absolute URL so widgets on Vercel can load it
+let storedUrl = imageUrl;
 
-        refreshImagePreview();
-        setDirty();
+// If it's not already absolute (http/https)…
+if (!/^https?:\/\//i.test(storedUrl)) {
+  // if it's just a bare filename, assume it lives under /uploads/
+  if (!storedUrl.startsWith("/")) {
+    storedUrl = `/uploads/${storedUrl}`;
+  }
+  // Prefix with ADMIN_API_BASE when on Vercel, else same-origin
+  storedUrl = `${ADMIN_API_BASE}${storedUrl}`;
+}
 
-        if (imgUploadStatus) {
-          imgUploadStatus.textContent =
-            "Image uploaded. Don’t forget to Save.";
-        }
-      } catch (err) {
-        console.error("[ConfigAdmin] Image upload error", err);
-        if (imgUploadStatus) {
-          imgUploadStatus.textContent = "Upload failed. See console.";
-        }
-      }
+console.log("[ConfigAdmin] 🔗 Storing image URL:", storedUrl);
+
+STATE.image = STATE.image || {};
+STATE.image.url = storedUrl;
+
+refreshImagePreview();
+setDirty();
+
+if (imgUploadStatus) {
+  imgUploadStatus.textContent =
+    "Image uploaded. Don’t forget to Save.";
+}
     });
   }
   /* ------------------------------------------------------------------ */
