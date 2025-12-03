@@ -2,6 +2,7 @@
 // Single-school mode + School rename + optional multi-school selector
 // Uses settings.{config,form,image} in Postgres
 // Canonical keys: config.widgetPath, config.dashboardPath, config.afterDashboard.*
+// Dec 3 refresh - working on Vercel functionality
 
 console.log("✅ ConfigAdmin.js loaded");
 
@@ -97,11 +98,13 @@ console.log("✅ ConfigAdmin.js loaded");
     statusEl.classList.toggle("error", !!isError);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* ADMIN API BASE + URL HELPERS                                       */
+  /* ------------------------------------------------------------------ */
+
   // Decide which origin to call for admin APIs
-  // Dec 3
-   // Decide which origin to call for admin APIs
-  // - Local + Render full-stack → same origin
-  // - Vercel front-end         → call Render backend
+  // - Local dev + Render full-stack → same origin
+  // - Vercel front-end             → call Render backend
   function getAdminApiBase() {
     const origin = window.location.origin || "";
 
@@ -122,11 +125,19 @@ console.log("✅ ConfigAdmin.js loaded");
 
   const ADMIN_API_BASE = getAdminApiBase();
 
-function absolutizeImageUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path; // already absolute
-  return `${ADMIN_API_BASE}${path}`;
-}
+  function absolutizeImageUrl(path) {
+    if (!path) return "";
+    if (/^https?:\/\//i.test(path)) return path; // already absolute
+
+    // If it's just a filename, treat as /uploads/filename
+    let p = path;
+    if (!p.startsWith("/")) {
+      p = `/uploads/${p}`;
+    }
+
+    // If ADMIN_API_BASE is empty, this resolves to same-origin
+    return `${ADMIN_API_BASE}${p}`;
+  }
 
   /* ------------------------------------------------------------------ */
   /* SLUG / SCHOOL HELPERS                                              */
@@ -165,107 +176,83 @@ function absolutizeImageUrl(path) {
   /* SCHOOL RENAME                                                      */
   /* ------------------------------------------------------------------ */
 
- async function onSchoolRenameClick() {
-  if (!SLUG || !schoolNameInput) return;
+  async function onSchoolRenameClick() {
+    if (!SLUG) return;
+    if (!schoolNameInput) return;
 
-  const newName = (schoolNameInput.value || "").trim();
-  if (!newName) {
-    alert("Please enter a new school name.");
-    return;
-  }
-
-  const oldSlug = SLUG;
-
-  try {
-    setStatus("Renaming school…");
-
-    const res = await fetch(
-      `${ADMIN_API_BASE}/api/admin/school/${encodeURIComponent(SLUG)}/rename`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newName }),
-      }
-    );
-
-    const data = await res.json();
-    if (!res.ok || data.ok === false) {
-      console.error("Rename failed:", data);
-      setStatus("Rename failed.");
+    const newName = (schoolNameInput.value || "").trim();
+    if (!newName) {
+      alert("Please enter a new school name.");
       return;
     }
 
-    // Backend should return { ok: true, slug, name } (and optionally school)
-    const newSlug =
-      (data.slug || (data.school && data.school.slug)) || SLUG;
-    const name =
-      (data.name || (data.school && data.school.name)) || newName;
+    const oldSlug = SLUG;
 
-    // Update UI + global slug
-    updateSlugUi(newSlug, name);
-    updateSlugInUrl(newSlug);
+    try {
+      setStatus("Renaming school…");
 
-    // If selector exists, update the current option text/value
-    if (schoolSelector) {
-      const opt =
-        schoolSelector.querySelector(`option[value="${oldSlug}"]`) ||
-        schoolSelector.selectedOptions[0];
+      const res = await fetch(
+        `${ADMIN_API_BASE}/api/admin/school/${encodeURIComponent(SLUG)}/rename`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newName }),
+        }
+      );
 
-      if (opt) {
-        opt.value = newSlug;
-        opt.textContent = name || newSlug;
-        schoolSelector.value = newSlug;
+      const data = await res.json();
+      if (!data.ok) {
+        console.error("Rename failed:", data);
+        setStatus("Rename failed.");
+        return;
       }
-    }
 
-    setStatus("School name & slug updated.");
-  } catch (err) {
-    console.error("onSchoolRenameClick error:", err);
-    setStatus("Error renaming school.");
+      // Backend should return { ok: true, slug, name } (and optionally school)
+      const newSlug =
+        data.slug || (data.school && data.school.slug) || SLUG;
+      const name =
+        data.name || (data.school && data.school.name) || newName;
+
+      // Update UI + global slug
+      updateSlugUi(newSlug, name);
+      updateSlugInUrl(newSlug);
+
+      // If selector exists, update the current option text/value
+      if (schoolSelector) {
+        const opt =
+          schoolSelector.querySelector(`option[value="${oldSlug}"]`) ||
+          schoolSelector.selectedOptions[0];
+
+        if (opt) {
+          opt.value = newSlug;
+          opt.textContent = name || newSlug;
+          schoolSelector.value = newSlug;
+        }
+      }
+
+      setStatus("School name & slug updated.");
+    } catch (err) {
+      console.error("onSchoolRenameClick error:", err);
+      setStatus("Error renaming school.");
+    }
   }
-}
+
   /* ------------------------------------------------------------------ */
   /* MULTI-SCHOOL SELECTOR (OPTIONAL)                                   */
   /* ------------------------------------------------------------------ */
 
   async function loadSchoolsForSelector() {
-  if (!schoolSelector) return;
+    if (!schoolSelector) return;
 
-  try {
-    const res = await fetch(`${ADMIN_API_BASE}/api/admin/schools`);
-    if (!res.ok) {
-      console.warn("[ConfigAdmin] /api/admin/schools returned", res.status);
-      return;
-    }
-
-    const data = await res.json();
-    const list = Array.isArray(data)
-      ? data
-      : Array.isArray(data.schools)
-      ? data.schools
-      : [];
-
-    if (!list.length) return;
-
-    schoolSelector.innerHTML = "";
-    list.forEach((s) => {
-      if (!s || !s.slug) return;
-      const opt = document.createElement("option");
-      opt.value = s.slug;
-      opt.textContent = s.name || s.slug;
-      schoolSelector.appendChild(opt);
-    });
-
-    // Try to keep current slug selected
-    if (SLUG && list.some((s) => s.slug === SLUG)) {
-      schoolSelector.value = SLUG;
-    } else if (schoolSelector.options.length) {
-      SLUG = schoolSelector.value;
-    }
-  } catch (err) {
-    console.warn("[ConfigAdmin] Could not load schools", err);
-  }
-}
+    try {
+      const res = await fetch(`${ADMIN_API_BASE}/api/admin/schools`);
+      if (!res.ok) {
+        console.warn(
+          "[ConfigAdmin] /api/admin/schools returned",
+          res.status
+        );
+        return;
+      }
 
       const data = await res.json();
       const list =
@@ -348,7 +335,9 @@ function absolutizeImageUrl(path) {
     setStatus("Loading settings from server…");
 
     try {
-      const res = await fetch(`${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}/image`);
+      const res = await fetch(
+        `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`
+      );
       if (!res.ok) {
         if (res.status === 404) {
           console.warn("No settings found for slug, using defaults only.");
@@ -593,13 +582,14 @@ function absolutizeImageUrl(path) {
       };
 
       const res = await fetch(
-  `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
-  {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }
-);
+        `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
@@ -853,8 +843,8 @@ function absolutizeImageUrl(path) {
     }
     uploadInput.disabled = !allow;
   }
-//Dec 3
-      function refreshImagePreview() {
+
+  function refreshImagePreview() {
     if (!imgPreview || !imgPreviewPlaceholder) return;
 
     const raw = (STATE.image && STATE.image.url) || "";
@@ -876,119 +866,112 @@ function absolutizeImageUrl(path) {
   /* ------------------------------------------------------------------ */
 
   function wireImageUpload() {
-  if (!imgUploadBtn || !imgFileInput) return;
+    if (!imgUploadBtn || !imgFileInput) return;
 
-  // 1) Clicking the button always opens the file chooser
-  imgUploadBtn.addEventListener("click", () => {
-    imgFileInput.click();
-  });
+    // Clicking the button opens the file chooser
+    imgUploadBtn.addEventListener("click", () => {
+      imgFileInput.click();
+    });
 
-  // 2) When a file is chosen, upload it
-  imgFileInput.addEventListener("change", async () => {
-    const file = imgFileInput.files && imgFileInput.files[0];
-    if (!file) return;
+    // When a file is chosen, upload it
+    imgFileInput.addEventListener("change", async () => {
+      const file = imgFileInput.files && imgFileInput.files[0];
+      if (!file) return;
 
-    if (!SLUG) {
-      console.error("[ConfigAdmin] Image upload: SLUG is missing");
-      if (imgUploadStatus) {
-        imgUploadStatus.textContent = "Missing slug – cannot upload.";
+      if (!SLUG) {
+        console.error("[ConfigAdmin] Image upload: SLUG is missing");
+        if (imgUploadStatus) {
+          imgUploadStatus.textContent = "Missing slug – cannot upload.";
+        }
+        return;
       }
-      return;
-    }
 
-    // Local, instant preview
-    if (imgPreview && imgPreviewPlaceholder) {
-      const localUrl = URL.createObjectURL(file);
-      imgPreview.src = localUrl;
-      imgPreview.style.display = "block";
-      imgPreviewPlaceholder.style.display = "none";
-    }
+      // Local, instant preview
+      if (imgPreview && imgPreviewPlaceholder) {
+        const localUrl = URL.createObjectURL(file);
+        imgPreview.src = localUrl;
+        imgPreview.style.display = "block";
+        imgPreviewPlaceholder.style.display = "none";
+      }
 
-    if (imgUploadStatus) imgUploadStatus.textContent = "Uploading…";
+      if (imgUploadStatus) imgUploadStatus.textContent = "Uploading…";
 
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-
-      const url = `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(
-        SLUG
-      )}/image`;
-
-      console.log("[ConfigAdmin] 📤 Uploading widget image", {
-        url,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      });
-
-      const res = await fetch(url, {
-        method: "POST",
-        body: formData,
-      });
-
-      const raw = await res.text();
-      let data;
       try {
-        data = raw ? JSON.parse(raw) : {};
-      } catch (e) {
-        console.warn("[ConfigAdmin] Image upload: non-JSON response", raw);
-        data = { ok: res.ok, raw };
-      }
+        const formData = new FormData();
+        formData.append("image", file);
 
-      if (!res.ok || data.ok === false) {
-        console.error("[ConfigAdmin] ❌ Image upload failed", {
-          status: res.status,
-          data,
+        const url = `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(
+          SLUG
+        )}/image`;
+
+        console.log("[ConfigAdmin] 📤 Uploading widget image", {
+          url,
+          name: file.name,
+          size: file.size,
+          type: file.type,
         });
+
+        const res = await fetch(url, {
+          method: "POST",
+          body: formData,
+        });
+
+        const raw = await res.text();
+        let data;
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          console.warn("[ConfigAdmin] Image upload: non-JSON response", raw);
+          data = { ok: res.ok, raw };
+        }
+
+        if (!res.ok || data.ok === false) {
+          console.error("[ConfigAdmin] ❌ Image upload failed", {
+            status: res.status,
+            data,
+          });
+          if (imgUploadStatus) {
+            imgUploadStatus.textContent = "Upload failed. See console.";
+          }
+          return;
+        }
+
+        const imageUrl =
+          data.url || data.imageUrl || data.image || data.path;
+
+        if (!imageUrl) {
+          console.warn(
+            "[ConfigAdmin] Upload succeeded but no URL returned",
+            data
+          );
+          if (imgUploadStatus) {
+            imgUploadStatus.textContent =
+              "Upload complete, but server did not return an image URL.";
+          }
+          return;
+        }
+
+        console.log("[ConfigAdmin] ✅ Image upload success (raw)", imageUrl);
+
+        // Normalise and store
+        STATE.image = STATE.image || {};
+        STATE.image.url = imageUrl; // we store what backend sends
+        refreshImagePreview();
+        setDirty();
+
+        if (imgUploadStatus) {
+          imgUploadStatus.textContent =
+            "Image uploaded. Don’t forget to Save.";
+        }
+      } catch (err) {
+        console.error("[ConfigAdmin] Image upload error", err);
         if (imgUploadStatus) {
           imgUploadStatus.textContent = "Upload failed. See console.";
         }
-        return;
       }
+    });
+  }
 
-      let imageUrl =
-        data.url || data.imageUrl || data.image || data.path;
-
-      if (!imageUrl) {
-        console.warn(
-          "[ConfigAdmin] Upload succeeded but no URL returned",
-          data
-        );
-        if (imgUploadStatus) {
-          imgUploadStatus.textContent =
-            "Upload complete, but server did not return an image URL.";
-        }
-        return;
-      }
-
-      console.log("[ConfigAdmin] ✅ Image upload success (raw)", imageUrl);
-
-      // Normalise to an absolute URL so widgets on Vercel can load it
-      if (!/^https?:\/\//i.test(imageUrl)) {
-        if (!imageUrl.startsWith("/")) {
-          imageUrl = `/uploads/${imageUrl}`;
-        }
-        imageUrl = `${ADMIN_API_BASE}${imageUrl}`;
-      }
-
-      STATE.image = STATE.image || {};
-      STATE.image.url = imageUrl;
-
-      refreshImagePreview();
-      setDirty();
-
-      if (imgUploadStatus) {
-        imgUploadStatus.textContent =
-          "Image uploaded. Don’t forget to Save.";
-      }
-    } catch (err) {
-      console.error("[ConfigAdmin] Image upload error", err);
-      if (imgUploadStatus) {
-        imgUploadStatus.textContent = "Upload failed. See console.";
-      }
-    }
-  });
-}
   /* ------------------------------------------------------------------ */
   /* INIT                                                               */
   /* ------------------------------------------------------------------ */
