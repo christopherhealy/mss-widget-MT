@@ -1,0 +1,139 @@
+<!-- /public/config-admin/ImageViewer.html — MSS Image Viewer v1.1 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – Image Viewer</title>
+
+  <!-- Shared MSS styling -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <!-- ImageViewer-specific styles (light theme, card-style) -->
+  <link rel="stylesheet" href="/themes/ImageViewer.css" />
+</head>
+<body>
+  <div class="iv-shell">
+    <section class="iv-dialog" aria-label="Image viewer">
+      <!-- Header -->
+      <header class="iv-header">
+        <div>
+          <h1 class="iv-title">Image viewer</h1>
+          <p id="ivMeta" class="iv-meta"></p>
+        </div>
+        <span id="ivStatus" class="iv-status" aria-live="polite"></span>
+      </header>
+
+      <!-- Main: preview + controls -->
+      <main class="iv-main">
+        <!-- Preview pane -->
+        <div class="iv-preview-pane">
+          <div class="iv-preview-frame">
+            <div class="iv-preview-inner">
+              <img
+                id="ivImage"
+                src=""
+                alt="Selected image preview"
+                class="iv-image"
+              />
+              <div id="ivPlaceholder" class="iv-placeholder">
+                No image selected yet.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <aside class="iv-control-pane">
+          <!-- Source -->
+          <section class="iv-control-section">
+            <h2 class="iv-control-heading">Image source</h2>
+            <p class="iv-help-text">
+              Choose a file to upload and store for this school.
+            </p>
+            <input
+              type="file"
+              id="ivFileInput"
+              accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.heic,.heif"
+              class="iv-file-input"
+            />
+            <button type="button" id="ivChooseBtn" class="iv-btn iv-btn-soft">
+              Choose image…
+            </button>
+          </section>
+
+          <!-- Size -->
+          <section class="iv-control-section">
+            <h2 class="iv-control-heading">Size</h2>
+            <p class="iv-help-text">
+              Adjust how large this image should appear in your portal or widget.
+            </p>
+            <div class="iv-size-presets">
+              <button type="button" class="iv-chip" data-size="70">Small</button>
+              <button
+                type="button"
+                class="iv-chip iv-chip-active"
+                data-size="100"
+              >
+                Medium
+              </button>
+              <button type="button" class="iv-chip" data-size="130">Large</button>
+            </div>
+
+            <div class="iv-slider-row">
+              <label for="ivSizeSlider" class="iv-slider-label">Custom size</label>
+              <span id="ivSizeLabel" class="iv-size-label">100%</span>
+            </div>
+            <input
+              type="range"
+              id="ivSizeSlider"
+              min="50"
+              max="150"
+              step="5"
+              value="100"
+              class="iv-slider"
+            />
+          </section>
+
+          <!-- Apply -->
+          <section class="iv-control-section">
+            <h2 class="iv-control-heading">Apply</h2>
+            <p class="iv-help-text">
+              When you click <strong>Apply &amp; Close</strong>, this viewer will
+              upload the image (if changed) and send the image URL and size back
+              to the window that opened it.
+            </p>
+            <div class="iv-apply-meta">
+              <div class="iv-apply-row">
+                <span class="iv-apply-label">Slug</span>
+                <span id="ivSlugLabel" class="iv-apply-value">—</span>
+              </div>
+              <div class="iv-apply-row">
+                <span class="iv-apply-label">Image URL</span>
+                <span
+                  id="ivUrlLabel"
+                  class="iv-apply-value iv-apply-value-mono"
+                >—</span>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <!-- Footer -->
+      <footer class="iv-footer">
+        <button type="button" id="ivResetBtn" class="iv-btn">
+          Reset
+        </button>
+        <button type="button" id="ivCancelBtn" class="iv-btn">
+          Close
+        </button>
+        <button type="button" id="ivApplyBtn" class="iv-btn iv-btn-primary">
+          Apply &amp; Close
+        </button>
+      </footer>
+    </section>
+  </div>
+
+  <script src="/config-admin/ImageViewer.js" defer></script>
+</body>
+</html>

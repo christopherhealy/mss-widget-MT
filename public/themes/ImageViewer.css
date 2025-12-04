@@ -1,0 +1,288 @@
+/* /public/themes/ImageViewer.css — light modal card style */
+
+.iv-shell {
+  min-height: 100vh;
+  padding: 24px;
+  box-sizing: border-box;
+  background: #f3f4f6; /* light grey backdrop; parent can still dim further */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.iv-dialog {
+  width: 100%;
+  max-width: 1120px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+  padding: 20px 24px 18px;
+  box-sizing: border-box;
+}
+
+/* Header */
+
+.iv-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.iv-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.iv-meta {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.iv-status {
+  font-size: 13px;
+  color: #2563eb;
+  white-space: nowrap;
+}
+
+/* Main layout */
+
+.iv-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.4fr);
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Preview pane */
+
+.iv-preview-pane {
+  border-radius: 12px;
+  border: 1px dashed #d1d5db;
+  background: #f9fafb;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.iv-preview-frame {
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #e5e7eb;
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.iv-preview-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.iv-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: none;
+}
+
+.iv-placeholder {
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+/* Control pane */
+
+.iv-control-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.iv-control-section {
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  padding: 12px 14px;
+}
+
+.iv-control-heading {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.iv-help-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* File input */
+
+.iv-file-input {
+  display: none;
+}
+
+/* Buttons */
+
+.iv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.05s ease;
+}
+
+.iv-btn:hover {
+  background: #f3f4f6;
+}
+
+.iv-btn:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.iv-btn-soft {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.iv-btn-soft:hover {
+  background: #dbeafe;
+}
+
+.iv-btn-primary {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.iv-btn-primary:hover {
+  background: #1e40af;
+}
+
+/* Size chips */
+
+.iv-size-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.iv-chip {
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #374151;
+}
+
+.iv-chip-active {
+  background: #eff6ff;
+  border-color: #1d4ed8;
+  color: #1d4ed8;
+}
+
+/* Slider */
+
+.iv-slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: #6b7280;
+}
+
+.iv-slider {
+  width: 100%;
+}
+
+.iv-size-label {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Apply meta */
+
+.iv-apply-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.iv-apply-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.iv-apply-label {
+  font-weight: 500;
+}
+
+.iv-apply-value {
+  max-width: 190px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iv-apply-value-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+/* Footer */
+
+.iv-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Responsiveness */
+
+@media (max-width: 900px) {
+  .iv-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .iv-preview-inner {
+    min-height: 220px;
+  }
+}

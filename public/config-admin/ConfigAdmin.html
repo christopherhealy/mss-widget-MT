@@ -394,45 +394,61 @@
     </section>
 
     <!-- IMAGE SECTION -->
-    <section class="card">
-      <h2>Widget Image</h2>
-      <div class="field-grid">
-        <!-- Hidden file input, triggered by the button -->
-        <input
-          id="img-file"
-          type="file"
-          accept="image/*"
-          class="hidden-fileInput"
-        />
+<section class="card">
+  <h2>Widget Image</h2>
 
-        <div class="field">
-          <label>Upload Image</label>
-          <div class="hint">
-            Upload a logo or illustration for this widget.
-          </div>
-          <div class="img-upload-row">
-            <button id="img-uploadBtn" type="button" class="primary">
-              Upload Image
-            </button>
-            <span id="img-uploadStatus" class="hint"></span>
-          </div>
-        </div>
+  <div class="field-grid">
 
-        <div class="field">
-          <label>Preview</label>
-          <div class="img-preview-shell">
-            <img
-              id="img-preview"
-              src=""
-              alt="Widget image preview"
-            />
-            <span id="img-previewPlaceholder" class="hint">
-              No image uploaded yet.
-            </span>
-          </div>
-        </div>
+    <!-- Hidden file input (legacy / kept for compatibility; not directly used now) -->
+    <input
+      id="img-file"
+      type="file"
+      accept="image/*"
+      style="display:none"
+    />
+
+    <!-- Upload button (now opens ImageViewer instead of file dialog) -->
+    <div class="field">
+      <label>Upload Image</label>
+      <div class="hint">
+        Upload and adjust a logo or illustration for this widget.
       </div>
-    </section>
+
+      <div class="img-upload-row">
+        <button
+          id="img-uploadBtn"
+          type="button"
+          class="primary"
+        >
+          Upload Image
+        </button>
+
+        <span id="img-uploadStatus" class="hint"></span>
+      </div>
+    </div>
+
+    <!-- Preview -->
+    <div class="field">
+      <label>Preview</label>
+
+      <div class="img-preview-shell">
+        <img
+          id="img-preview"
+          src=""
+          alt="Widget image preview"
+          style="display:none"
+        />
+        <span
+          id="img-previewPlaceholder"
+          class="hint"
+        >
+          No image uploaded yet.
+        </span>
+      </div>
+    </div>
+
+  </div>
+</section>
 
     <!-- FOOTER -->
     <div class="footer">

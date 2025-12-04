@@ -1,8 +1,8 @@
-// /config-admin/ConfigAdmin.js — Admin + Image Upload + Dashboards + Widgets
+// /config-admin/ConfigAdmin.js — Admin + Image Viewer + Dashboards + Widgets
 // Single-school mode + School rename + optional multi-school selector
 // Uses settings.{config,form,image} in Postgres
 // Canonical keys: config.widgetPath, config.dashboardPath, config.afterDashboard.*
-// Dec 3 refresh - working on Vercel functionality
+// Dec 4 refresh – ImageViewer integration (no direct file upload in this file)
 
 console.log("✅ ConfigAdmin.js loaded");
 
@@ -36,8 +36,8 @@ console.log("✅ ConfigAdmin.js loaded");
   const widgetTemplateSelect    = $("widgetTemplate");
 
   // Image / branding elements
-  const imgFileInput          = $("img-file");
-  const imgUploadBtn          = $("img-uploadBtn");
+  const imgFileInput          = $("img-file");           // hidden input (not used directly now)
+  const imgUploadBtn          = $("img-uploadBtn");      // "Upload Image" button
   const imgUploadStatus       = $("img-uploadStatus");
   const imgPreview            = $("img-preview");
   const imgPreviewPlaceholder = $("img-previewPlaceholder");
@@ -85,6 +85,7 @@ console.log("✅ ConfigAdmin.js loaded");
     image: {
       url: "",
       alt: "Widget image",
+      sizePercent: 100, // default image size
     },
   };
 
@@ -129,13 +130,11 @@ console.log("✅ ConfigAdmin.js loaded");
     if (!path) return "";
     if (/^https?:\/\//i.test(path)) return path; // already absolute
 
-    // If it's just a filename, treat as /uploads/filename
     let p = path;
     if (!p.startsWith("/")) {
       p = `/uploads/${p}`;
     }
 
-    // If ADMIN_API_BASE is empty, this resolves to same-origin
     return `${ADMIN_API_BASE}${p}`;
   }
 
@@ -845,147 +844,110 @@ console.log("✅ ConfigAdmin.js loaded");
   }
 
   function refreshImagePreview() {
-  if (!imgPreview || !imgPreviewPlaceholder) return;
+    if (!imgPreview || !imgPreviewPlaceholder) return;
 
-  const url = (STATE.image && STATE.image.url) || "";
+    const url   = (STATE.image && STATE.image.url) || "";
+    const size  = (STATE.image && STATE.image.sizePercent) || 100;
 
-  if (url) {
-    imgPreview.src = url;               // use stored URL as-is
-    imgPreview.style.display = "block";
-    imgPreviewPlaceholder.style.display = "none";
-  } else {
-    imgPreview.src = "";
-    imgPreview.style.display = "none";
-    imgPreviewPlaceholder.style.display = "inline";
+    if (url) {
+      imgPreview.src = url;
+      imgPreview.style.display = "block";
+      imgPreviewPlaceholder.style.display = "none";
+
+      // sizePercent drives max-width of preview; height auto
+      imgPreview.style.maxWidth = size + "%";
+      imgPreview.style.height   = "auto";
+    } else {
+      imgPreview.src = "";
+      imgPreview.style.display = "none";
+      imgPreviewPlaceholder.style.display = "inline";
+    }
   }
-}
+
   /* ------------------------------------------------------------------ */
-  /* IMAGE UPLOAD                                                       */
+  /* IMAGE VIEWER INTEGRATION                                           */
   /* ------------------------------------------------------------------ */
 
-  function wireImageUpload() {
-    if (!imgUploadBtn || !imgFileInput) return;
+  // Open ImageViewer in a popup window (same-origin)
+  function openImageViewer() {
+    if (!SLUG) {
+      setStatus("Missing slug – cannot open image viewer.", true);
+      return;
+    }
 
-    // Clicking the button opens the file chooser
-    imgUploadBtn.addEventListener("click", () => {
-      imgFileInput.click();
+    const currentUrl  = (STATE.image && STATE.image.url) || "";
+    const currentSize = (STATE.image && STATE.image.sizePercent) || 100;
+
+    const params = new URLSearchParams({
+      slug: SLUG,
+      url: currentUrl,
+      size: String(currentSize),
     });
 
-    // When a file is chosen, upload it
-    imgFileInput.addEventListener("change", async () => {
-      const file = imgFileInput.files && imgFileInput.files[0];
-      if (!file) return;
+    // We keep ImageViewer.html under /config-admin for now
+    const viewerUrl = `/config-admin/ImageViewer.html?${params.toString()}`;
 
-      if (!SLUG) {
-        console.error("[ConfigAdmin] Image upload: SLUG is missing");
-        if (imgUploadStatus) {
-          imgUploadStatus.textContent = "Missing slug – cannot upload.";
-        }
+    const features = [
+      "width=1100",
+      "height=720",
+      "resizable=yes",
+      "scrollbars=yes",
+    ].join(",");
+
+    const win = window.open(viewerUrl, "MSSImageViewer", features);
+    if (!win) {
+      alert("Pop-up blocked. Please enable pop-ups for this site.");
+    }
+  }
+
+  // Clicking "Upload Image" just opens the viewer
+  function wireImageUpload() {
+    if (!imgUploadBtn) return;
+    imgUploadBtn.addEventListener("click", openImageViewer);
+  }
+
+  // Handle messages sent from ImageViewer.js
+  function handleImageViewerMessage(event) {
+    const data = event.data || {};
+    if (!data || data.source !== "MSSImageViewer") return;
+
+    const payload = data.payload || {};
+
+    if (data.type === "cancel") {
+      setStatus("Image viewer closed without changes.");
+      return;
+    }
+
+    if (data.type === "apply") {
+      const { slug, url, sizePercent } = payload;
+
+      if (!url) {
+        setStatus("Image viewer did not return an image URL.", true);
         return;
       }
 
-      // Local, instant preview
-      if (imgPreview && imgPreviewPlaceholder) {
-        const localUrl = URL.createObjectURL(file);
-        imgPreview.src = localUrl;
-        imgPreview.style.display = "block";
-        imgPreviewPlaceholder.style.display = "none";
+      if (slug && slug !== SLUG) {
+        console.warn(
+          "[ConfigAdmin] Image from different slug:",
+          slug,
+          "(current SLUG=", SLUG, ")"
+        );
       }
 
-      if (imgUploadStatus) imgUploadStatus.textContent = "Uploading…";
-
-      try {
-        const formData = new FormData();
-        formData.append("image", file);
-
-        const url = `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(
-          SLUG
-        )}/image`;
-
-        console.log("[ConfigAdmin] 📤 Uploading widget image", {
-          url,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        });
-
-        const res = await fetch(url, {
-          method: "POST",
-          body: formData,
-        });
-
-        const raw = await res.text();
-        let data;
-        try {
-          data = raw ? JSON.parse(raw) : {};
-        } catch (e) {
-          console.warn("[ConfigAdmin] Image upload: non-JSON response", raw);
-          data = { ok: res.ok, raw };
-        }
-
-        if (!res.ok || data.ok === false) {
-          console.error("[ConfigAdmin] ❌ Image upload failed", {
-            status: res.status,
-            data,
-          });
-          if (imgUploadStatus) {
-            imgUploadStatus.textContent = "Upload failed. See console.";
-          }
-          return;
-        }
-
-        const imageUrl =
-  data.url || data.imageUrl || data.image || data.path;
-
-if (!imageUrl) {
-  console.warn(
-    "[ConfigAdmin] Upload succeeded but no URL returned",
-    data
-  );
-  if (imgUploadStatus) {
-    imgUploadStatus.textContent =
-      "Upload complete, but server did not return an image URL.";
-  }
-  return;
-}
-
-console.log("[ConfigAdmin] ✅ Image upload success (raw)", imageUrl);
-
-// 🔗 Normalise to something that works everywhere
-let storedUrl = imageUrl;
-
-// If it's not already absolute (http/https)…
-if (!/^https?:\/\//i.test(storedUrl)) {
-  // If it's just a bare filename, assume it lives under /uploads/
-  if (!storedUrl.startsWith("/")) {
-    storedUrl = `/uploads/${storedUrl}`;
-  }
-
-  // On Vercel, ADMIN_API_BASE is the Render backend; on local/Render it's ""
-  if (ADMIN_API_BASE) {
-    storedUrl = `${ADMIN_API_BASE}${storedUrl}`;
-  }
-}
-
-console.log("[ConfigAdmin] 🔗 Storing image URL:", storedUrl);
-
-STATE.image = STATE.image || {};
-STATE.image.url = storedUrl;   // store absolute (or root-relative) URL
-
-refreshImagePreview();
-setDirty();
-        if (imgUploadStatus) {
-          imgUploadStatus.textContent =
-            "Image uploaded. Don’t forget to Save.";
-        }
-      } catch (err) {
-        console.error("[ConfigAdmin] Image upload error", err);
-        if (imgUploadStatus) {
-          imgUploadStatus.textContent = "Upload failed. See console.";
-        }
+      STATE.image = STATE.image || {};
+      STATE.image.url = url;
+      if (typeof sizePercent === "number") {
+        STATE.image.sizePercent = sizePercent;
       }
-    });
+
+      refreshImagePreview();
+      setDirty();
+      setStatus("Updated image from viewer. Don’t forget to Save.");
+    }
   }
+
+  // Register postMessage handler once
+  window.addEventListener("message", handleImageViewerMessage);
 
   /* ------------------------------------------------------------------ */
   /* INIT                                                               */
