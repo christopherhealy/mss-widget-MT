@@ -11,8 +11,28 @@ console.log("✅ SchoolPortal.js loaded");
 (function () {
   "use strict";
 
-  const $ = (id) => document.getElementById(id);
+const LS_KEY = "mssAdminSession";
 
+function loadAdminSession() {
+  try {
+    const raw = window.localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+
+    const session = JSON.parse(raw);
+    if (!session || !session.adminId || !session.email) {
+      return null;
+    }
+    return session;
+  } catch (e) {
+    console.warn("[SchoolPortal] Failed to read admin session", e);
+    return null;
+  }
+}
+
+  const $ = (id) => document.getElementById(id);
+  //const logoutBtn = $("portal-logout");   // 👈 NEW on Dec 4
+  
+ 
   // -----------------------------------------------------------------------
   // Query params + admin session
   // -----------------------------------------------------------------------
@@ -21,21 +41,18 @@ console.log("✅ SchoolPortal.js loaded");
   const INITIAL_SLUG = params.get("slug"); // optional preselect
   const ASSESSMENT_ID_FROM_URL = params.get("assessmentId"); // optional override
 
-  // Try to read admin session from localStorage (set by Admin Login)
-  let ADMIN_SESSION = {};
-  try {
-    ADMIN_SESSION = JSON.parse(
-      window.localStorage.getItem("MSS_ADMIN_SESSION") || "{}"
-    );
-  } catch (e) {
-    ADMIN_SESSION = {};
+  // ✅ Load admin session created by AdminLogin.js (mssAdminSession)
+  const ADMIN_SESSION = loadAdminSession() || {};
+
+  if (!ADMIN_SESSION.adminId && !ADMIN_SESSION.email) {
+    console.warn("[SchoolPortal] No admin session found; redirecting to login.");
+    window.location.href = "/admin-login/AdminLogin.html";
+    return; // stop running the portal script
   }
 
-  // Email can come from URL OR from the stored session
-  const ADMIN_EMAIL = params.get("email") || ADMIN_SESSION.email || null;
-
-  // New: adminId from session (used by server to detect superadmin)
-  const ADMIN_ID = ADMIN_SESSION.adminId || ADMIN_SESSION.id || null;
+  const ADMIN_EMAIL = ADMIN_SESSION.email || null;
+  const ADMIN_ID =
+    ADMIN_SESSION.adminId != null ? ADMIN_SESSION.adminId : ADMIN_SESSION.id;
 
   // -----------------------------------------------------------------------
   // DOM refs
@@ -82,8 +99,18 @@ console.log("✅ SchoolPortal.js loaded");
   const linkDashboardEl = $("portal-link-dashboard");
   const linkReportsEl = $("portal-link-reports");
 
-  // NEW: logout button - Nov 30
-  const logoutBtn = $("portal-logout");
+  // NEW: logout button - Dec 4
+  const logoutBtn = document.getElementById("portal-logout");
+
+function init() {
+  console.log("SchoolPortal.js loaded");
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", onPortalLogoutClick);
+  }
+
+  // ... other init logic ...
+}
 
   // -----------------------------------------------------------------------
   // State
@@ -1384,40 +1411,35 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
   // -----------------------------------------------------------------------
 
   // Where to send admins after logout (adjust if your login URL is different)
-  const ADMIN_LOGIN_URL = "/AdminLogin.html";
+  const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
 
-  function handleLogout() {
-    try {
-      // Clear our main admin session
-      window.localStorage.removeItem("MSS_ADMIN_SESSION");
+  function handleLogout(event) {
+  if (event) event.preventDefault();
 
-      // Optional: clear any legacy keys you might have used earlier
-      window.localStorage.removeItem("MSS_ADMIN_TOKEN");
-      window.localStorage.removeItem("MSS_ADMIN_EMAIL");
-    } catch (e) {
-      console.warn("Error clearing admin session", e);
-    }
-
-    // Attempt to strip query params (for cleanliness) – if this fails we still redirect
-    try {
-      const url = new URL(window.location.href);
-      ["slug", "email", "assessmentId"].forEach((p) =>
-        url.searchParams.delete(p)
-      );
-      // optional: could pushState here, but simple redirect is fine
-    } catch {
-      // ignore
-    }
-
-    // Redirect back to the admin login page
-    window.location.href = ADMIN_LOGIN_URL;
+  try {
+    localStorage.removeItem("mssAdminSession");
+    localStorage.removeItem("MSS_ADMIN_SESSION");
+    localStorage.removeItem("MSS_ADMIN_SESSION_V2");
+    localStorage.removeItem("MSS_ADMIN_TOKEN");
+    localStorage.removeItem("MSS_ADMIN_EMAIL");
+  } catch (e) {
+    console.warn("[SchoolPortal] Error clearing admin session", e);
   }
 
+  window.location.href = ADMIN_LOGIN_URL;
+}
   // -----------------------------------------------------------------------
   // Event wiring
   // -----------------------------------------------------------------------
 
   function wireEvents() {
+
+    //logout
+    // NEW: logout Dec 4
+    if (logoutBtn && !logoutBtn._mssLogoutBound) {
+      logoutBtn.addEventListener("click", handleLogout);
+      logoutBtn._mssLogoutBound = true;
+    }
     // Widget/Dashboard tabs
     if (tabWidgetEl) {
       tabWidgetEl.addEventListener("click", () =>
@@ -1574,6 +1596,26 @@ if (copyPromptBtn) {
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /* ADMIN SESSION / LOGOUT                                             */
+  /* ------------------------------------------------------------------ */
+
+  function clearAdminSessionStorage() {
+    try {
+      localStorage.removeItem("mssAdminSession");  // main session object
+
+      // Optional extra keys if we ever use them
+      localStorage.removeItem("mssAdminEmail");
+      localStorage.removeItem("mssAdminSchools");
+      localStorage.removeItem("mssAdminIsSuper");
+
+      console.log("[SchoolPortal] Cleared admin session from localStorage");
+    } catch (err) {
+      console.warn("[SchoolPortal] Unable to access localStorage during logout", err);
+    }
+  }
+
+  
   // -----------------------------------------------------------------------
   // Init
   // -----------------------------------------------------------------------
@@ -1596,8 +1638,12 @@ if (copyPromptBtn) {
   }
 
   async function init() {
+
+  
     wireEvents();
     initDefaultDateFilters();
+
+    
 
     // Populate global report view dropdown from /api/list-dashboards
     await loadDashboardOptionsIntoSelect();

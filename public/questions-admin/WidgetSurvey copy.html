@@ -1,9 +1,232 @@
-// /admin/WidgetSurvey.js
-// All-in-one Questions editor + Help editor + CSV/JSON import/export
-// Now uses admin session guard via localStorage("mssAdminSession")
-//
-// Build: extracted from inline WidgetSurvey.html script + Dec 5 admin-session guard
+<!-- Build: 2025-11-15 6:55 AM ET clean up for Help work  -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Speaking Score – All-in-One Question Editor</title>
+  <link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css">
 
+  <style>
+    :root { --mss-blue:#1a5cff; --mss-text:#222; --mss-muted:#6b7280; --mss-edge:#e5e7eb; }
+
+    body{
+      font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:#f7f7f8;margin:0;display:flex;flex-direction:column;align-items:center;
+      min-height:100vh;padding:24px;gap:18px;
+    }
+    .card{
+      width:980px; max-width:95vw; background:#fff; border:1px solid var(--mss-edge);
+      border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.06); overflow:hidden;
+    }
+    .head{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:14px 16px;border-bottom:1px solid var(--mss-edge)
+    }
+    .title{font-weight:700}
+    .muted{color:#6b7280; font-size:12px}
+    .body{padding:14px}
+    .row{
+      display:grid; grid-template-columns: 48px 1fr auto; align-items:start; gap:12px;
+      padding:10px 12px; border:1px solid var(--mss-edge); border-radius:12px;
+      margin-bottom:10px; background:#fff;
+      transition:border-color .15s, box-shadow .15s, opacity .15s;
+    }
+    .row.dragging{
+      opacity:.7; border-color:#93c5fd; box-shadow:0 6px 20px rgba(2,132,199,.15);
+    }
+    .placeholder{
+      height:64px; border:2px dashed #93c5fd; border-radius:12px;
+      background:#eff6ff; margin-bottom:10px;
+    }
+    .idx{
+      width:40px;height:40px;border-radius:10px;border:1px solid var(--mss-edge);
+      display:flex;align-items:center;justify-content:center;font-weight:600;background:#f9fafb;
+      user-select:none; cursor:grab; transition:background .15s, border-color .15s, color .15s;
+    }
+    .idx:active{ cursor:grabbing; background:#eef2ff; border-color:#c7d2fe; color:#374151; }
+    .qtext{white-space:pre-line}
+    .qfirst{font-weight:600}
+    .ctrls{display:flex;gap:6px;flex-wrap:wrap}
+    .btn{
+      border-radius:999px; padding:8px 10px; border:1px solid var(--mss-edge);
+      background:#fff; cursor:pointer; font-weight:600; font-size:13px;
+    }
+    .btn.primary{background:var(--mss-blue); color:#fff; border-color:transparent}
+    .btn.ghost{background:#fff}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .toolbar .spacer{flex:1}
+    #status{font-size:13px;margin-left:auto}
+
+    .overlay,
+    .finishOverlay,
+    .confirmOverlay{
+      position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+      background:rgba(0,0,0,.45);z-index:2100;
+    }
+    .modal,
+    .finishDlg,
+    .confirmDlg{
+      width:min(700px,95vw);background:#fff;border:1px solid var(--mss-edge);
+      border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.18);overflow:hidden;padding:0;
+    }
+    .finishDlg,
+    .confirmDlg{width:min(420px,94vw);padding:18px;}
+    .modalHead{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:12px 14px;border-bottom:1px solid var(--mss-edge)
+    }
+    .modalBody{padding:12px}
+    .modalFoot{
+      display:flex;gap:8px;justify-content:flex-end;
+      padding:12px;border-top:1px solid var(--mss-edge)
+    }
+    .ta{
+      width:100%;min-height:200px;border:1px solid var(--mss-edge);
+      border-radius:12px;padding:12px;font:inherit
+    }
+    .finishDlg h3,
+    .confirmDlg h3{margin:0 0 8px 0;font-size:16px}
+    .finishDlg p,
+    .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
+    .finishBtns,
+    .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="head">
+      <div>
+        <div class="title">All-in-One Questions</div>
+        <div class="muted">
+          Drag with the index circle, edit in place, add/remove, import/export.
+          Saves the <code>survey</code> order &amp; content per <b>slug</b>.
+        </div>
+      </div>
+      <div class="muted" id="meta">Loading…</div>
+    </div>
+
+    <div class="body">
+      <div class="toolbar" style="margin-bottom:10px;">
+        <button id="addBtnTop" type="button" class="btn">＋ Add</button>
+        <div class="spacer"></div>
+        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px;">
+          <input id="importJson" type="file" accept="application/json" style="display:none;"/> Import
+        </label>
+        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px;">
+          <input id="importCsv" type="file" accept=".csv,text/csv" style="display:none;"/> CSV Import
+        </label>
+        <button id="exportBtnTop" type="button" class="btn">Export</button>
+        <button id="saveToFileBtnTop" type="button" class="btn">Save to file…</button>
+        <button id="finishedBtnTop" type="button" class="btn primary">Finished…</button>
+        <span id="status" class="muted"></span>
+      </div>
+
+      <div id="list"></div>
+
+      <div class="toolbar" style="margin-top:10px;">
+        <button id="addBtnBottom" type="button" class="btn">＋ Add</button>
+        <div class="spacer"></div>
+        <button id="exportBtnBottom" type="button" class="btn">Export</button>
+        <button id="saveToFileBtnBottom" type="button" class="btn">Save to file…</button>
+        <button id="finishedBtnBottom" type="button" class="btn primary">Finished…</button>
+      </div>
+    </div>
+
+    <div class="footer" style="padding:12px 16px; border-top:1px solid var(--mss-edge); font-size:12px; color:#6b7280">
+      Tip: <b>Export</b> downloads <code>form.json</code>. <b>Save to file…</b> overwrites the chosen file without “form (3)”.
+    </div>
+  </div>
+
+
+
+  <!-- Add/Edit modal -->
+  <div id="aeOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Add or Edit Question">
+      <div class="modalHead"><div id="aeTitle" class="title">Add Question</div></div>
+      <div class="modalBody">
+        <textarea id="aeTextarea" class="ta" placeholder="Type the question here…"></textarea>
+      </div>
+      <div class="modalFoot">
+        <button id="aeCancel" type="button" class="btn">Cancel</button>
+        <button id="aeSave" type="button" class="btn">Save</button>
+        <button id="aeSaveNew" type="button" class="btn">Save &amp; New</button>
+        <button id="aeClose" type="button" class="btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Finished dialog -->
+  <div id="finishOverlay" class="finishOverlay" aria-hidden="true">
+    <div class="finishDlg">
+      <h3>Do you want to save your changes before leaving?</h3>
+      <p><b>Save</b> writes to the database for this <code>slug</code>, or downloads if blocked.</p>
+      <div class="finishBtns">
+        <button id="finishCancel" type="button" class="btn">Cancel</button>
+        <button id="finishNoSave" type="button" class="btn">Don't Save</button>
+        <button id="finishSave" type="button" class="btn primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div id="confirmOverlay" class="confirmOverlay" aria-hidden="true">
+    <div class="confirmDlg">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p id="confirmMsg">Are you sure?</p>
+      <div class="confirmBtns">
+        <button id="confirmCancel" type="button" class="btn">Cancel</button>
+        <button id="confirmOk" type="button" class="btn primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help dialog -->
+  <div id="helpOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Question Help">
+      <div class="modalHead">
+        <div class="title">Question Help</div>
+      </div>
+      <div class="modalBody">
+        <div class="muted" style="margin-bottom:8px;">
+          <b>Question</b><br>
+          <span id="helpQuestionText"></span>
+        </div>
+
+        <div style="margin-top:8px;">
+          <div class="muted" style="margin-bottom:4px;">Most Help</div>
+          <textarea id="helpMax" class="ta" style="min-height:140px;"></textarea>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="muted" style="margin-bottom:4px;">Limited Help</div>
+          <textarea id="helpMin" class="ta" style="min-height:80px;"></textarea>
+        </div>
+
+        <div style="margin-top:10px;">
+  	  <div class="muted" style="margin-bottom:4px;">Prompt for AI assist</div>
+  	  <textarea id="helpPrompt" class="ta" style="min-height:80px;"></textarea>
+          <button id="copyPromptBtn" type="button" class="btn" style="margin-top:6px;">
+            Copy prompt
+          </button>
+
+    	   <div class="muted" style="margin-top:8px; font-size:12px; line-height:1.5;">
+    	     TIP: Copy and paste this prompt into ChatGPT or your favourite AI app and then<br>
+    	     copy-paste:<br>
+    	     &bull; the long answer into <b>MaxHelp</b><br>
+    	     &bull; the point summary into <b>MinHelp</b>.
+  	  </div>
+        </div>
+
+      <div class="modalFoot">
+        <button id="helpCancel" type="button" class="btn">Cancel</button>
+        <button id="helpSave" type="button" class="btn primary">Save Help</button>
+      </div>
+    </div>
+  </div>
+
+<script>
 // -------- SLUG + ENDPOINTS (per-school via assessments) --------
 var params = new URLSearchParams(window.location.search);
 var SLUG   = (params.get("slug") || "mss-demo").trim();
@@ -20,56 +243,7 @@ var FALLBACK_FORM_URL  = "./form.json?ts=" + Date.now();
 var ASSESSMENT_ID = null;
 var SCHOOL_ID = null;
 
-// --- Admin session helpers (shared with AdminLogin / Portal / ConfigAdmin) ---
-var ADMIN_LS_KEY = "mssAdminSession";
 
-function getAdminSession(){
-  try{
-    var raw = window.localStorage.getItem(ADMIN_LS_KEY);
-    if (!raw) return null;
-    var session = JSON.parse(raw);
-    if (!session || !session.adminId || !session.email) return null;
-    return session;
-  }catch(e){
-    console.warn("[WidgetSurvey] Failed to read admin session", e);
-    return null;
-  }
-}
-
-/**
- * Ensure there is a valid admin session. If not:
- *  - show an inline status (if available)
- *  - redirect back to AdminLogin
- *  - attempt to close this tab
- *  - throw to stop the current call stack
- */
-function requireAdminSession(reason){
-  var session = getAdminSession();
-  if (session) return session;
-
-  var msg =
-    reason ||
-    "Your admin session has ended. Please sign in again to edit questions.";
-
-  try {
-    if (typeof setStatus === "function") {
-      setStatus(msg, false); // false ⇒ warning style
-    } else {
-      console.warn("[WidgetSurvey] " + msg);
-    }
-  } catch (e) {
-    console.warn("[WidgetSurvey] Unable to show status for ended session", e);
-  }
-
-  // Send them back to the login screen
-  window.location.href = "/admin-login/AdminLogin.html";
-
-  try { window.close(); } catch (e) {
-    // ignore – some browsers block this
-  }
-
-  throw new Error("Admin session missing – redirected to login.");
-}
 
 // existing state vars can stay as-is:
 var schema    = null;   // simple wrapper (used for headline + export)
@@ -77,6 +251,7 @@ var survey    = [];     // the questions list
 var fileHandle = null;
 var aeMode    = "add";
 var aeIndex   = -1;
+
 
 var aeDirty   = false;
 
@@ -94,6 +269,9 @@ var DEFAULT_HELP_PROMPT =
   "   The section will be read aloud by the student while recording the answer.\n\n" +
   "2) A point-by-point summary of the answer that the student will be able to\n" +
   "   look at before he or she records an answer.\n";
+
+
+
 
 /* ========= helpers ========= */
 function $(id){ return document.getElementById(id); }
@@ -203,6 +381,7 @@ function render(){
 function wireDnd(container){
   var ph = null, dragging = null, src = null;
 
+  // Use Array.prototype.forEach.call for max compatibility
   var rows = container.querySelectorAll(".row");
   Array.prototype.forEach.call(rows, function(row){
     row.dataset.allow = "";
@@ -251,28 +430,29 @@ function wireDnd(container){
   }
 
   function drop(e){
-    if (!dragging || !ph) return;
-    e.preventDefault();
+  if (!dragging || !ph) return;
+  e.preventDefault();
 
-    var target = 0;
-    var children = Array.prototype.slice.call(container.children);
-    for (var i = 0; i < children.length; i++){
-      var c = children[i];
-      if (c === ph) break;
-      if (c.classList && c.classList.contains("row")) target++;
-    }
-
-    var from = src;
-    if (from < target) target--;
-    console.log("[DnD] drop from", from, "to", target);
-
-    cleanup();
-    if (from == null || from === target) return;
-
-    var m = survey.splice(from, 1)[0];
-    survey.splice(target, 0, m);
-    render();
+  // Count how many .row elements come BEFORE the placeholder.
+  var target = 0;
+  var children = Array.prototype.slice.call(container.children);
+  for (var i = 0; i < children.length; i++){
+    var c = children[i];
+    if (c === ph) break; // stop at placeholder
+    if (c.classList && c.classList.contains("row")) target++;
   }
+
+  var from = src;
+  if (from < target) target--;           // classic “remove then insert” adjust
+  console.log("[DnD] drop from", from, "to", target);
+
+  cleanup();
+  if (from == null || from === target) return;
+
+  var m = survey.splice(from, 1)[0];
+  survey.splice(target, 0, m);
+  render();
+}
 
   function end(){
     cleanup();
@@ -306,8 +486,8 @@ function wireDnd(container){
     return best.element;
   }
 }
-
 /* ========= Modals / confirms ========= */
+
 
 function showOverlay(id, show){
   var el = $(id); if (!el) return;
@@ -455,11 +635,6 @@ function triConfirm(title,left,mid,right){
 
 /* ========= Nov 14 Save to DB with file fallback ========= */
 async function saveToServer(){
-  // 🔐 Session check before saving
-  requireAdminSession(
-    "Your admin session has ended. Please sign in again before saving questions."
-  );
-
   if (!ASSESSMENT_ID){
     console.error("[WidgetSurvey] no ASSESSMENT_ID – cannot save.");
     setStatus("No assessmentId – cannot save.", false);
@@ -487,7 +662,8 @@ async function saveToServer(){
   })
   .filter(function(q){ return q !== null; });
 
-  console.log("[WidgetSurvey] payloadQuestions =", JSON.stringify(payloadQuestions, null, 2));
+// 👀 Debug: see exactly what we're sending to the API
+console.log("[WidgetSurvey] payloadQuestions =", JSON.stringify(payloadQuestions, null, 2));
 
   if (!payloadQuestions.length){
     setStatus("No questions to save", false);
@@ -516,6 +692,7 @@ async function saveToServer(){
 
     setStatus("Saved to server", true);
 
+    // Refresh so we pick up fresh IDs
     try { await load(); } catch (_) {}
     return "server";
   } catch (err) {
@@ -524,7 +701,8 @@ async function saveToServer(){
     return "error";
   }
 }
-
+ 
+   
 async function saveToFilePicker(jsonObj, suggestedName){
   if (suggestedName === void 0) suggestedName = "form.json";
   var blob = new Blob([JSON.stringify(jsonObj,null,2)], {type:"application/json"});
@@ -562,14 +740,10 @@ async function saveToFilePicker(jsonObj, suggestedName){
 
 /* ========= Nov 14 Load (DB → bootstrap → form.json) ========= */
 async function load(){
-  // 🔐 Block if the admin has logged out from the Portal
-  requireAdminSession(
-    "Your admin session has ended. Please sign in again to edit questions."
-  );
-
   setStatus("Loading…", false);
 
   try {
+    // 1) Resolve assessment for this slug (creates default if needed)
     console.log("[WidgetSurvey] resolving assessment for slug=", SLUG, "via", ADMIN_ASSESS_URL);
     var aRes = await fetch(ADMIN_ASSESS_URL + "?ts=" + Date.now(), { cache: "no-store" });
     if (!aRes.ok) throw new Error("assessment lookup failed: " + aRes.status);
@@ -582,13 +756,16 @@ async function load(){
     ASSESSMENT_ID = aBody.assessmentId;
     console.log("[WidgetSurvey] using assessmentId=", ASSESSMENT_ID);
 
-    if (aBody.schoolId || aBody.school_id){
-      SCHOOL_ID = aBody.schoolId || aBody.school_id;
-      console.log("[WidgetSurvey] using schoolId=", SCHOOL_ID, "for slug", SLUG);
-    }
+// Optional: if backend sends schoolId, capture it
+if (aBody.schoolId || aBody.school_id){
+  SCHOOL_ID = aBody.schoolId || aBody.school_id;
+  console.log("[WidgetSurvey] using schoolId=", SCHOOL_ID, "for slug", SLUG);
+}
 
+    // Minimal schema so exports have a headline
     schema = { headline: "Questions for " + SLUG };
 
+    // 2) Load questions for that assessment
     var qUrl = QUESTIONS_BASE_URL + encodeURIComponent(ASSESSMENT_ID) + "/questions";
     console.log("[WidgetSurvey] loading questions from", qUrl);
 
@@ -597,41 +774,45 @@ async function load(){
       cache: "no-store"
     });
 
-    if (qRes.ok) {
-      var qBody = await qRes.json().catch(function(){ return {}; });
+ if (qRes.ok) {
+  var qBody = await qRes.json().catch(function(){ return {}; });
 
-      survey = [];
+  // survey = array of { id, question, sort_order }
+  survey = [];
 
-      if (qBody && Array.isArray(qBody.questions)) {
-        survey = qBody.questions
-          .map(function(row, idx){
-            var order =
-              (row.sort_order != null && row.sort_order !== "")
-                ? row.sort_order
-                : (row.position != null && row.position !== "")
-                  ? row.position
-                  : (idx + 1);
+ if (qBody && Array.isArray(qBody.questions)) {
+  survey = qBody.questions
+    .map(function(row, idx){
+      // Prefer sort_order, then legacy position, then idx+1
+      var order =
+        (row.sort_order != null && row.sort_order !== "")
+          ? row.sort_order
+          : (row.position != null && row.position !== "")
+            ? row.position
+            : (idx + 1);
 
-            return {
-              id:        row.id || null,
-              question:  row.question != null ? String(row.question) : "",
-              sort_order: order,
-              hasHelp: !!(row.hasHelp || row.has_help)
-            };
-          })
-          .filter(function(item){
-            return item.question.trim() !== "";
-          })
-          .sort(function(a, b){
-            return a.sort_order - b.sort_order;
-          });
-      }
-    } else if (qRes.status === 404) {
-      console.warn("[WidgetSurvey] questions 404 – starting empty list");
-      survey = [];
-    } else {
-      throw new Error("questions load failed: " + qRes.status);
-    }
+      return {
+        id:        row.id || null,
+        question:  row.question != null ? String(row.question) : "",
+        sort_order: order,
+        // if backend joins/flags help, surface it here
+        hasHelp: !!(row.hasHelp || row.has_help)
+      };
+    })
+    .filter(function(item){
+      return item.question.trim() !== "";
+    })
+    .sort(function(a, b){
+      return a.sort_order - b.sort_order;
+    });
+}
+
+} else if (qRes.status === 404) {
+  console.warn("[WidgetSurvey] questions 404 – starting empty list");
+  survey = [];
+} else {
+  throw new Error("questions load failed: " + qRes.status);
+}
 
     $("meta").textContent =
       "Questions for " + SLUG +
@@ -648,6 +829,7 @@ async function load(){
     render();
   }
 }
+
 
 /* ========= Finished dialog ========= */
 function showFinishDialog(){
@@ -677,9 +859,11 @@ async function finishedFlow(){
   if (choice === "save"){
     var r = await saveToServer();
     if (r !== "server"){
+      // we already set an error status inside saveToServer
       return;
     }
   }
+  // "nosave" or "cancel" → do nothing
 }
 
 function confirmRemove(i){
@@ -699,7 +883,7 @@ function wireRowActions(){
     if (!btn) return;
     var row = btn.closest(".row"); if (!row) return;
     var i = +row.dataset.idx;
-    switch(btn.dataset.act){
+       switch(btn.dataset.act){
       case "edit":   openEditModal(i); break;
       case "help":   openHelpFor(i);   break;
       case "top":    moveTo(i,0); break;
@@ -711,14 +895,9 @@ function wireRowActions(){
   });
 }
 
+
 window.addEventListener("DOMContentLoaded", function(){
   console.log('🧩 MSS Questions Admin for slug="' + SLUG + '"');
-
-  // Early guard (load() also checks)
-  requireAdminSession(
-    "Your admin session has ended. Please sign in again to edit questions."
-  );
-
   load();
 
   wireRowActions();
@@ -770,17 +949,18 @@ window.addEventListener("DOMContentLoaded", function(){
         var parsed = JSON.parse(await file.text());
         if (!parsed || typeof parsed !== "object") throw new Error("Invalid JSON object.");
         schema = parsed;
-        survey = Array.isArray(parsed.survey)
+        schema = parsed;
+       survey = Array.isArray(parsed.survey)
           ? parsed.survey.map(function(q){
-              if (q && typeof q === "object") {
-                return {
-                  id: q.id || null,
-                  question: q.question != null ? String(q.question) : String(q || "")
-                };
-              }
-              return { id: null, question: String(q || "") };
-            })
-          : [];
+           if (q && typeof q === "object") {
+            return {
+              id: q.id || null,
+              question: q.question != null ? String(q.question) : String(q || "")
+             };
+             }
+             return { id: null, question: String(q || "") };
+         })
+       : [];
 
         setStatus("Imported JSON");
         render();
@@ -824,11 +1004,6 @@ window.addEventListener("DOMContentLoaded", function(){
 });
 
 function openHelpFor(index){
-  // 🔐 Don’t allow help editing without an admin session
-  requireAdminSession(
-    "Your admin session has ended. Please sign in again to edit question help."
-  );
-
   var q = survey[index];
   if (!q){
     setStatus("No question found for help", false);
@@ -864,8 +1039,10 @@ function openHelpFor(index){
       $("helpMax").value = body.maxhelp || "";
       $("helpMin").value = body.minhelp || "";
 
+      // Build template with the actual question inserted
       var template = DEFAULT_HELP_PROMPT.replace("[QUESTION]", text);
 
+      // Decide whether to use DB prompt or the new template
       var prompt = body.prompt || "";
       var isLegacy =
         !prompt ||
@@ -873,11 +1050,12 @@ function openHelpFor(index){
 
       $("helpPrompt").value = isLegacy ? template : prompt;
 
+      // Mark local state based on what we loaded
       if (helpQuestionIndex > -1 && survey[helpQuestionIndex]){
         survey[helpQuestionIndex].hasHelp =
           !!(body.maxhelp || body.minhelp || body.prompt);
       }
-      render();
+      render(); // update indicator
 
       showOverlay("helpOverlay", true);
       setStatus(body.exists ? "Loaded existing help" : "No help yet – ready to add");
@@ -889,10 +1067,12 @@ function openHelpFor(index){
 }
 
 function wireHelpModal(){
+  // Close without saving
   $("helpCancel").addEventListener("click", function(){
     showOverlay("helpOverlay", false);
   });
 
+  // Copy prompt to clipboard
   var copyBtn = $("copyPromptBtn");
   if (copyBtn){
     copyBtn.addEventListener("click", function(){
@@ -913,12 +1093,9 @@ function wireHelpModal(){
     });
   }
 
+  // Save help to server
+   // Save help to server
   $("helpSave").addEventListener("click", function(){
-    // 🔐 Session check before saving help
-    requireAdminSession(
-      "Your admin session has ended. Please sign in again to save help."
-    );
-
     if (!helpQuestionId){
       setStatus("No question selected for help", false);
       return;
@@ -948,6 +1125,7 @@ function wireHelpModal(){
     })
       .then(function(res){
         if (!res.ok){
+          // Try to read body for easier debugging
           return res.text().then(function(txt){
             var msg = "Help save failed (" + res.status + ")";
             console.error(msg, "response:", txt);
@@ -957,6 +1135,7 @@ function wireHelpModal(){
         return res.text().catch(function(){ return ""; });
       })
       .then(function(){
+        // Only mark as having help on TRUE success
         if (helpQuestionIndex > -1 && survey[helpQuestionIndex]){
           survey[helpQuestionIndex].hasHelp =
             !!(body.maxhelp || body.minhelp || body.prompt);
@@ -972,7 +1151,6 @@ function wireHelpModal(){
       });
   });
 }
-
 /* ========= CSV helpers ========= */
 function normalizeCell(s){
   if (s == null) return "";
@@ -1017,3 +1195,6 @@ function findSingleDataColumn(rows){
   }
   return idx;
 }
+</script>
+</body>
+</html>

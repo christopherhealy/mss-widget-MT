@@ -89,3 +89,69 @@ footer {
   font-size: 0.8rem;
   color: #6b7280;
 }
+
+.admin-login-help-row {
+  text-align: center;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.admin-login-help-row .admin-link {
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+/* Center the help link row */
+.admin-login-help-row {
+  text-align: center;
+  margin: 0.75rem 0 1rem;
+}
+
+
+
+/* MSS Premium hover effect */
+.admin-link:hover,
+.admin-link:focus {
+  color: #2d3eff;                   /* MSS blue accent */
+  transform: translateY(-1px);      /* tiny lift */
+  text-decoration: underline;
+}
+
+/* Centered subtle help row */
+.admin-login-help-row {
+  text-align: center;
+  margin: 0.5rem 0 1rem;
+}
+
+/* Match MSS help-text style */
+.admin-link {
+  font-size: 0.85rem;
+  color: #9aa0ab;                 /* same light-gray tone used in MSS help text */
+  text-decoration: none;
+  letter-spacing: 0.2px;
+  transition: color 0.25s ease;
+}
+
+.admin-link:hover,
+.admin-link:focus {
+  color: #6f7682;                 /* slightly darker gray on hover */
+  text-decoration: underline;
+}
+
+/* Center the 'Forgot your password?' link */
+.admin-login-help-row {
+  text-align: center;
+  margin: 8px 0 16px 0;
+}
+
+/* Subtle help-style link (same tone as MSS help text) */
+.admin-help-link {
+  color: #6b7280;           /* Soft gray – same as help text */
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: color 0.2s ease, text-decoration 0.2s ease;
+}
+
+.admin-help-link:hover {
+  color: #374151;           /* Slightly darker on hover */
+  text-decoration: underline;
+}

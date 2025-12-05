@@ -1,101 +1,139 @@
 // /admin-login/AdminLogin.js
+// Handles admin login + creates localStorage session for SchoolPortal/ConfigAdmin
+
 console.log("✅ AdminLogin.js loaded");
 
 (function () {
   "use strict";
 
-  const form       = document.getElementById("admin-login-form");
-  const emailInput = document.getElementById("email");
-  const passInput  = document.getElementById("password");
-  const statusEl   = document.getElementById("login-status");
+  const LS_KEY = "mssAdminSession";
 
-  if (!form) {
-    console.warn("AdminLogin: form #admin-login-form not found");
-    return;
+  const form          = document.getElementById("adminLoginForm");
+  const emailInput    = document.getElementById("email");
+  const passwordInput = document.getElementById("password");
+  const statusEl      = document.getElementById("loginStatus");
+
+  function setStatus(msg, isError) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.classList.toggle("error", !!isError);
   }
 
-  // Show messages under the form
-  function setStatus(msg, isError = false) {
-    if (!statusEl) {
-      if (msg) console[isError ? "warn" : "log"]("Login:", msg);
+  function localStorageAvailable() {
+    try {
+      const testKey = "__mss_ls_test__";
+      window.localStorage.setItem(testKey, "1");
+      window.localStorage.removeItem(testKey);
+      return true;
+    } catch (e) {
+      console.warn("[AdminLogin] localStorage unavailable", e);
+      return false;
+    }
+  }
+
+  function saveAdminSession(admin, schools) {
+    if (!localStorageAvailable()) {
+      setStatus(
+        "Local storage is disabled. Please enable it in your browser to use the admin portal.",
+        true
+      );
       return;
     }
-    statusEl.textContent = msg || "";
-    statusEl.style.display = msg ? "block" : "none";
-    statusEl.style.color = isError ? "#b91c1c" : "#111827";
+
+    const safeSchools = Array.isArray(schools) ? schools : [];
+    const currentSlug =
+      safeSchools.length && safeSchools[0].slug ? safeSchools[0].slug : null;
+
+    const session = {
+      adminId: admin.id,
+      email: admin.email,
+      name: admin.name,
+      // be defensive about the flag name
+      superAdmin: !!(
+        admin.is_super_admin ||
+        admin.super_admin ||
+        admin.isSuperAdmin
+      ),
+      schools: safeSchools.map((s) => ({
+        id: s.id,
+        slug: s.slug,
+        name: s.name,
+      })),
+      currentSlug,
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      window.localStorage.setItem(LS_KEY, JSON.stringify(session));
+      console.log("[AdminLogin] Saved admin session to localStorage:", session);
+    } catch (e) {
+      console.error("[AdminLogin] Failed to save session", e);
+      setStatus(
+        "Could not save login session. Check browser storage settings.",
+        true
+      );
+    }
+
+    return currentSlug;
   }
 
-  // If redirected after password reset, show success banner
-  (function showResetMessageIfNeeded() {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("reset") === "ok") {
-      setStatus("Your password has been reset. Please sign in.", false);
-    }
-  })();
+  async function onLoginSubmit(event) {
+    event.preventDefault();
 
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-
-    const email = (emailInput?.value || "").trim();
-    const password = (passInput?.value || "").trim();
+    const email    = (emailInput && emailInput.value.trim()) || "";
+    const password = (passwordInput && passwordInput.value) || "";
 
     if (!email || !password) {
       setStatus("Please enter both email and password.", true);
       return;
     }
 
-    setStatus("Signing you in…", false);
+    setStatus("Signing in…", false);
 
     try {
-      const res = await fetch("/api/login", {
+      const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.ok) {
-        const msg =
-          data.message ||
-          (res.status === 401
-            ? "Invalid email or password."
-            : "Login failed. Please try again.");
-        setStatus(msg, true);
+      if (!res.ok) {
+        setStatus("Login failed. Check your email and password.", true);
         return;
       }
 
-      // Build admin session object
-      const session = {
-        adminId: data.adminId,
-        email: data.email,
-        name: data.name,
-        isSuperAdmin: !!data.isSuperAdmin,
-        schools: data.schools || [],
-        activeSchool:
-          data.slug ||
-          (Array.isArray(data.schools) && data.schools[0]
-            ? data.schools[0].slug
-            : null),
-      };
-
-      try {
-        window.localStorage.setItem(
-          "mssAdminSession",
-          JSON.stringify(session)
-        );
-      } catch (err) {
-        console.warn("AdminLogin: could not persist session:", err);
+      const data = await res.json();
+      if (!data.ok || !data.admin) {
+        setStatus("Login failed. Check your email and password.", true);
+        return;
       }
 
-      const targetSlug = session.activeSchool || "mss-demo";
-      setStatus("");
+      const admin   = data.admin;
+      const schools = data.schools || [];
 
-      window.location.href =
-        "/admin/SchoolPortal.html?slug=" + encodeURIComponent(targetSlug);
+      const slug = saveAdminSession(admin, schools);
+
+      // Redirect into the portal; for now we still pass slug via query
+      let target = "/admin/SchoolPortal.html";
+      if (slug) {
+        target += `?slug=${encodeURIComponent(slug)}`;
+      }
+
+      setStatus("Login successful. Redirecting…", false);
+      window.location.href = target;
     } catch (err) {
-      console.error("AdminLogin: unexpected error", err);
-      setStatus("Unexpected error during login. Please try again.", true);
+      console.error("[AdminLogin] Login error", err);
+      setStatus("Network or server error during login.", true);
     }
-  });
+  }
+
+  function init() {
+    if (!form) {
+      console.warn("[AdminLogin] adminLoginForm not found");
+      return;
+    }
+    form.addEventListener("submit", onLoginSubmit);
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
 })();

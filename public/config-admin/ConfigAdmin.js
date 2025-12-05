@@ -89,6 +89,60 @@ console.log("✅ ConfigAdmin.js loaded");
     },
   };
 
+// --- Admin session helpers (shared pattern) ---
+const ADMIN_LS_KEY = "mssAdminSession";
+
+function getAdminSession() {
+  try {
+    const raw = window.localStorage.getItem(ADMIN_LS_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.adminId || !session.email) return null;
+    return session;
+  } catch (e) {
+    console.warn("[AdminTool] Failed to read admin session", e);
+    return null;
+  }
+}
+
+/**
+ * Ensure there is a valid admin session. If not, notify the user and
+ * redirect to AdminLogin, then try to close this tab.
+ *
+ * Returns the session object when OK. Dec 5
+ */
+function requireAdminSession(reason) {
+  const session = getAdminSession();
+  if (session) return session;
+
+  const msg =
+    reason ||
+    "Your admin session has ended. Please sign in again to manage school settings.";
+
+  // Use our inline status instead of a browser alert
+  try {
+    if (typeof setStatus === "function") {
+      setStatus(msg, true);
+    } else {
+      console.warn("[ConfigAdmin] " + msg);
+    }
+  } catch (e) {
+    console.warn("[ConfigAdmin] Unable to show status for ended session", e);
+  }
+
+  // Send them back to the login screen
+  window.location.href = "/admin-login/AdminLogin.html";
+
+  // If this window was opened via window.open, this will usually work.
+  try {
+    window.close();
+  } catch (e) {
+    // ignore – some browsers block this
+  }
+
+  // Prevent any further logic in this call stack
+  throw new Error("Admin session missing – redirected to login.");
+}
   /* ------------------------------------------------------------------ */
   /* STATUS HELPER                                                      */
   /* ------------------------------------------------------------------ */
@@ -179,6 +233,11 @@ console.log("✅ ConfigAdmin.js loaded");
     if (!SLUG) return;
     if (!schoolNameInput) return;
 
+    // 🔐 Session check
+      requireAdminSession(
+        "Your admin session has ended. Please sign in again to rename schools."
+     );
+
     const newName = (schoolNameInput.value || "").trim();
     if (!newName) {
       alert("Please enter a new school name.");
@@ -242,6 +301,12 @@ console.log("✅ ConfigAdmin.js loaded");
 
   async function loadSchoolsForSelector() {
     if (!schoolSelector) return;
+
+     // 🔐 Session check
+     requireAdminSession(
+        "Your admin session has ended. Please sign in again to view schools."
+     );
+
 
     try {
       const res = await fetch(`${ADMIN_API_BASE}/api/admin/schools`);
@@ -326,7 +391,13 @@ console.log("✅ ConfigAdmin.js loaded");
   /* ------------------------------------------------------------------ */
 
   async function loadFromServer() {
-    if (!SLUG) {
+    
+  // 🔐 Ensure session is still valid
+     requireAdminSession(
+      "Your admin session has ended. Please sign in again to load settings."
+    );
+
+   if (!SLUG) {
       console.warn("[ConfigAdmin] loadFromServer called with no SLUG");
       return;
     }
@@ -548,6 +619,11 @@ console.log("✅ ConfigAdmin.js loaded");
   async function onSaveClick() {
     if (!dirty) return;
 
+   // 🔐 Re-check session on every save
+  requireAdminSession(
+    "Your admin session has ended. Please sign in again before saving settings."
+  );
+
     saveBtn.disabled = true;
     setStatus("Saving to Postgres…");
 
@@ -635,6 +711,11 @@ console.log("✅ ConfigAdmin.js loaded");
 
   async function loadDashboardTemplates() {
     if (!dashboardTemplateSelect) return;
+
+    // 🔐 Session check
+      requireAdminSession(
+       "Your admin session has ended. Please sign in again to load dashboard templates."
+    );
 
     try {
       const res = await fetch(`${ADMIN_API_BASE}/api/admin/dashboards`);
@@ -734,6 +815,11 @@ console.log("✅ ConfigAdmin.js loaded");
       console.log("[ConfigAdmin] widgetTemplateSelect not found");
       return;
     }
+
+   // 🔐 Session check
+      requireAdminSession(
+        "Your admin session has ended. Please sign in again to load widget templates."
+      );
 
     console.log("[ConfigAdmin] loadWidgetTemplates() starting");
 
@@ -870,10 +956,17 @@ console.log("✅ ConfigAdmin.js loaded");
 
   // Open ImageViewer in a popup window (same-origin)
   function openImageViewer() {
+
+   // 🔐 Session check
+     requireAdminSession(
+        "Your admin session has ended. Please sign in again to change the widget image."
+     );
+
     if (!SLUG) {
       setStatus("Missing slug – cannot open image viewer.", true);
       return;
     }
+
 
     const currentUrl  = (STATE.image && STATE.image.url) || "";
     const currentSize = (STATE.image && STATE.image.sizePercent) || 100;
@@ -954,6 +1047,13 @@ console.log("✅ ConfigAdmin.js loaded");
   /* ------------------------------------------------------------------ */
 
   async function init() {
+  
+     // 🔐 Hard stop if there is no valid admin session Dec 5
+     const session = requireAdminSession(
+       "Your admin session has ended. Please sign in again to manage school settings."
+    );
+
+    console.log("[ConfigAdmin] Admin session:", session);   
     console.log("[ConfigAdmin] init() starting");
 
     const params      = new URLSearchParams(window.location.search);

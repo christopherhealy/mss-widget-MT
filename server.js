@@ -2513,8 +2513,11 @@ app.get("/api/admin/my-schools", async (req, res) => {
     });
   }
 });
-// ---------- ADMIN LOGIN API (multi-school) Nov 30 ---------- //
-app.post("/api/login", async (req, res) => {
+// ---------- ADMIN LOGIN API (multi-school, hash-aware) Dec 4 ---------- //
+// NOTE: requires pgcrypto extension in Postgres:
+//   CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+async function handleAdminLogin(req, res) {
   const body = req.body || {};
   const email = (body.email || "").trim().toLowerCase();
   const password = (body.password || "").trim();
@@ -2528,27 +2531,25 @@ app.post("/api/login", async (req, res) => {
   }
 
   try {
-    const { rows, rowCount } = await pool.query(
+    // 1) Find active admin + verify password using crypt()
+    const adminResult = await pool.query(
       `
       SELECT
-        a.id           AS admin_id,
-        a.full_name    AS admin_name,
-        LOWER(a.email) AS admin_email,
-        a.password_hash,
-        a.is_active,
-        a.is_superadmin,
-        s.id           AS school_id,
-        s.slug,
-        s.name         AS school_name
-      FROM admins a
-      JOIN schools s ON s.id = a.school_id
-      WHERE LOWER(a.email) = $1
-      ORDER BY s.id ASC
+        id,
+        LOWER(email)   AS email,
+        full_name      AS full_name,
+        is_active,
+        is_superadmin
+      FROM admins
+      WHERE LOWER(email) = $1
+        AND is_active    = TRUE
+        AND password_hash = crypt($2, password_hash)
+      LIMIT 1
       `,
-      [email]
+      [email, password]
     );
 
-    if (!rowCount) {
+    if (!adminResult.rowCount) {
       return res.status(401).json({
         ok: false,
         error: "invalid_login",
@@ -2556,25 +2557,39 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    // Only consider active admin rows
-    const activeRows = rows.filter((r) => r.is_active !== false);
+    const admin = adminResult.rows[0];
+    const isSuperAdmin = !!admin.is_superadmin;
 
-    // Password must match at least one active row
-    const matching = activeRows.filter((r) => r.password_hash === password);
-    if (!matching.length) {
-      return res.status(401).json({
-        ok: false,
-        error: "invalid_login",
-        message: "Invalid email or password.",
-      });
+    // 2) Load schools this admin can see
+    let schoolsResult;
+
+    if (isSuperAdmin) {
+      // Super admins see all schools
+      schoolsResult = await pool.query(
+        `
+        SELECT id, slug, name
+        FROM schools
+        ORDER BY name
+        `
+      );
+    } else {
+      // Normal admins see schools from admin_schools mapping
+      schoolsResult = await pool.query(
+        `
+        SELECT s.id, s.slug, s.name
+        FROM admin_schools x
+        JOIN schools s ON s.id = x.school_id
+        WHERE x.admin_id = $1
+        ORDER BY s.name
+        `,
+        [admin.id]
+      );
     }
 
-    // Once password is confirmed, all active schools for this email are accessible
-    const isSuperAdmin = activeRows.some((r) => !!r.is_superadmin);
-    const schools = activeRows.map((r) => ({
-      schoolId: r.school_id,
-      slug: r.slug,
-      name: r.school_name || r.slug,
+    const schools = (schoolsResult.rows || []).map((s) => ({
+      id: s.id,
+      slug: s.slug,
+      name: s.name || s.slug,
     }));
 
     if (!schools.length) {
@@ -2585,43 +2600,32 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    const first = matching[0];
-
-    if (schools.length === 1) {
-      const s = schools[0];
-      return res.json({
-        ok: true,
-        multiSchool: false,
-        isSuperAdmin,
-        adminId: first.admin_id,
-        name: first.admin_name,
-        email: first.admin_email,
-        schoolId: s.schoolId,
-        slug: s.slug,
-        schoolName: s.name,
-        schools, // still give full list
-      });
-    }
-
-    // Multi-school: let the front-end show a chooser
+    // 3) Shape response for AdminLogin.js (which creates localStorage session)
     return res.json({
       ok: true,
-      multiSchool: true,
-      isSuperAdmin,
-      adminId: first.admin_id,
-      name: first.admin_name,
-      email: first.admin_email,
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.full_name,
+        is_super_admin: isSuperAdmin, // AdminLogin.js is defensive about this flag name
+      },
       schools,
     });
   } catch (err) {
-    console.error("POST /api/login error:", err);
+    console.error("POST /api/admin/login error:", err);
     return res.status(500).json({
       ok: false,
       error: "server_error",
       message: "Could not log in. Please try again.",
     });
   }
-});
+}
+
+// Primary endpoint for the new AdminLogin.js
+app.post("/api/admin/login", handleAdminLogin);
+
+// Optional: keep old path for backward compatibility Dec 5
+app.post("/api/login", handleAdminLogin);
 /* ------------------------------------------------------------------
    STUDENT ENROLLMENT
    POST /api/student/enroll

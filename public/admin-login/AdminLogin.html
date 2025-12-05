@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
 
   <!-- Page-specific styling -->
-  <link rel="stylesheet" href="/themes/AdminLogin.css">
+  <link rel="stylesheet" href="AdminLogin.css" />
 </head>
 
 <body>
@@ -29,7 +29,8 @@
       <h2>Admin Login</h2>
       <p>Enter your email and password to continue.</p>
 
-      <form id="admin-login-form">
+      <!-- ✅ ID now matches AdminLogin.js -->
+      <form id="adminLoginForm">
         <label for="email">Admin email</label>
         <input
           id="email"
@@ -50,13 +51,17 @@
           required
         />
 
-        <div class="admin-login-footer-row">
-          <a href="/admin-login/PasswordResetRequest.html" class="admin-link">
-            Forgot your password?
-          </a>
-        </div>
+        <!-- ✅ Help-style, easy to center -->
+        
+        <div class="admin-login-help-row">
+  <a href="/admin-login/PasswordResetRequest.html" class="admin-help-link">
+    Forgot your password?
+  </a>
+</div>
+        
 
-        <p id="login-status" class="admin-status" style="display:none;"></p>
+        <!-- ✅ ID now matches AdminLogin.js -->
+        <p id="loginStatus" class="admin-status" style="display:none;"></p>
 
         <button type="submit" class="admin-login-btn">Sign in</button>
       </form>
