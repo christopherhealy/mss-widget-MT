@@ -62,6 +62,7 @@ function loadAdminSession() {
     before continuing.
    </p>
   `;
+   const embedCopyBtn = document.getElementById("portal-embed-copy");
 
   // -----------------------------------------------------------------------
   // DOM refs
@@ -78,8 +79,10 @@ function loadAdminSession() {
 
   const btnWidgetSurvey = $("btn-widgetSurvey");
   const btnConfigAdmin = $("btn-configAdmin");
-  const btnCopyEmbed = $("btn-copy-embed");
-  const embedSnippetEl = $("embed-snippet");
+  const btnCopyEmbed =
+  $("portal-embed-copy") || $("btn-copy-embed");
+  const embedSnippetEl =
+  $("portal-embed-code") || $("embed-snippet");
 
   const statsLoadingEl = $("stats-loading");
   const statsContentEl = $("stats-content");
@@ -396,24 +399,21 @@ function init() {
   // -----------------------------------------------------------------------
 
   function buildEmbedSnippet() {
-    if (!embedSnippetEl || !CURRENT_SLUG) return;
+  if (!embedSnippetEl || !CURRENT_SLUG) return;
 
-    // Canonical host for the student-facing widget (where mic is allowed)
-    const baseEmbedOrigin = "https://mss-widget-mt.vercel.app";
+  const baseEmbedOrigin = "https://mss-widget-mt.vercel.app";
 
-    let base;
-    if (/^https?:\/\//i.test(widgetPath)) {
-      // widgetPath already a full URL (rare, but allow it)
-      base = widgetPath;
-    } else {
-      // ensure leading slash, then prepend Vercel origin
-      const path = widgetPath.startsWith("/") ? widgetPath : `/${widgetPath}`;
-      base = `${baseEmbedOrigin}${path}`;
-    }
+  let base;
+  if (/^https?:\/\//i.test(widgetPath)) {
+    base = widgetPath;
+  } else {
+    const path = widgetPath.startsWith("/") ? widgetPath : `/${widgetPath}`;
+    base = `${baseEmbedOrigin}${path}`;
+  }
 
-    const url = `${base}?slug=${encodeURIComponent(CURRENT_SLUG)}`;
+  const url = `${base}?slug=${encodeURIComponent(CURRENT_SLUG)}`;
 
-    embedSnippetEl.value = `<iframe
+  embedSnippetEl.value = `<iframe
   src="${url}"
   width="420"
   height="720"
@@ -422,22 +422,21 @@ function init() {
   loading="lazy"
   referrerpolicy="strict-origin-when-cross-origin">
 </iframe>`;
-  }
+}
 
-  function copyEmbedToClipboard() {
-    if (!embedSnippetEl) return;
-    embedSnippetEl.select();
-    embedSnippetEl.setSelectionRange(0, 99999);
-    try {
-      document.execCommand("copy");
-      btnCopyEmbed.textContent = "Copied!";
-      setTimeout(() => (btnCopyEmbed.textContent = "Copy embed code"), 1500);
-    } catch (e) {
-      console.warn("Copy failed", e);
-      alert("Copy failed. Please select the text and copy manually.");
-    }
+function copyEmbedToClipboard() {
+  if (!embedSnippetEl || !btnCopyEmbed) return;
+  embedSnippetEl.select();
+  embedSnippetEl.setSelectionRange(0, 99999);
+  try {
+    document.execCommand("copy");
+    btnCopyEmbed.textContent = "Copied!";
+    setTimeout(() => (btnCopyEmbed.textContent = "Copy embed code"), 1500);
+  } catch (e) {
+    console.warn("Copy failed", e);
+    alert("Copy failed. Please select the text and copy manually.");
   }
-
+}
   function formatShortDateTime(iso) {
     if (!iso) return "";
     const d = new Date(iso);
@@ -989,6 +988,8 @@ function showTranscript(row) {
   // Shared date-range helpers
   // -----------------------------------------------------------------------
 
+
+
   function parseYmd(str) {
     if (!str) return null;
     const [y, m, d] = str.split("-").map((v) => Number(v));
@@ -1449,6 +1450,37 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
 `.trim();
   }
 
+function wireEmbedCopy() {
+  if (!embedCopyBtn || !embedCodeEl) return;
+
+  embedCopyBtn.addEventListener("click", async () => {
+    const text = (embedCodeEl.value || "").trim();
+    if (!text) return;
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for older browsers
+        embedCodeEl.focus();
+        embedCodeEl.select();
+        document.execCommand("copy");
+      }
+
+      const original = embedCopyBtn.textContent;
+      embedCopyBtn.textContent = "Copied!";
+      embedCopyBtn.disabled = true;
+
+      setTimeout(() => {
+        embedCopyBtn.textContent = original;
+        embedCopyBtn.disabled = false;
+      }, 1500);
+    } catch (e) {
+      console.warn("[SchoolPortal] Failed to copy embed code", e);
+      alert("Sorry, your browser wouldn’t let us copy automatically. Please copy the code manually.");
+    }
+  });
+}
   // -----------------------------------------------------------------------
   // Logout support
   // -----------------------------------------------------------------------
@@ -1483,6 +1515,17 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
       logoutBtn.addEventListener("click", handleLogout);
       logoutBtn._mssLogoutBound = true;
     }
+
+   // Embed snippet copy
+     if (btnCopyEmbed && !btnCopyEmbed._mssBound) {
+       btnCopyEmbed.addEventListener("click", (ev) => {
+        ev.preventDefault();
+       console.log("📋 Copy embed clicked");
+       copyEmbedToClipboard();
+      });
+
+    btnCopyEmbed._mssBound = true;
+  }
     // Widget/Dashboard tabs
     if (tabWidgetEl) {
       tabWidgetEl.addEventListener("click", () =>

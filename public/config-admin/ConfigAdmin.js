@@ -2,7 +2,7 @@
 // Single-school mode + School rename + optional multi-school selector
 // Uses settings.{config,form,image} in Postgres
 // Canonical keys: config.widgetPath, config.dashboardPath, config.afterDashboard.*
-// Dec 4 refresh – ImageViewer integration (no direct file upload in this file)
+// Dec 5 – adds admin-session guard + shared multi-school dropdown (my-schools)
 
 console.log("✅ ConfigAdmin.js loaded");
 
@@ -16,7 +16,7 @@ console.log("✅ ConfigAdmin.js loaded");
   const currentSlugLabel = $("currentSlugLabel");   // rename panel label
   const schoolNameInput  = $("schoolNameInput");    // rename panel input
   const schoolRenameBtn  = $("schoolRenameBtn");    // rename panel button
-  const schoolSelector   = $("schoolSelector");     // optional multi-school selector
+  const legacySelector   = $("schoolSelector");     // older School Settings dropdown
 
   const saveBtn  = $("saveBtn");
   const statusEl = $("status");
@@ -45,6 +45,10 @@ console.log("✅ ConfigAdmin.js loaded");
   // After-dashboard fields
   const afterSignupUrlInput  = $("afterDashboard-signupUrl");
   const afterCtaMessageInput = $("afterDashboard-ctaMessage");
+
+  // NEW header dropdown + slug badge (same look as SchoolPortal)
+  const schoolSelectEl = $("config-school-selector") || legacySelector || null;
+  const slugBadgeEl    = $("config-slug-badge") || null;
 
   // Default values if DB is empty
   const DEFAULTS = {
@@ -89,60 +93,273 @@ console.log("✅ ConfigAdmin.js loaded");
     },
   };
 
-// --- Admin session helpers (shared pattern) ---
-const ADMIN_LS_KEY = "mssAdminSession";
+  /* ------------------------------------------------------------------ */
+  /* ADMIN SESSION GUARD                                                */
+  /* ------------------------------------------------------------------ */
 
-function getAdminSession() {
-  try {
-    const raw = window.localStorage.getItem(ADMIN_LS_KEY);
-    if (!raw) return null;
-    const session = JSON.parse(raw);
-    if (!session || !session.adminId || !session.email) return null;
-    return session;
-  } catch (e) {
-    console.warn("[AdminTool] Failed to read admin session", e);
-    return null;
-  }
-}
+  const ADMIN_LS_KEY = "mssAdminSession";
 
-/**
- * Ensure there is a valid admin session. If not, notify the user and
- * redirect to AdminLogin, then try to close this tab.
- *
- * Returns the session object when OK. Dec 5
- */
-function requireAdminSession(reason) {
-  const session = getAdminSession();
-  if (session) return session;
-
-  const msg =
-    reason ||
-    "Your admin session has ended. Please sign in again to manage school settings.";
-
-  // Use our inline status instead of a browser alert
-  try {
-    if (typeof setStatus === "function") {
-      setStatus(msg, true);
-    } else {
-      console.warn("[ConfigAdmin] " + msg);
+  function getAdminSession() {
+    try {
+      const raw = window.localStorage.getItem(ADMIN_LS_KEY);
+      if (!raw) return null;
+      const session = JSON.parse(raw);
+      if (!session || !session.adminId || !session.email) return null;
+      return session;
+    } catch (e) {
+      console.warn("[ConfigAdmin] Failed to read admin session", e);
+      return null;
     }
-  } catch (e) {
-    console.warn("[ConfigAdmin] Unable to show status for ended session", e);
   }
 
-  // Send them back to the login screen
-  window.location.href = "/admin-login/AdminLogin.html";
+  function requireAdminSession(reason) {
+    const session = getAdminSession();
+    if (session) return session;
 
-  // If this window was opened via window.open, this will usually work.
-  try {
-    window.close();
-  } catch (e) {
-    // ignore – some browsers block this
+    const msg =
+      reason ||
+      "Your admin session has ended. Please sign in again to manage school settings.";
+
+    try {
+      if (typeof setStatus === "function") {
+        setStatus(msg, true);
+      } else {
+        console.warn("[ConfigAdmin] " + msg);
+      }
+    } catch (e) {
+      console.warn("[ConfigAdmin] Unable to show status for ended session", e);
+    }
+
+    window.location.href = "/admin-login/AdminLogin.html";
+
+    try {
+      window.close();
+    } catch (e) {
+      // some browsers block window.close()
+    }
+
+    throw new Error("Admin session missing – redirected to login.");
   }
 
-  // Prevent any further logic in this call stack
-  throw new Error("Admin session missing – redirected to login.");
-}
+  /* ------------------------------------------------------------------ */
+  /* SLUG + SCHOOL STATE                                                */
+  /* ------------------------------------------------------------------ */
+
+  const urlParams = new URLSearchParams(window.location.search);
+  if (!SLUG) {
+    SLUG = urlParams.get("slug") || null;
+  }
+
+  let CONFIG_SCHOOLS = [];   // [{id, slug, name, ...}]
+  let CURRENT_SCHOOL = null;
+
+  const CONFIG_SCHOOL_SWITCH_WARNING_HTML = `
+    <p>You have changed schools.</p>
+    <p style="margin-top:6px;">
+      <strong>Important:</strong> Please close any open
+      <b>Config Admin</b> or <b>Question Editor</b> tabs from the previous school
+      before continuing.
+    </p>
+  `;
+
+  function showConfigSchoolChangeWarning() {
+    return new Promise((resolve) => {
+      const dlg = document.getElementById("portal-warning-overlay");
+      const msg = document.getElementById("portal-warning-message");
+      const ok  = document.getElementById("portal-warning-ok");
+
+      if (dlg && msg && ok) {
+        msg.innerHTML = CONFIG_SCHOOL_SWITCH_WARNING_HTML;
+        dlg.style.display = "flex";
+        dlg.setAttribute("aria-hidden", "false");
+
+        ok.onclick = () => {
+          dlg.style.display = "none";
+          dlg.setAttribute("aria-hidden", "true");
+          resolve();
+        };
+      } else {
+        alert(
+          "You have changed schools.\n\n" +
+          "Please close any open Config Admin or Question Editor tabs from the previous school before continuing."
+        );
+        resolve();
+      }
+    });
+  }
+
+  function syncSlugUi() {
+    const slug = SLUG || "—";
+
+    if (slugLabel)        slugLabel.textContent = slug;
+    if (currentSlugLabel) currentSlugLabel.textContent = slug;
+
+    if (slugBadgeEl) {
+      slugBadgeEl.textContent = `Slug: ${slug}`;
+    }
+
+    if (schoolNameInput && CURRENT_SCHOOL && CURRENT_SCHOOL.name) {
+      schoolNameInput.value = CURRENT_SCHOOL.name;
+    }
+
+    if (schoolSelectEl && CONFIG_SCHOOLS.length) {
+      schoolSelectEl.value = slug;
+      schoolSelectEl.disabled = CONFIG_SCHOOLS.length === 1;
+    }
+  }
+
+  function updateSlugUi(slug, name) {
+    SLUG = slug;
+
+    if (CONFIG_SCHOOLS && CONFIG_SCHOOLS.length) {
+      const match = CONFIG_SCHOOLS.find((s) => String(s.slug) === String(slug));
+      if (match) {
+        CURRENT_SCHOOL = match;
+        if (name) {
+          CURRENT_SCHOOL.name = name;
+          match.name = name;
+        }
+      }
+    }
+
+    if (schoolNameInput && name) {
+      schoolNameInput.value = name;
+    }
+
+    syncSlugUi();
+  }
+
+  function updateSlugInUrl(slug) {
+    if (!slug) return;
+    try {
+      const url    = new URL(window.location.href);
+      const params = url.searchParams;
+      params.set("slug", slug);
+      url.search = params.toString();
+      window.history.replaceState({}, "", url.toString());
+    } catch (e) {
+      console.warn("[ConfigAdmin] Could not update URL slug", e);
+    }
+  }
+
+  async function fetchConfigSchoolsForAdmin() {
+    if (!schoolSelectEl) {
+      // layout without dropdown = pure single-school mode
+      return;
+    }
+
+    const session = requireAdminSession(
+      "Your admin session has ended. Please sign in again to manage school settings."
+    );
+
+    const ADMIN_EMAIL = session.email;
+    const ADMIN_ID    = session.adminId || session.id;
+
+    try {
+      const qs = new URLSearchParams();
+      if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
+      if (ADMIN_ID)    qs.set("adminId", String(ADMIN_ID));
+
+      let url = "/api/admin/my-schools";
+      const query = qs.toString();
+      if (query) url += `?${query}`;
+
+      const res  = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok || data.ok === false) {
+        console.warn("[ConfigAdmin] my-schools error:", data);
+        if (!SLUG) {
+          alert(
+            "No schools found for this admin, and no slug in the URL.\n" +
+            "Please contact support."
+          );
+        }
+        return;
+      }
+
+      CONFIG_SCHOOLS = Array.isArray(data.schools) ? data.schools : [];
+      schoolSelectEl.innerHTML = "";
+
+      if (!CONFIG_SCHOOLS.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No schools found";
+        schoolSelectEl.appendChild(opt);
+        schoolSelectEl.disabled = true;
+        return;
+      }
+
+      // Decide which slug we’re on:
+      // 1) If SLUG matches one of the schools, use that.
+      // 2) Otherwise default to the first school.
+      if (
+        !SLUG ||
+        !CONFIG_SCHOOLS.some((s) => String(s.slug) === String(SLUG))
+      ) {
+        CURRENT_SCHOOL = CONFIG_SCHOOLS[0];
+        SLUG = CURRENT_SCHOOL.slug;
+      } else {
+        CURRENT_SCHOOL =
+          CONFIG_SCHOOLS.find((s) => String(s.slug) === String(SLUG)) ||
+          CONFIG_SCHOOLS[0];
+        SLUG = CURRENT_SCHOOL.slug;
+      }
+
+      if (CONFIG_SCHOOLS.length === 1) {
+        // Mary sees her single school, not "No school selected"
+        const s = CONFIG_SCHOOLS[0];
+        const opt = document.createElement("option");
+        opt.value = s.slug;
+        opt.textContent = s.name || s.slug;
+        schoolSelectEl.appendChild(opt);
+        schoolSelectEl.disabled = true;
+        schoolSelectEl.value = s.slug;
+      } else {
+        CONFIG_SCHOOLS.forEach((s) => {
+          const opt = document.createElement("option");
+          opt.value = s.slug;
+          opt.textContent = s.name || s.slug;
+          schoolSelectEl.appendChild(opt);
+        });
+        schoolSelectEl.disabled = false;
+        schoolSelectEl.value = SLUG;
+      }
+
+      syncSlugUi();
+    } catch (err) {
+      console.error("[ConfigAdmin] fetchConfigSchoolsForAdmin failed", err);
+      if (!SLUG) {
+        alert(
+          "Unable to load schools for this admin and no slug was provided.\n" +
+          "Please contact support."
+        );
+      }
+    }
+  }
+
+  async function onConfigSchoolChanged() {
+    if (!schoolSelectEl) return;
+    const newSlug = schoolSelectEl.value;
+    if (!newSlug || newSlug === SLUG) return;
+
+    await showConfigSchoolChangeWarning();
+
+    SLUG = newSlug;
+    CURRENT_SCHOOL =
+      CONFIG_SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
+
+    syncSlugUi();
+
+    STATE.config = { ...DEFAULTS.config };
+    STATE.form   = { ...DEFAULTS.form };
+    STATE.image  = { ...DEFAULTS.image };
+    hydrateFormFromState();
+    setPristine();
+
+    await loadFromServer();
+  }
+
   /* ------------------------------------------------------------------ */
   /* STATUS HELPER                                                      */
   /* ------------------------------------------------------------------ */
@@ -157,9 +374,6 @@ function requireAdminSession(reason) {
   /* ADMIN API BASE + URL HELPERS                                       */
   /* ------------------------------------------------------------------ */
 
-  // Decide which origin to call for admin APIs
-  // - Local dev + Render full-stack → same origin
-  // - Vercel front-end             → call Render backend
   function getAdminApiBase() {
     const origin = window.location.origin || "";
 
@@ -182,7 +396,7 @@ function requireAdminSession(reason) {
 
   function absolutizeImageUrl(path) {
     if (!path) return "";
-    if (/^https?:\/\//i.test(path)) return path; // already absolute
+    if (/^https?:\/\//i.test(path)) return path;
 
     let p = path;
     if (!p.startsWith("/")) {
@@ -193,39 +407,6 @@ function requireAdminSession(reason) {
   }
 
   /* ------------------------------------------------------------------ */
-  /* SLUG / SCHOOL HELPERS                                              */
-  /* ------------------------------------------------------------------ */
-
-  function updateSlugUi(slug, name) {
-    SLUG = slug;
-    if (slugLabel)        slugLabel.textContent = slug || "—";
-    if (currentSlugLabel) currentSlugLabel.textContent = slug || "—";
-
-    if (schoolNameInput && name) {
-      schoolNameInput.value = name;
-    }
-
-    // Keep the selector in sync if present
-    if (schoolSelector && slug) {
-      const opt = schoolSelector.querySelector(`option[value="${slug}"]`);
-      if (opt) schoolSelector.value = slug;
-    }
-  }
-
-  function updateSlugInUrl(slug) {
-    if (!slug) return;
-    try {
-      const url    = new URL(window.location.href);
-      const params = url.searchParams;
-      params.set("slug", slug);
-      url.search = params.toString();
-      window.history.replaceState({}, "", url.toString());
-    } catch (e) {
-      console.warn("[ConfigAdmin] Could not update URL slug", e);
-    }
-  }
-
-  /* ------------------------------------------------------------------ */
   /* SCHOOL RENAME                                                      */
   /* ------------------------------------------------------------------ */
 
@@ -233,10 +414,9 @@ function requireAdminSession(reason) {
     if (!SLUG) return;
     if (!schoolNameInput) return;
 
-    // 🔐 Session check
-      requireAdminSession(
-        "Your admin session has ended. Please sign in again to rename schools."
-     );
+    requireAdminSession(
+      "Your admin session has ended. Please sign in again to rename schools."
+    );
 
     const newName = (schoolNameInput.value || "").trim();
     if (!newName) {
@@ -265,26 +445,23 @@ function requireAdminSession(reason) {
         return;
       }
 
-      // Backend should return { ok: true, slug, name } (and optionally school)
       const newSlug =
         data.slug || (data.school && data.school.slug) || SLUG;
       const name =
         data.name || (data.school && data.school.name) || newName;
 
-      // Update UI + global slug
       updateSlugUi(newSlug, name);
       updateSlugInUrl(newSlug);
 
-      // If selector exists, update the current option text/value
-      if (schoolSelector) {
+      if (schoolSelectEl) {
         const opt =
-          schoolSelector.querySelector(`option[value="${oldSlug}"]`) ||
-          schoolSelector.selectedOptions[0];
+          schoolSelectEl.querySelector(`option[value="${oldSlug}"]`) ||
+          schoolSelectEl.selectedOptions[0];
 
         if (opt) {
           opt.value = newSlug;
           opt.textContent = name || newSlug;
-          schoolSelector.value = newSlug;
+          schoolSelectEl.value = newSlug;
         }
       }
 
@@ -296,108 +473,15 @@ function requireAdminSession(reason) {
   }
 
   /* ------------------------------------------------------------------ */
-  /* MULTI-SCHOOL SELECTOR (OPTIONAL)                                   */
-  /* ------------------------------------------------------------------ */
-
-  async function loadSchoolsForSelector() {
-    if (!schoolSelector) return;
-
-     // 🔐 Session check
-     requireAdminSession(
-        "Your admin session has ended. Please sign in again to view schools."
-     );
-
-
-    try {
-      const res = await fetch(`${ADMIN_API_BASE}/api/admin/schools`);
-      if (!res.ok) {
-        console.warn(
-          "[ConfigAdmin] /api/admin/schools returned",
-          res.status
-        );
-        return;
-      }
-
-      const data = await res.json();
-      const list =
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data.schools)
-          ? data.schools
-          : [];
-
-      if (!list.length) return;
-
-      schoolSelector.innerHTML = "";
-      list.forEach((s) => {
-        if (!s || !s.slug) return;
-        const opt = document.createElement("option");
-        opt.value = s.slug;
-        opt.textContent = s.name || s.slug;
-        schoolSelector.appendChild(opt);
-      });
-
-      // Try to keep current slug selected
-      if (SLUG && list.some((s) => s.slug === SLUG)) {
-        schoolSelector.value = SLUG;
-      } else if (schoolSelector.options.length) {
-        // If our SLUG wasn't in the list, adopt the first option
-        SLUG = schoolSelector.value;
-      }
-    } catch (err) {
-      console.warn("[ConfigAdmin] Could not load schools", err);
-    }
-  }
-
-  function wireSchoolSelector() {
-    if (!schoolSelector) return;
-
-    schoolSelector.addEventListener("change", async () => {
-      const nextSlug = schoolSelector.value;
-      if (!nextSlug || nextSlug === SLUG) return;
-
-      if (dirty) {
-        const ok = window.confirm(
-          "You have unsaved changes. Switch school and discard them?"
-        );
-        if (!ok) {
-          // revert selector
-          schoolSelector.value = SLUG || "";
-          return;
-        }
-      }
-
-      SLUG = nextSlug;
-      updateSlugUi(nextSlug, schoolNameInput ? schoolNameInput.value : null);
-      updateSlugInUrl(nextSlug);
-
-      // Reset state + reload settings for new school
-      STATE.config = { ...DEFAULTS.config };
-      STATE.form   = { ...DEFAULTS.form };
-      STATE.image  = { ...DEFAULTS.image };
-      hydrateFormFromState();
-      setPristine();
-
-      try {
-        await loadFromServer();
-      } catch (err) {
-        console.warn("[ConfigAdmin] loadFromServer error on school change", err);
-      }
-    });
-  }
-
-  /* ------------------------------------------------------------------ */
   /* LOAD FROM SERVER                                                   */
   /* ------------------------------------------------------------------ */
 
   async function loadFromServer() {
-    
-  // 🔐 Ensure session is still valid
-     requireAdminSession(
+    requireAdminSession(
       "Your admin session has ended. Please sign in again to load settings."
     );
 
-   if (!SLUG) {
+    if (!SLUG) {
       console.warn("[ConfigAdmin] loadFromServer called with no SLUG");
       return;
     }
@@ -425,12 +509,10 @@ function requireAdminSession(reason) {
       const data     = await res.json();
       const settings = data.settings || {};
 
-      // Merge with defaults
       const rawConfig = settings.config || {};
       const rawForm   = settings.form || {};
       const rawImage  = settings.image || {};
 
-      // Legacy migration: widgetUrl/dashboardUrl → widgetPath/dashboardPath
       const migratedConfig = { ...rawConfig };
 
       if (!migratedConfig.widgetPath && migratedConfig.widgetUrl) {
@@ -457,9 +539,10 @@ function requireAdminSession(reason) {
         ...rawImage,
       };
 
-      // If server returns school info, update rename panel + selector
       if (data.school && data.school.slug) {
         updateSlugUi(data.school.slug, data.school.name || null);
+      } else {
+        syncSlugUi();
       }
 
       hydrateFormFromState();
@@ -502,7 +585,6 @@ function requireAdminSession(reason) {
       }
     });
 
-    // Dashboard select reflects STATE.config.dashboardPath (with legacy fallback)
     if (dashboardTemplateSelect) {
       const url =
         STATE.config.dashboardPath ||
@@ -512,7 +594,6 @@ function requireAdminSession(reason) {
       updateDashboardPreview();
     }
 
-    // Widget select reflects STATE.config.widgetPath (with legacy fallback)
     if (widgetTemplateSelect) {
       const wurl =
         STATE.config.widgetPath ||
@@ -521,7 +602,6 @@ function requireAdminSession(reason) {
       widgetTemplateSelect.value = wurl;
     }
 
-    // After-dashboard fields
     const after = STATE.config.afterDashboard || {};
     if (afterSignupUrlInput) {
       afterSignupUrlInput.value = after.signupUrl || "";
@@ -537,18 +617,6 @@ function requireAdminSession(reason) {
   /* ------------------------------------------------------------------ */
   /* FORM EVENTS + DIRTY STATE                                          */
   /* ------------------------------------------------------------------ */
-
-  function wireFormEvents() {
-    const allFields = document.querySelectorAll("[data-section][data-key]");
-
-    allFields.forEach((el) => {
-      const eventType = el.type === "checkbox" ? "change" : "input";
-      el.addEventListener(eventType, () => {
-        applyFieldToState(el);
-        setDirty();
-      });
-    });
-  }
 
   function wireAfterDashboardEvents() {
     if (afterSignupUrlInput) {
@@ -594,6 +662,16 @@ function requireAdminSession(reason) {
     if (section === "image" && key === "url") {
       refreshImagePreview();
     }
+
+    setDirty();
+  }
+
+  function wireFormFields() {
+    const allFields = document.querySelectorAll("[data-section][data-key]");
+    allFields.forEach((el) => {
+      const eventType = el.type === "checkbox" ? "change" : "input";
+      el.addEventListener(eventType, () => applyFieldToState(el));
+    });
   }
 
   function setDirty() {
@@ -619,10 +697,9 @@ function requireAdminSession(reason) {
   async function onSaveClick() {
     if (!dirty) return;
 
-   // 🔐 Re-check session on every save
-  requireAdminSession(
-    "Your admin session has ended. Please sign in again before saving settings."
-  );
+    requireAdminSession(
+      "Your admin session has ended. Please sign in again before saving settings."
+    );
 
     saveBtn.disabled = true;
     setStatus("Saving to Postgres…");
@@ -712,9 +789,8 @@ function requireAdminSession(reason) {
   async function loadDashboardTemplates() {
     if (!dashboardTemplateSelect) return;
 
-    // 🔐 Session check
-      requireAdminSession(
-       "Your admin session has ended. Please sign in again to load dashboard templates."
+    requireAdminSession(
+      "Your admin session has ended. Please sign in again to load dashboard templates."
     );
 
     try {
@@ -766,7 +842,6 @@ function requireAdminSession(reason) {
 
       list.forEach(addDashboard);
 
-      // Always ensure default is present
       addDashboard(DEFAULTS.config.dashboardPath);
 
       if (current && !seen.has(current)) {
@@ -816,12 +891,9 @@ function requireAdminSession(reason) {
       return;
     }
 
-   // 🔐 Session check
-      requireAdminSession(
-        "Your admin session has ended. Please sign in again to load widget templates."
-      );
-
-    console.log("[ConfigAdmin] loadWidgetTemplates() starting");
+    requireAdminSession(
+      "Your admin session has ended. Please sign in again to load widget templates."
+    );
 
     try {
       const res = await fetch(`${ADMIN_API_BASE}/api/admin/widgets`);
@@ -837,8 +909,6 @@ function requireAdminSession(reason) {
           : Array.isArray(data.files)
           ? data.files
           : [];
-
-      console.log("[ConfigAdmin] /api/admin/widgets →", list);
 
       const defaultWidgetPath =
         DEFAULTS.config.widgetPath || "/widgets/Widget.html";
@@ -864,7 +934,7 @@ function requireAdminSession(reason) {
       }
 
       list.forEach(addWidget);
-      addWidget("Widget.html"); // ensure baseline exists
+      addWidget("Widget.html");
 
       if (current && !seen.has(current) && current.endsWith(".html")) {
         const opt = document.createElement("option");
@@ -886,11 +956,6 @@ function requireAdminSession(reason) {
       } else {
         STATE.config.widgetPath = widgetTemplateSelect.value || target;
       }
-
-      console.log(
-        "[ConfigAdmin] widgetTemplateSelect final value:",
-        widgetTemplateSelect.value
-      );
     } catch (err) {
       console.warn("Could not load widgets; using default", err);
 
@@ -940,7 +1005,6 @@ function requireAdminSession(reason) {
       imgPreview.style.display = "block";
       imgPreviewPlaceholder.style.display = "none";
 
-      // sizePercent drives max-width of preview; height auto
       imgPreview.style.maxWidth = size + "%";
       imgPreview.style.height   = "auto";
     } else {
@@ -954,19 +1018,15 @@ function requireAdminSession(reason) {
   /* IMAGE VIEWER INTEGRATION                                           */
   /* ------------------------------------------------------------------ */
 
-  // Open ImageViewer in a popup window (same-origin)
   function openImageViewer() {
-
-   // 🔐 Session check
-     requireAdminSession(
-        "Your admin session has ended. Please sign in again to change the widget image."
-     );
+    requireAdminSession(
+      "Your admin session has ended. Please sign in again to change the widget image."
+    );
 
     if (!SLUG) {
       setStatus("Missing slug – cannot open image viewer.", true);
       return;
     }
-
 
     const currentUrl  = (STATE.image && STATE.image.url) || "";
     const currentSize = (STATE.image && STATE.image.sizePercent) || 100;
@@ -977,7 +1037,6 @@ function requireAdminSession(reason) {
       size: String(currentSize),
     });
 
-    // We keep ImageViewer.html under /config-admin for now
     const viewerUrl = `/config-admin/ImageViewer.html?${params.toString()}`;
 
     const features = [
@@ -993,13 +1052,11 @@ function requireAdminSession(reason) {
     }
   }
 
-  // Clicking "Upload Image" just opens the viewer
   function wireImageUpload() {
     if (!imgUploadBtn) return;
     imgUploadBtn.addEventListener("click", openImageViewer);
   }
 
-  // Handle messages sent from ImageViewer.js
   function handleImageViewerMessage(event) {
     const data = event.data || {};
     if (!data || data.source !== "MSSImageViewer") return;
@@ -1039,7 +1096,6 @@ function requireAdminSession(reason) {
     }
   }
 
-  // Register postMessage handler once
   window.addEventListener("message", handleImageViewerMessage);
 
   /* ------------------------------------------------------------------ */
@@ -1047,50 +1103,45 @@ function requireAdminSession(reason) {
   /* ------------------------------------------------------------------ */
 
   async function init() {
-  
-     // 🔐 Hard stop if there is no valid admin session Dec 5
-     const session = requireAdminSession(
-       "Your admin session has ended. Please sign in again to manage school settings."
+    const session = requireAdminSession(
+      "Your admin session has ended. Please sign in again to manage school settings."
     );
 
-    console.log("[ConfigAdmin] Admin session:", session);   
+    console.log("[ConfigAdmin] Admin session:", session);
     console.log("[ConfigAdmin] init() starting");
 
-    const params      = new URLSearchParams(window.location.search);
-    const initialSlug = params.get("slug") || "mss-demo";
-
-    SLUG = initialSlug;
-    updateSlugUi(initialSlug, null);
-
-    wireFormEvents();
+    // Wire base UI
+    wireFormFields();
     wireAfterDashboardEvents();
     wireSave();
     wireImageUpload();
     wireDashboardSelector();
     wireWidgetSelector();
-    wireSchoolSelector();
 
     if (schoolRenameBtn) {
       schoolRenameBtn.addEventListener("click", onSchoolRenameClick);
     }
 
-    // Load school list for selector (if endpoint exists)
-    await loadSchoolsForSelector();
-
-    try {
-      await loadFromServer();
-    } catch (err) {
-      console.warn("[ConfigAdmin] loadFromServer error, using defaults", err);
+    if (schoolSelectEl) {
+      schoolSelectEl.addEventListener("change", onConfigSchoolChanged);
     }
 
-    try {
-      await loadDashboardTemplates();
-      await loadWidgetTemplates();
-    } catch (err) {
-      console.warn("[ConfigAdmin] template loading error", err);
+    const urlSlug = urlParams.get("slug");
+    if (!SLUG && urlSlug) {
+      SLUG = urlSlug;
     }
 
-    console.log("[ConfigAdmin] init() complete");
+    await fetchConfigSchoolsForAdmin();
+
+    if (!SLUG) {
+      SLUG = urlSlug || "mss-demo";
+    }
+
+    syncSlugUi();
+
+    await loadFromServer();
+    await loadDashboardTemplates();
+    await loadWidgetTemplates();
   }
 
   document.addEventListener("DOMContentLoaded", init);

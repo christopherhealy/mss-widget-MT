@@ -9,7 +9,9 @@ var params = new URLSearchParams(window.location.search);
 var SLUG   = (params.get("slug") || "mss-demo").trim();
 
 // 1) Resolve (or auto-create) default assessment for this school slug
-var ADMIN_ASSESS_URL   = "/api/admin/assessments/" + encodeURIComponent(SLUG);
+function getAdminAssessUrl() {
+  return "/api/admin/assessments/" + encodeURIComponent(SLUG);
+}
 
 // 2) Load/save questions by assessmentId
 var QUESTIONS_BASE_URL = "/api/assessments/"; // we'll append ASSESSMENT_ID + "/questions"
@@ -110,6 +112,251 @@ function setStatus(msg, ok){
 function escapeHtml(s){
   return String(s).replace(/[&<>]/g, function(c){
     return ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]);
+  });
+}
+
+// ---------------------------------------------------------------------
+// Admin session + School dropdown (WidgetSurvey) – Dec 5
+// ---------------------------------------------------------------------
+
+const WS_ADMIN_LS_KEY = "mssAdminSession";
+
+// Read admin session from localStorage
+function wsGetAdminSession() {
+  try {
+    const raw = window.localStorage.getItem(WS_ADMIN_LS_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.adminId || !session.email) return null;
+    return session;
+  } catch (e) {
+    console.warn("[WidgetSurvey] Failed to read admin session", e);
+    return null;
+  }
+}
+
+// Optional “hard” check if you want to enforce login here too
+function wsRequireAdminSession(reason) {
+  const session = wsGetAdminSession();
+  if (session) return session;
+
+  const msg =
+    reason ||
+    "Your admin session has ended. Please sign in again to manage questions.";
+
+  // If you already have a setStatus helper, use it; otherwise fall back
+  try {
+    if (typeof setStatus === "function") {
+      setStatus(msg, true);
+    } else {
+      console.warn("[WidgetSurvey] " + msg);
+    }
+  } catch (e) {
+    console.warn("[WidgetSurvey] Unable to show session warning", e);
+  }
+
+  // Send them back to the admin login
+  window.location.href = "/admin-login/AdminLogin.html";
+
+  try {
+    window.close();
+  } catch (_) {
+    // ignore
+  }
+
+  throw new Error("Admin session missing – redirected to login.");
+}
+
+// URL params: we may get assessmentId and/or slug from the Portal
+const wsUrlParams = new URLSearchParams(window.location.search);
+let WS_CURRENT_SLUG = wsUrlParams.get("slug") || null;
+
+// Multi-school state just for WidgetSurvey
+let WS_SCHOOLS = [];      // [{ id, slug, name, ... }]
+let WS_CURRENT_SCHOOL = null;
+
+// DOM ref for the new dropdown
+const wsSchoolSelectEl = document.getElementById("ws-school-select");
+
+/**
+ * Keep the WidgetSurvey school dropdown in sync with WS_CURRENT_SCHOOL/SLUG.
+ * This does *not* change which questions are loaded yet – it’s just UI.
+ */
+function wsSyncSchoolSelectUi() {
+  if (!wsSchoolSelectEl || !WS_SCHOOLS.length) return;
+
+  if (WS_CURRENT_SCHOOL) {
+    wsSchoolSelectEl.value = WS_CURRENT_SCHOOL.slug;
+  } else if (WS_CURRENT_SLUG) {
+    wsSchoolSelectEl.value = WS_CURRENT_SLUG;
+  }
+
+  // Disable if there is only one school (Mary’s case)
+  wsSchoolSelectEl.disabled = WS_SCHOOLS.length === 1;
+}
+
+/**
+ * Load schools for this admin (same backend as SchoolPortal/ConfigAdmin)
+ * and populate the [ School ▼ ] dropdown.
+ */
+async function wsFetchSchoolsForWidgetSurvey() {
+  if (!wsSchoolSelectEl) {
+    // Layout without dropdown → nothing to do
+    return;
+  }
+
+  const session = wsRequireAdminSession(
+    "Your admin session has ended. Please sign in again to manage questions."
+  );
+
+  const ADMIN_EMAIL = session.email;
+  const ADMIN_ID = session.adminId || session.id;
+
+  try {
+    const qs = new URLSearchParams();
+    if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
+    if (ADMIN_ID) qs.set("adminId", String(ADMIN_ID));
+
+    let url = "/api/admin/my-schools";
+    const query = qs.toString();
+    if (query) url += `?${query}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!res.ok || data.ok === false) {
+      console.warn("[WidgetSurvey] my-schools error:", data);
+      return;
+    }
+
+    WS_SCHOOLS = Array.isArray(data.schools) ? data.schools : [];
+    wsSchoolSelectEl.innerHTML = "";
+
+    if (!WS_SCHOOLS.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No schools found";
+      wsSchoolSelectEl.appendChild(opt);
+      wsSchoolSelectEl.disabled = true;
+      return;
+    }
+
+    // Decide current school:
+    // 1) If URL slug matches, prefer that.
+    // 2) Otherwise first school.
+    if (
+      !WS_CURRENT_SLUG ||
+      !WS_SCHOOLS.some((s) => String(s.slug) === String(WS_CURRENT_SLUG))
+    ) {
+      WS_CURRENT_SCHOOL = WS_SCHOOLS[0];
+      WS_CURRENT_SLUG = WS_CURRENT_SCHOOL.slug;
+    } else {
+      WS_CURRENT_SCHOOL =
+        WS_SCHOOLS.find(
+          (s) => String(s.slug) === String(WS_CURRENT_SLUG)
+        ) || WS_SCHOOLS[0];
+      WS_CURRENT_SLUG = WS_CURRENT_SCHOOL.slug;
+    }
+
+    if (WS_SCHOOLS.length === 1) {
+      // Mary: single school, show it and lock the control
+      const s = WS_SCHOOLS[0];
+      const opt = document.createElement("option");
+      opt.value = s.slug;
+      opt.textContent = s.name || s.slug;
+      wsSchoolSelectEl.appendChild(opt);
+      wsSchoolSelectEl.disabled = true;
+    } else {
+      // Multi-school: normal dropdown
+      WS_SCHOOLS.forEach((s) => {
+        const opt = document.createElement("option");
+        opt.value = s.slug;
+        opt.textContent = s.name || s.slug;
+        wsSchoolSelectEl.appendChild(opt);
+      });
+      wsSchoolSelectEl.disabled = false;
+    }
+
+    wsSyncSchoolSelectUi();
+  } catch (err) {
+    console.error("[WidgetSurvey] wsFetchSchoolsForWidgetSurvey failed", err);
+  }
+}
+
+/**
+ * OPTIONAL: handle change of school.
+ *
+ * For now this is read-only: we just snap back and gently remind the admin
+ * that they should use the School Portal to open the Question Editor for
+ * a different school. Once we refactor the loader, we can replace this
+ * with real per-school switching.
+ */
+function wsWireSchoolSelectEvents() {
+  if (!wsSchoolSelectEl) return;
+
+  wsSchoolSelectEl.addEventListener("change", async function () {
+    const newSlug = wsSchoolSelectEl.value;
+    if (!newSlug || newSlug === WS_CURRENT_SLUG) {
+      wsSyncSchoolSelectUi();
+      return;
+    }
+
+    const school =
+      WS_SCHOOLS.find(function (s) { return String(s.slug) === String(newSlug); }) ||
+      null;
+    const schoolName = school && school.name ? school.name : newSlug;
+
+    const title =
+      'Change schools to "' +
+      schoolName +
+      '"? Don\'t forget to save your changes.';
+
+    // twoBtnConfirm(title, cancelLabel, okLabel)
+    const ok = await twoBtnConfirm(title, "Stay", "Switch");
+
+    if (!ok) {
+      // User chose "Stay" → revert dropdown to current school
+      wsSyncSchoolSelectUi();
+      return;
+    }
+
+    // Proceed with the switch
+    WS_CURRENT_SLUG   = newSlug;
+    WS_CURRENT_SCHOOL = school || WS_CURRENT_SCHOOL || null;
+    SLUG              = newSlug;
+
+    // Update assessment lookup endpoint for the new slug
+    ADMIN_ASSESS_URL =
+      "/api/admin/assessments/" + encodeURIComponent(SLUG);
+
+    // Keep the control in sync
+    wsSchoolSelectEl.value = newSlug;
+
+    // Update the URL (?slug=...) and clear any old assessmentId
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.set("slug", newSlug);
+      url.searchParams.delete("assessmentId");
+      window.history.replaceState({}, "", url.toString());
+    } catch (e) {
+      console.warn("[WidgetSurvey] unable to update URL for slug switch", e);
+    }
+
+    // Reset state and reload questions for the new school
+    ASSESSMENT_ID = null;
+    SCHOOL_ID     = null;
+    schema        = { headline: "Questions for " + SLUG };
+    survey        = [];
+    render();
+
+    setStatus("Loading questions for " + schoolName + "…", false);
+
+    try {
+      await load();
+    } catch (err) {
+      console.error("[WidgetSurvey] reload failed after school switch", err);
+      setStatus("Failed to load questions for " + schoolName, false);
+    }
   });
 }
 
@@ -570,8 +817,8 @@ async function load(){
   setStatus("Loading…", false);
 
   try {
-    console.log("[WidgetSurvey] resolving assessment for slug=", SLUG, "via", ADMIN_ASSESS_URL);
-    var aRes = await fetch(ADMIN_ASSESS_URL + "?ts=" + Date.now(), { cache: "no-store" });
+    console.log("[WidgetSurvey] resolving assessment for slug=", SLUG, "via", getAdminAssessUrl());
+    var aRes = await fetch(getAdminAssessUrl() + "?ts=" + Date.now(), { cache: "no-store" });
     if (!aRes.ok) throw new Error("assessment lookup failed: " + aRes.status);
 
     var aBody = await aRes.json().catch(function(){ return {}; });
@@ -711,7 +958,7 @@ function wireRowActions(){
   });
 }
 
-window.addEventListener("DOMContentLoaded", function(){
+window.addEventListener("DOMContentLoaded", async function () {
   console.log('🧩 MSS Questions Admin for slug="' + SLUG + '"');
 
   // Early guard (load() also checks)
@@ -719,35 +966,54 @@ window.addEventListener("DOMContentLoaded", function(){
     "Your admin session has ended. Please sign in again to edit questions."
   );
 
+  // Keep WS_CURRENT_SLUG in sync with the main SLUG
+  if (!WS_CURRENT_SLUG) {
+    WS_CURRENT_SLUG = SLUG;
+  }
+
+  // --- NEW: wire & populate the [ School ▼ ] dropdown ---
+  wsWireSchoolSelectEvents();
+  await wsFetchSchoolsForWidgetSurvey();
+
+  // --- Existing boot sequence (unchanged) ---
   load();
 
   wireRowActions();
   $("addBtnTop").addEventListener("click", openAddModal);
   $("addBtnBottom").addEventListener("click", openAddModal);
   wireAddEdit();
-  wireHelpModal(); 
+  wireHelpModal();
 
   // Export
-  $("exportBtnTop").addEventListener("click", function(){
+  $("exportBtnTop").addEventListener("click", function () {
     var a = document.createElement("a");
     a.href = URL.createObjectURL(
-      new Blob([JSON.stringify(getMerged(),null,2)], {type:"application/json"})
+      new Blob([JSON.stringify(getMerged(), null, 2)], {
+        type: "application/json",
+      })
     );
-    a.setAttribute("download","form.json");
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+    a.setAttribute("download", "form.json");
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () {
+      URL.revokeObjectURL(a.href);
+    }, 1000);
     setStatus("Exported");
   });
-  $("exportBtnBottom").addEventListener("click", function(){
+  $("exportBtnBottom").addEventListener("click", function () {
     $("exportBtnTop").click();
   });
 
   // Save-to-file (manual)
-  var saveMerged = async function(){
+  var saveMerged = async function () {
     var r = await saveToFilePicker(getMerged(), "form.json");
     setStatus(
-      r === "saved" ? "Saved to file" :
-      r === "download" ? "Downloaded" : "Canceled",
+      r === "saved"
+        ? "Saved to file"
+        : r === "download"
+        ? "Downloaded"
+        : "Canceled",
       r !== "canceled"
     );
   };
@@ -760,22 +1026,26 @@ window.addEventListener("DOMContentLoaded", function(){
   $("finishedBtnBottom").addEventListener("click", finishedFlow);
 
   // JSON import
-  (function wireImportJson(){
+  (function wireImportJson() {
     var f = $("importJson");
-    f.addEventListener("change", async function(e){
-      var file = e.target.files && e.target.files[0];
+    f.addEventListener("change", async function (e) {
+      var file = (e.target.files && e.target.files[0]) || null;
       e.target.value = "";
       if (!file) return;
-      try{
+      try {
         var parsed = JSON.parse(await file.text());
-        if (!parsed || typeof parsed !== "object") throw new Error("Invalid JSON object.");
+        if (!parsed || typeof parsed !== "object")
+          throw new Error("Invalid JSON object.");
         schema = parsed;
         survey = Array.isArray(parsed.survey)
-          ? parsed.survey.map(function(q){
+          ? parsed.survey.map(function (q) {
               if (q && typeof q === "object") {
                 return {
                   id: q.id || null,
-                  question: q.question != null ? String(q.question) : String(q || "")
+                  question:
+                    q.question != null
+                      ? String(q.question)
+                      : String(q || ""),
                 };
               }
               return { id: null, question: String(q || "") };
@@ -786,42 +1056,15 @@ window.addEventListener("DOMContentLoaded", function(){
         render();
         $("meta").textContent =
           (schema.headline || "My Speaking Score") +
-          " • " + (new Date()).toLocaleString();
-      }catch(err){
+          " • " +
+          new Date().toLocaleString();
+      } catch (err) {
         alert("Import failed: " + err.message);
       }
     });
   })();
 
-  // CSV import
-  (function wireImportCsv(){
-    var f = $("importCsv");
-    f.addEventListener("change", async function(e){
-      var file = e.target.files && e.target.files[0];
-      e.target.value = "";
-      if (!file) return;
-      var rows = parseCSV(await file.text());
-      if (!rows.length){ setStatus("CSV is empty", false); return; }
-      var col = findSingleDataColumn(rows);
-      if (col === -1){ alert("CSV must contain exactly one column with data."); return; }
-      var first = String(rows[0][col] || "").trim().toLowerCase();
-      var hasHeader = (first === "name" || first === "title");
-      var start = hasHeader ? 1 : 0;
-      var qs = rows.slice(start)
-             .map(function(r){
-               var t = normalizeCell(r[col]);
-               return t ? { id: null, question: t } : null;
-             })
-             .filter(function(item){ return !!item; });
-      if (!qs.length){ setStatus("No questions parsed", false); return; }
-      var choice = await triConfirm("Append to existing questions?","Replace","Cancel","Append");
-      if (choice === "cancel") return;
-      if (choice === "save") survey = survey.concat(qs);
-      else if (choice === "nosave") survey = qs.slice();
-      render(); setStatus("CSV imported");
-    });
-  })();
-});
+/* ========= Help modal: open + wiring ========= */
 
 function openHelpFor(index){
   // 🔐 Don’t allow help editing without an admin session
@@ -974,12 +1217,14 @@ function wireHelpModal(){
 }
 
 /* ========= CSV helpers ========= */
+
 function normalizeCell(s){
   if (s == null) return "";
   var t = String(s).replace(/\r\n/g,"\n").trim();
   t = t.replace(/\n+/g," // ").replace(/\s*\/\/\s*/g," // ");
   return t;
 }
+
 function parseCSV(text){
   var rows = [];
   var field = "", row = [], inQ = false;
@@ -1002,6 +1247,7 @@ function parseCSV(text){
   }
   return rows;
 }
+
 function findSingleDataColumn(rows){
   var max = 0;
   rows.forEach(function(r){ if (r.length > max) max = r.length; });
@@ -1017,3 +1263,52 @@ function findSingleDataColumn(rows){
   }
   return idx;
 }
+
+  // CSV import
+  (function wireImportCsv() {
+    var f = $("importCsv");
+    f.addEventListener("change", async function (e) {
+      var file = (e.target.files && e.target.files[0]) || null;
+      e.target.value = "";
+      if (!file) return;
+      var rows = parseCSV(await file.text());
+      if (!rows.length) {
+        setStatus("CSV is empty", false);
+        return;
+      }
+      var col = findSingleDataColumn(rows);
+      if (col === -1) {
+        alert("CSV must contain exactly one column with data.");
+        return;
+      }
+      var first = String(rows[0][col] || "").trim().toLowerCase();
+      var hasHeader = first === "name" || first === "title";
+      var start = hasHeader ? 1 : 0;
+      var qs = rows
+        .slice(start)
+        .map(function (r) {
+          var t = normalizeCell(r[col]);
+          return t ? { id: null, question: t } : null;
+        })
+        .filter(function (item) {
+          return !!item;
+        });
+      if (!qs.length) {
+        setStatus("No questions parsed", false);
+        return;
+      }
+      var choice = await triConfirm(
+        "Append to existing questions?",
+        "Replace",
+        "Cancel",
+        "Append"
+      );
+      if (choice === "cancel") return;
+      if (choice === "save") survey = survey.concat(qs);
+      else if (choice === "nosave") survey = qs.slice();
+      render();
+      setStatus("CSV imported");
+    });
+  })();
+});
+

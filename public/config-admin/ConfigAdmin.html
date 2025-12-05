@@ -457,6 +457,30 @@
     </div>
   </div>
 
+<!-- Shared school-switch warning modal (ConfigAdmin + SchoolPortal) -->
+<div
+  id="portal-warning-overlay"
+  class="portal-warning-overlay"
+  style="display:none;"
+  aria-hidden="true"
+>
+  <div class="portal-warning-dialog">
+    <h2 class="portal-warning-title">School changed</h2>
+    <div id="portal-warning-message" class="portal-warning-message">
+      <!-- Filled by ConfigAdmin.js / SchoolPortal.js -->
+    </div>
+    <div class="portal-warning-actions">
+      <button
+        id="portal-warning-ok"
+        type="button"
+        class="btn btn-primary"
+      >
+        OK, got it
+      </button>
+    </div>
+  </div>
+</div>
+
   <script src="/config-admin/ConfigAdmin.js"></script>
 </body>
 </html>

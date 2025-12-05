@@ -91,48 +91,99 @@
     .confirmDlg p{margin:0 0 12px 0;color:#374151;font-size:14px}
     .finishBtns,
     .confirmBtns{display:flex;gap:8px;justify-content:flex-end}
+
+    .ws-school-select {
+       min-width: 180px;
+       padding: 4px 10px;
+       border-radius: 999px;
+       border: 1px solid #d4d4d8;
+       font-size: 13px;
+       background-color: #fff;
+     }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="head">
-      <div>
-        <div class="title">All-in-One Questions</div>
-        <div class="muted">
-          Drag with the index circle, edit in place, add/remove, import/export.
-          Saves the <code>survey</code> order &amp; content per <b>slug</b>.
-        </div>
-      </div>
-      <div class="muted" id="meta">Loading…</div>
-    </div>
-
-    <div class="body">
-      <div class="toolbar" style="margin-bottom:10px;">
-        <button id="addBtnTop" type="button" class="btn">＋ Add</button>
-        <div class="spacer"></div>
-        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px;">
-          <input id="importJson" type="file" accept="application/json" style="display:none;"/> Import
-        </label>
-        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px;">
-          <input id="importCsv" type="file" accept=".csv,text/csv" style="display:none;"/> CSV Import
-        </label>
-        <button id="exportBtnTop" type="button" class="btn">Export</button>
-        <button id="saveToFileBtnTop" type="button" class="btn">Save to file…</button>
-        <button id="finishedBtnTop" type="button" class="btn primary">Finished…</button>
-        <span id="status" class="muted"></span>
-      </div>
-
-      <div id="list"></div>
-
-      <div class="toolbar" style="margin-top:10px;">
-        <button id="addBtnBottom" type="button" class="btn">＋ Add</button>
-        <div class="spacer"></div>
-        <button id="exportBtnBottom" type="button" class="btn">Export</button>
-        <button id="saveToFileBtnBottom" type="button" class="btn">Save to file…</button>
-        <button id="finishedBtnBottom" type="button" class="btn primary">Finished…</button>
+  <div class="head">
+    <div>
+      <div class="title">All-in-One Questions</div>
+      <div class="muted">
+        Drag with the index circle, edit in place, add/remove, import/export.
+        Saves the <code>survey</code> order &amp; content per <b>slug</b>.
       </div>
     </div>
+    <div class="muted" id="meta">Loading…</div>
+  </div>
 
+  <div class="body">
+    <!-- Top toolbar: School selector + existing controls -->
+    <div
+      class="toolbar"
+      style="margin-bottom:10px;display:flex;align-items:center;gap:8px;"
+    >
+      <!-- New: school selector (leftmost) -->
+      <select id="ws-school-select" class="ws-school-select">
+        <option value="">School</option>
+      </select>
+
+      <!-- Existing buttons (unchanged IDs) -->
+      <button id="addBtnTop" type="button" class="btn">＋ Add</button>
+
+      <div class="spacer"></div>
+
+      <label
+        class="btn ghost"
+        style="display:inline-flex;align-items:center;gap:8px;"
+      >
+        <input
+          id="importJson"
+          type="file"
+          accept="application/json"
+          style="display:none;"
+        />
+        Import
+      </label>
+
+      <label
+        class="btn ghost"
+        style="display:inline-flex;align-items:center;gap:8px;"
+      >
+        <input
+          id="importCsv"
+          type="file"
+          accept=".csv,text/csv"
+          style="display:none;"
+        />
+        CSV Import
+      </label>
+
+      <button id="exportBtnTop" type="button" class="btn">Export</button>
+      <button id="saveToFileBtnTop" type="button" class="btn">
+        Save to file…
+      </button>
+      <button id="finishedBtnTop" type="button" class="btn primary">
+        Finished…
+      </button>
+
+      <span id="status" class="muted"></span>
+    </div>
+
+    <div id="list"></div>
+
+    <!-- Bottom toolbar unchanged -->
+    <div class="toolbar" style="margin-top:10px;">
+      <button id="addBtnBottom" type="button" class="btn">＋ Add</button>
+      <div class="spacer"></div>
+      <button id="exportBtnBottom" type="button" class="btn">Export</button>
+      <button id="saveToFileBtnBottom" type="button" class="btn">
+        Save to file…
+      </button>
+      <button id="finishedBtnBottom" type="button" class="btn primary">
+        Finished…
+      </button>
+    </div>
+  </div>
+</div>
     <div class="footer" style="padding:12px 16px; border-top:1px solid var(--mss-edge); font-size:12px; color:#6b7280">
       Tip: <b>Export</b> downloads <code>form.json</code>. <b>Save to file…</b> overwrites the chosen file without “form (3)”.
     </div>
