@@ -285,15 +285,31 @@ function cleanTranscriptText(raw) {
 // we may use this later
 //import { createOrReuseSubmissionPlaceholder } from "./utils/submissionPlaceholder.js";
 
-//Dec 3
+//Dec 3 (patched Dec 5)
+// /api/widget/submit
+// - Accepts either:
+//    a) JSON payload with MSS/Vox results (submission.mss/meta/results)
+//    b) Fallback form/JSON without results (we log a minimal row, scores null)
 app.post("/api/widget/submit", async (req, res) => {
   console.log("🎧 /api/widget/submit");
 
   try {
     // ------------------------------------------------------------
     // 0) Normalise incoming payload shape
+    //    - If MSS posts { submission: {...} }, use that
+    //    - If widget posts plain body / FormData fields, use req.body
     // ------------------------------------------------------------
-    const payload = req.body?.submission || req.body || {};
+    let payload = req.body?.submission || req.body || {};
+
+    // If someone sent a raw JSON string, try to parse
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch (err) {
+        console.warn("⚠️ submit payload JSON parse failed, using raw body");
+        payload = {};
+      }
+    }
 
     const slugFromBody  = typeof payload.slug === "string" ? payload.slug.trim() : "";
     const slugFromQuery = typeof req.query?.slug === "string" ? req.query.slug.trim() : "";
@@ -308,7 +324,7 @@ app.post("/api/widget/submit", async (req, res) => {
     }
 
     // ------------------------------------------------------------
-    // 1) Resolve school (so we get school_id)
+    // 1) Resolve school (so we get school_id + settings)
     // ------------------------------------------------------------
     const schoolRes = await pool.query(
       `SELECT id, settings
@@ -332,58 +348,54 @@ app.post("/api/widget/submit", async (req, res) => {
     const schoolConfig = settings.config || settings.widgetConfig || {};
 
     // ------------------------------------------------------------
-    // 2) Extract widget-side metadata
+    // 2) Extract widget-side metadata (all optional)
     // ------------------------------------------------------------
     const studentId =
-      payload.studentId ||
-      payload.student_id ||
+      payload.studentId ??
+      payload.student_id ??
       null;
 
     const questionTxt =
-      payload.question ||
-      payload.questionText ||
-      payload.prompt ||
+      payload.question ??
+      payload.questionText ??
+      payload.prompt ??
       null;
 
     const questionId =
-      payload.question_id ||
-      payload.questionId ||
+      payload.question_id ??
+      payload.questionId ??
       null;
 
     const help_level =
-      payload.help_level ||
-      payload.helpLevel ||
+      payload.help_level ??
+      payload.helpLevel ??
       null;
 
     const help_surface =
-      payload.help_surface ||
-      payload.helpSurface ||
+      payload.help_surface ??
+      payload.helpSurface ??
       null;
 
     const widget_variant =
-      payload.widget_variant ||
-      payload.widgetVariant ||
+      payload.widget_variant ??
+      payload.widgetVariant ??
       null;
 
     const dashboard_variant =
-      payload.dashboard_variant ||
-      payload.dashboardVariant ||
+      payload.dashboard_variant ??
+      payload.dashboardVariant ??
       null;
 
     // ------------------------------------------------------------
-    // 3) MSS / Vox results
+    // 3) MSS / Vox results (now OPTIONAL)
     // ------------------------------------------------------------
-    let mss = payload.mss || payload.meta || payload.results || null;
+    let mss =
+      payload.mss ??
+      payload.meta ??
+      payload.results ??
+      null;
 
-    if (!mss) {
-      console.log("🟦 No MSS results in payload – nothing to save.");
-      return res.status(400).json({
-        ok: false,
-        error: "missing_mss_results",
-        message: "MSS / Vox results are required in the payload.",
-      });
-    }
-
+    // Allow mss to be JSON string
     if (typeof mss === "string") {
       try {
         mss = JSON.parse(mss);
@@ -392,61 +404,82 @@ app.post("/api/widget/submit", async (req, res) => {
       }
     }
 
-    const voxScore =
-      (typeof mss.score === "number" ? mss.score : null) ??
-      (typeof mss.overall_score === "number" ? mss.overall_score : null) ??
-      (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
-      null;
+    if (!mss) {
+      console.log("🟦 No MSS results in payload – inserting submission with null scores.");
+    }
 
-    const transcriptRaw =
-      mss.transcript ||
-      payload.transcript ||
-      null;
+    // Initialise all scoring-related fields to null
+    let voxScore         = null;
+    let transcriptRaw    = null;
+    let transcriptClean  = null;
 
-    const transcriptClean = cleanTranscriptText(transcriptRaw);
+    let mss_fluency      = null;
+    let mss_grammar      = null;
+    let mss_pron         = null;
+    let mss_vocab        = null;
+    let mss_cefr         = null;
+    let mss_toefl        = null;
+    let mss_ielts        = null;
+    let mss_pte          = null;
 
-    const elsa   = mss.elsa_results || mss.elsa || {};
-    const scores = mss.scores || mss.details || {};
+    // If we DO have MSS/Vox blob, derive values as before
+    if (mss && typeof mss === "object") {
+      voxScore =
+        (typeof mss.score === "number" ? mss.score : null) ??
+        (typeof mss.overall_score === "number" ? mss.overall_score : null) ??
+        (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
+        null;
 
-    const mss_fluency =
-      elsa.fluency ??
-      scores.fluency ??
-      null;
+      transcriptRaw =
+        mss.transcript ??
+        payload.transcript ??
+        null;
 
-    const mss_grammar =
-      elsa.grammar ??
-      scores.grammar ??
-      null;
+      transcriptClean = cleanTranscriptText(transcriptRaw);
 
-    const mss_pron =
-      elsa.pronunciation ??
-      scores.pronunciation ??
-      null;
+      const elsa   = mss.elsa_results || mss.elsa || {};
+      const scores = mss.scores || mss.details || {};
 
-    const mss_vocab =
-      elsa.vocabulary ??
-      scores.vocabulary ??
-      null;
+      mss_fluency =
+        elsa.fluency ??
+        scores.fluency ??
+        null;
 
-    const mss_cefr =
-      elsa.cefr_level ??
-      mss.cefr ??
-      mss.cefr_level ??
-      scores.cefr ??
-      scores.cefr_level ??
-      null;
+      mss_grammar =
+        elsa.grammar ??
+        scores.grammar ??
+        null;
 
-    const mss_toefl = elsa.toefl_score ?? scores.toefl ?? null;
-    const mss_ielts = elsa.ielts_score ?? scores.ielts ?? null;
-    const mss_pte   = elsa.pte_score   ?? scores.pte   ?? null;
+      mss_pron =
+        elsa.pronunciation ??
+        scores.pronunciation ??
+        null;
 
-    // Legacy mirrors
+      mss_vocab =
+        elsa.vocabulary ??
+        scores.vocabulary ??
+        null;
+
+      mss_cefr =
+        elsa.cefr_level ??
+        mss.cefr ??
+        mss.cefr_level ??
+        scores.cefr ??
+        scores.cefr_level ??
+        null;
+
+      mss_toefl = elsa.toefl_score ?? scores.toefl ?? null;
+      mss_ielts = elsa.ielts_score ?? scores.ielts ?? null;
+      mss_pte   = elsa.pte_score   ?? scores.pte   ?? null;
+    }
+
+    // Legacy mirrors – fine if all null
     const toefl = mss_toefl;
     const ielts = mss_ielts;
     const pte   = mss_pte;
     const cefr  = mss_cefr;
 
-    const meta = mss; // raw MSS blob
+    const meta = mss || null; // raw MSS blob (or null if none)
 
     // ------------------------------------------------------------
     // 4) INSERT submission row (⚠️ no slug column)
@@ -552,7 +585,6 @@ app.post("/api/widget/submit", async (req, res) => {
     });
   }
 });
-
 /* ---------------------------------------------------------------
    Reports endpoint for School Portal (uses vw_widget_reports)
    --------------------------------------------------------------- */
