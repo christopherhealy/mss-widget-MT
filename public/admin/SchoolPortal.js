@@ -54,6 +54,15 @@ function loadAdminSession() {
   const ADMIN_ID =
     ADMIN_SESSION.adminId != null ? ADMIN_SESSION.adminId : ADMIN_SESSION.id;
 
+  const SCHOOL_SWITCH_WARNING_HTML = `
+   <p>You have changed schools.</p>
+   <p style="margin-top:6px;">
+    <strong>Important:</strong> Please close any open
+    <b>Config Admin</b> or <b>Question Editor</b> tabs from the previous school
+    before continuing.
+   </p>
+  `;
+
   // -----------------------------------------------------------------------
   // DOM refs
   // -----------------------------------------------------------------------
@@ -152,6 +161,34 @@ function init() {
   // -----------------------------------------------------------------------
   // Helpers: Slug / school handling
   // -----------------------------------------------------------------------
+    function showSchoolChangeWarning() {
+    return new Promise((resolve) => {
+      const backdrop = $("portal-warning-backdrop");
+      const msgEl = $("portal-warning-message");
+      const okBtn = $("portal-warning-ok");
+
+      if (backdrop && msgEl && okBtn) {
+        // Use HTML content so we get the nice formatting
+        msgEl.innerHTML = SCHOOL_SWITCH_WARNING_HTML;
+        backdrop.classList.remove("hidden");
+
+        okBtn.onclick = () => {
+          backdrop.classList.add("hidden");
+          // Restore default warning text behavior for other uses
+          msgEl.textContent = ""; 
+          resolve();
+        };
+      } else {
+        // Fallback if modal is missing for some reason
+        window.alert(
+          "You have changed schools.\n\n" +
+          "Important: Please close any open Config Admin or Question Editor tabs " +
+          "from the previous school before continuing."
+        );
+        resolve();
+      }
+    });
+  }
 
   function updateSlugUi() {
     const slug = CURRENT_SLUG || "—";
@@ -300,9 +337,15 @@ function init() {
   async function onSchoolChanged() {
     if (!schoolSelectEl) return;
     const newSlug = schoolSelectEl.value;
-    if (!newSlug) return;
+    if (!newSlug || newSlug === CURRENT_SLUG) return;
 
-    CURRENT_SLUG = newSlug;
+    // Only warn if we are switching *from* an already-selected school
+    if (CURRENT_SLUG) {
+      await showSchoolChangeWarning();
+    }
+
+    CURRENT_SLUG =
+      newSlug;
     CURRENT_SCHOOL =
       SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
 
