@@ -605,6 +605,29 @@ function bootstrapWidget() {
       setStatus("We could not load this widget. Please contact your school.");
     });
 }
+//Dec 6
+// Helper: accept either a Blob/File or a blob: URL string
+async function ensureFileFromBlobLike(blobLike, fileName) {
+  if (blobLike instanceof Blob) {
+    return new File([blobLike], fileName, {
+      type: blobLike.type || "audio/wav",
+    });
+  }
+
+  if (typeof blobLike === "string") {
+    const res = await fetch(blobLike);
+    if (!res.ok) {
+      throw new Error("Failed to fetch audio data from blob URL");
+    }
+    const fetchedBlob = await res.blob();
+    return new File([fetchedBlob], fileName, {
+      type: fetchedBlob.type || "audio/wav",
+    });
+  }
+
+  throw new Error("Unsupported recording blob type");
+}
+
 
 function finishBootstrap() {
   applyBrandingFromForm();
@@ -1422,11 +1445,7 @@ function encodeWav(chunks, inputSampleRate, targetSampleRate = 16000) {
   return new Blob([view], { type: "audio/wav" });
 }
 
-function writeString(view, offset, str) {
-  for (let i = 0; i < str.length; i++) {
-    view.setUint8(offset + i, str.charCodeAt(i));
-  }
-}
+
 function writeString(view, offset, str) {
   for (let i = 0; i < str.length; i++) {
     view.setUint8(offset + i, str.charCodeAt(i));
@@ -1581,8 +1600,9 @@ function onClearFileClick() {
   resetRecordingState();
   setStatus("Cleared. You can record or upload a new file.");
 }
+//Dec 6 update - to correct our Vercel and Render issues 
 
-function onSubmitClick() {
+async function onSubmitClick() {
   const q = currentQuestion();
   if (!q) {
     setStatus("There is no question loaded.");
@@ -1656,13 +1676,23 @@ function onSubmitClick() {
   // Use the real filename if we have one; fall back to answer.wav
   const fileNameForUpload = blobName || "answer.wav";
 
-  console.log("📦 Preparing upload blob:", {
-    name: fileNameForUpload,
-    type: blob && blob.type,
-    size: blob && blob.size,
+  let fileForUpload;
+  try {
+    fileForUpload = await ensureFileFromBlobLike(blob, fileNameForUpload);
+  } catch (err) {
+    console.error("❌ Could not prepare recording file:", err);
+    setStatus("We had trouble reading your recording. Please try again.");
+    hideSubmitProgress();
+    return;
+  }
+
+  console.log("📦 Preparing upload file:", {
+    name: fileForUpload.name,
+    type: fileForUpload.type,
+    size: fileForUpload.size,
   });
 
-  fd.append("file", blob, fileNameForUpload);
+  fd.append("file", fileForUpload, fileForUpload.name);
 
   // 🔹 NEW: derive a canonical question text + ID once
   const questionId = q.id ?? q.question_id ?? null;
@@ -2007,4 +2037,4 @@ $("toggleDebug")?.addEventListener("click", () => {
   w.style.display = w.style.display === "block" ? "none" : "block";
 });
 
-// EOF — MSS Widget Core v1.1 (Nov 23 2025 REGEN) – WidgetMin + WidgetMax / READMAX with help/dash metadata
+// EOF — MSS Widget Core v1.1 (Dec 6 2025) – WidgetMin + WidgetMax / READMAX with help/dash metadata
