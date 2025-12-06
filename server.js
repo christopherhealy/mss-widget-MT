@@ -1063,9 +1063,12 @@ app.post("/api/admin/school/:slug/admins", async (req, res) => {
 
   try {
     const schoolRes = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
+  `SELECT id, settings, api
+     FROM schools
+    WHERE slug = $1
+    LIMIT 1`,
+  [slug]
+);
     if (!schoolRes.rowCount) {
       return res.status(404).json({ ok: false, error: "school_not_found" });
     }
@@ -1550,6 +1553,32 @@ const schoolRes = await pool.query(
       ...defaultConfig,
       ...rawConfig,
     };
+
+
+    // ---- MERGE API CONFIG FROM SCHOOLS.API JSONB Dec 6 ---- //
+    const dbApi = school.api || null;
+
+    // Ensure config.api exists
+    if (!config.api) {
+      config.api = {
+        enabled: true,
+        baseUrl: "",
+        key: "",
+        secret: "",
+      };
+    }
+
+    if (dbApi && typeof dbApi === "object") {
+      config.api = {
+        enabled:
+          dbApi.enabled !== undefined
+            ? dbApi.enabled
+            : config.api.enabled !== false,
+        baseUrl: dbApi.baseUrl || config.api.baseUrl || "",
+        key: dbApi.key || config.api.key || "",
+        secret: dbApi.secret || config.api.secret || "",
+      };
+    }
 
     // --- FORM: settings.form / settings.widgetForm over defaultForm ---
     const rawForm =
