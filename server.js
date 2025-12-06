@@ -1525,19 +1525,19 @@ app.get("/api/list-dashboards", async (req, res) => {
    GET /api/widget/:slug/bootstrap
    ------------------------------------------------------------------ */
 
+// DB-backed widget bootstrap (used by Widget.html / WidgetMax.html)
 app.get("/api/widget/:slug/bootstrap", async (req, res) => {
   const { slug } = req.params;
 
   try {
-    // 1) School + settings
-    // 1) Find school via slug (include settings so we can read dashboardPath)
-const schoolRes = await pool.query(
-  `SELECT id, settings
-     FROM schools
-    WHERE slug = $1
-    LIMIT 1`,
-  [slug]
-);
+    // 1) School + settings + API jsonb
+    const schoolRes = await pool.query(
+      `SELECT id, settings, api
+         FROM schools
+        WHERE slug = $1
+        LIMIT 1`,
+      [slug]
+    );
 
     if (!schoolRes.rowCount) {
       return res.status(404).json({ error: "School not found" });
@@ -1546,43 +1546,41 @@ const schoolRes = await pool.query(
     const school   = schoolRes.rows[0];
     const settings = school.settings || {};
 
-    // --- CONFIG: settings.config / settings.widgetConfig over defaultConfig ---
+    // --- CONFIG: settings.config / settings.widgetConfig over defaultConfig
     const rawConfig =
       settings.config || settings.widgetConfig || {};
+
     const config = {
       ...defaultConfig,
       ...rawConfig,
     };
 
-
-    // ---- MERGE API CONFIG FROM SCHOOLS.API JSONB Dec 6 ---- //
+    // ---- MERGE API CONFIG FROM schools.api JSONB ----
     const dbApi = school.api || null;
 
-    // Ensure config.api exists
-    if (!config.api) {
-      config.api = {
-        enabled: true,
-        baseUrl: "",
-        key: "",
-        secret: "",
-      };
-    }
+    const mergedApi = {
+      // sensible defaults
+      enabled: true,
+      baseUrl: "",
+      key: "",
+      secret: "",
+      // anything already in config.api (e.g. from settings.config)
+      ...(config.api || {}),
+    };
 
     if (dbApi && typeof dbApi === "object") {
-      config.api = {
-        enabled:
-          dbApi.enabled !== undefined
-            ? dbApi.enabled
-            : config.api.enabled !== false,
-        baseUrl: dbApi.baseUrl || config.api.baseUrl || "",
-        key: dbApi.key || config.api.key || "",
-        secret: dbApi.secret || config.api.secret || "",
-      };
+      if (dbApi.enabled !== undefined) mergedApi.enabled = !!dbApi.enabled;
+      if (dbApi.baseUrl) mergedApi.baseUrl = dbApi.baseUrl;
+      if (dbApi.key) mergedApi.key = dbApi.key;
+      if (dbApi.secret) mergedApi.secret = dbApi.secret;
     }
+
+    config.api = mergedApi;
 
     // --- FORM: settings.form / settings.widgetForm over defaultForm ---
     const rawForm =
       settings.form || settings.widgetForm || {};
+
     const form = {
       ...defaultForm,
       ...rawForm,
@@ -1635,7 +1633,7 @@ const schoolRes = await pool.query(
       slug: String(r.id),
     }));
 
-    // 4) Image:
+    // 4) Image (unchanged)
     const uploadedImageUrl =
       settings.image && typeof settings.image.url === "string"
         ? settings.image.url
@@ -1663,9 +1661,8 @@ const schoolRes = await pool.query(
     }
 
     // Helpful logging while we QA labels
-    console.log("📦 /bootstrap form/config for slug", slug, {
-      config,
-      form,
+    console.log("📦 /bootstrap for slug", slug, {
+      api: config.api,
     });
 
     return res.json({
