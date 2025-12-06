@@ -301,22 +301,19 @@
       color: #4b5563;
     }
 
-    .wa-widget-frame-wrap {
-      border-radius: 18px;
-      overflow: hidden;
-      border: 1px solid rgba(148, 163, 184, 0.6);
-      background: #f9fafb;
-      min-height: 420px;
-      display: flex;
-      align-items: stretch;
-      justify-content: stretch;
-    }
+.wa-widget-frame-wrap {
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: #f9fafb;
+  /* no flex, no min-height here */
+  overflow: visible; /* or hidden if you prefer clipping */
+}
 
-    .wa-widget-frame {
-      width: 100%;
-      border: 0;
-      min-height: 420px;
-    }
+.wa-widget-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+}
 
     @media (max-width: 600px) {
       .wa-widget-card {
@@ -430,15 +427,71 @@
         </div>
       </div>
 
-      <div class="wa-widget-frame-wrap">
-        <!-- Embedded MSS widget for Widget Academy -->
-        <iframe
-          class="wa-widget-frame"
-          src="/widgets/WidgetMin.html?slug=widget-academy"
-          title="Widget Academy – Speaking Practice Widget"
-          loading="lazy"
-          allow="microphone"
-        ></iframe>
+<div class="wa-widget-frame-wrap">
+  <div class="mss-widget-container" style="width:100%;display:flex;justify-content:center;">
+    <iframe
+      id="mss-widget-demo"
+      class="wa-widget-frame"
+      src="https://mss-widget-mt.vercel.app/widgets/Widget.html?slug=demo"
+      allow="microphone"
+      loading="lazy"
+      style="
+        width:100%;
+        max-width:640px;
+        border:0;
+        border-radius:18px;
+        box-shadow:0 16px 40px rgba(15,23,42,0.12);
+      ">
+    </iframe>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var iframe  = document.getElementById("mss-widget-demo");
+    var wrapper = document.querySelector(".wa-widget-frame-wrap");
+    if (!iframe) return;
+
+    // 1) Fallback: give it a reasonable starting height
+    var fallback = 820;
+    iframe.style.height = fallback + "px";
+    if (wrapper) wrapper.style.minHeight = fallback + "px";
+
+    // 2) Dynamic height from widget
+    window.addEventListener("message", function (event) {
+      var data = event.data || {};
+      if (!data || data.source !== "mss-widget" || !data.height) return;
+
+      var h = Number(data.height);
+      if (!h || !isFinite(h)) return;
+
+      var finalHeight = h + 24; // breathing room
+      iframe.style.height = finalHeight + "px";
+      iframe.style.minHeight = finalHeight + "px";
+      if (wrapper) wrapper.style.minHeight = finalHeight + "px";
+    });
+  })();
+</script>
+</div>
+<script>
+  (function () {
+    var iframe = document.getElementById("mss-widget-demo");
+    if (!iframe) return;
+
+    window.addEventListener("message", function (event) {
+      var data = event.data || {};
+      if (!data || data.source !== "mss-widget" || !data.height) return;
+
+      var h = Number(data.height);
+      if (!h || !isFinite(h)) return;
+
+      // Add a little breathing room
+      iframe.style.height = (h + 16) + "px";
+    });
+  })();
+</script>
+<!-- End MySpeakingScore widget -->
+
       </div>
     </section>
   </main>

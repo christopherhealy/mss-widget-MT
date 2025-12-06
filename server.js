@@ -85,15 +85,13 @@ const allowedOrigins = [
   "http://localhost:3000",              // local dev (Next/Vite/etc.)
   "http://localhost:5173",
 ];
-
+//Dec 6
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // same-origin/non-browser
-
+    if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-
     console.warn("🚫 CORS blocked origin:", origin);
     return callback(new Error("Not allowed by CORS"));
   },
@@ -102,6 +100,7 @@ const corsOptions = {
   allowedHeaders: [
     "Content-Type",
     "ADMIN-KEY",
+    "X-ADMIN-KEY",      // ✅ add this
     "API-KEY",
     "API-SECRET",
   ],
@@ -1498,26 +1497,6 @@ app.put("/config/images", async (req, res) => {
   }
 });
 
-
-// List dashboard files dynamically
-app.get("/api/list-dashboards", (req, res) => {
-  try {
-    const dashboardsDir = path.join(process.cwd(), "public", "dashboards");
-
-    const files = fs
-      .readdirSync(dashboardsDir)
-      .filter((f) => f.endsWith(".html") && !f.startsWith("_template"))
-      .sort(); // alphabetical (Dashboard1, Dashboard2, etc)
-
-    // Return names without extension, like "Dashboard3"
-    const dashboards = files.map((f) => path.basename(f, ".html"));
-
-    res.json({ dashboards });
-  } catch (err) {
-    console.error("Error listing dashboards:", err);
-    res.status(500).json({ dashboards: [] });
-  }
-});
 
 // List all dashboard HTML templates in /public/dashboards
 app.get("/api/list-dashboards", async (req, res) => {

@@ -337,31 +337,33 @@ function init() {
     }
   }
 
-  async function onSchoolChanged() {
-    if (!schoolSelectEl) return;
-    const newSlug = schoolSelectEl.value;
-    if (!newSlug || newSlug === CURRENT_SLUG) return;
+ async function onSchoolChanged() {
+  if (!schoolSelectEl) return;
+  const newSlug = schoolSelectEl.value;
+  if (!newSlug || newSlug === CURRENT_SLUG) return;
 
-    // Only warn if we are switching *from* an already-selected school
-    if (CURRENT_SLUG) {
-      await showSchoolChangeWarning();
-    }
-
-    CURRENT_SLUG =
-      newSlug;
-    CURRENT_SCHOOL =
-      SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
-
-    updateSlugUi();
-    applySlugToQuickLinks();
-
-    // Reload all slug-dependent data
-    await fetchWidgetMeta();
-    await fetchAssessmentMeta();
-    await fetchStats("today");
-    await fetchTests();
+  // Only warn if we are switching *from* an already-selected school
+  if (CURRENT_SLUG) {
+    await showSchoolChangeWarning();
   }
 
+  CURRENT_SLUG = newSlug;
+  CURRENT_SCHOOL =
+    SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
+
+  updateSlugUi();
+  applySlugToQuickLinks();
+
+  // 🔹 Immediately update the embed snippet for this new slug
+  buildEmbedSnippet();
+
+  // Reload all slug-dependent data (widget meta will ALSO refresh snippet
+  // once it loads, using the correct widgetPath from config)
+  await fetchWidgetMeta();
+  await fetchAssessmentMeta();
+  await fetchStats("today");
+  await fetchTests();
+}
   // -----------------------------------------------------------------------
   // Preview tab helpers
   // -----------------------------------------------------------------------
@@ -394,15 +396,26 @@ function init() {
     iframeEl.src = url;
   }
 
-  // -----------------------------------------------------------------------
-  // Embed snippet builder (for teachers embedding on their site)
-  // -----------------------------------------------------------------------
+ // -----------------------------------------------------------------------
+// Embed snippet builder (responsive with auto-resize + size presets)
+// -----------------------------------------------------------------------
 
-  function buildEmbedSnippet() {
+const EMBED_SIZE_PRESETS = {
+  mobile:  { maxWidth: "420px", minHeight: "600px" },
+  tablet:  { maxWidth: "640px", minHeight: "720px" },   // default
+  desktop: { maxWidth: "840px", minHeight: "820px" },
+};
+
+function buildEmbedSnippet() {
   if (!embedSnippetEl || !CURRENT_SLUG) return;
+
+  const sizeSel = document.getElementById("embed-size");
+  const sizeKey = sizeSel?.value || "tablet";
+  const preset = EMBED_SIZE_PRESETS[sizeKey] || EMBED_SIZE_PRESETS.tablet;
 
   const baseEmbedOrigin = "https://mss-widget-mt.vercel.app";
 
+  // Resolve widgetPath (absolute or relative)
   let base;
   if (/^https?:\/\//i.test(widgetPath)) {
     base = widgetPath;
@@ -413,15 +426,50 @@ function init() {
 
   const url = `${base}?slug=${encodeURIComponent(CURRENT_SLUG)}`;
 
-  embedSnippetEl.value = `<iframe
-  src="${url}"
-  width="420"
-  height="720"
-  style="border:0;max-width:100%;"
-  allow="microphone; camera; autoplay; encrypted-media"
-  loading="lazy"
-  referrerpolicy="strict-origin-when-cross-origin">
-</iframe>`;
+  // Make a reasonably safe ID based on slug
+  const safeSlug = String(CURRENT_SLUG)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-");
+  const iframeId = `mss-widget-${safeSlug || "school"}`;
+
+  // Final embed snippet shown to the admin
+  embedSnippetEl.value =
+`<!-- MySpeakingScore Speaking Widget -->
+<div class="mss-widget-container" style="display:flex;justify-content:center;">
+  <iframe
+    id="${iframeId}"
+    src="${url}"
+    allow="microphone"
+    loading="lazy"
+    style="
+      width:100%;
+      max-width:${preset.maxWidth};
+      height:${preset.minHeight};
+      min-height:${preset.minHeight};
+      border:0;
+      border-radius:18px;
+      box-shadow:0 16px 40px rgba(15,23,42,0.12);
+    ">
+  </iframe>
+</div>
+<script>
+  (function () {
+    var iframe = document.getElementById("${iframeId}");
+    if (!iframe) return;
+
+    window.addEventListener("message", function (event) {
+      var data = event.data || {};
+      if (!data || data.source !== "mss-widget" || !data.height) return;
+
+      var h = Number(data.height);
+      if (!h || !isFinite(h)) return;
+
+      // Add a little breathing room
+      iframe.style.height = (h + 16) + "px";
+    });
+  })();
+</script>
+<!-- End MySpeakingScore widget -->`;
 }
 
 function copyEmbedToClipboard() {
@@ -1701,12 +1749,23 @@ if (copyPromptBtn) {
     }
   }
 
+  // When user changes size Dec 6
+   function initEmbedSizeSelector() {
+     const sizeSel = document.getElementById("embed-size");
+     if (!sizeSel) return;
+
+        sizeSel.addEventListener("change", () => {
+      buildEmbedSnippet();
+      });
+   }
   
   // -----------------------------------------------------------------------
   // Init
   // -----------------------------------------------------------------------
 
-  function initDefaultDateFilters() {
+   
+  
+   function initDefaultDateFilters() {
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, "0");
@@ -1723,13 +1782,9 @@ if (copyPromptBtn) {
     if (filterFromEl) filterFromEl.value = `${yyyy2}-${mm2}-${dd2}`;
   }
 
-  async function init() {
-
-  
+  async function init() {  
     wireEvents();
-    initDefaultDateFilters();
-
-    
+    initDefaultDateFilters();    
 
     // Populate global report view dropdown from /api/list-dashboards
     await loadDashboardOptionsIntoSelect();
@@ -1750,6 +1805,10 @@ if (copyPromptBtn) {
     await fetchStats("today");
     await fetchTests();
   }
+  // NOW that slug + widgetPath are known, wire the size selector Dec 6
+  // and build the initial embed snippet
+  initEmbedSizeSelector();
+  buildEmbedSnippet();
 
   document.addEventListener("DOMContentLoaded", init);
 })();

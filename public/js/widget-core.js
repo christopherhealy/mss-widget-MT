@@ -1,4 +1,4 @@
-// MSS Widget Core v1.1 — Nov 19 2025 (REGEN Nov 25 2025)
+// MSS Widget Core v1.1 — Nov 19 2025 (REGEN Nov 25 2025) 
 // Supports:
 //   • Widget.html      – slider help (MSSHelp overlay)
 //   • WidgetMin.html   – inline MIN-help panel (per-question)
@@ -81,6 +81,54 @@ const HELP_CACHE = {};
   // Default: assume same-origin (Render app or other Node host)
   return "";
 })();
+
+/* -----------------------------------------------------------------------
+   Auto-resize: notify parent page of our height Dec 6
+   ----------------------------------------------------------------------- */
+
+function mssNotifyParentOfHeight() {
+  try {
+    // Only do this if we're actually inside an iframe
+    if (window.parent === window) return;
+
+    const doc = document.documentElement;
+    if (!doc) return;
+
+    // Use scrollHeight as our best “full content” height
+    const height = doc.scrollHeight;
+    if (!height || !Number.isFinite(height)) return;
+
+    window.parent.postMessage(
+      {
+        source: "mss-widget",
+        height,
+      },
+      "*"
+    );
+  } catch (err) {
+    console.warn("[MSS Widget] Unable to post height to parent", err);
+  }
+}
+
+// Fire once on load and again on resize
+window.addEventListener("load", () => {
+  mssNotifyParentOfHeight();
+
+  // A short delayed ping in case fonts/layout shift after load
+  setTimeout(mssNotifyParentOfHeight, 500);
+});
+
+window.addEventListener("resize", () => {
+  mssNotifyParentOfHeight();
+});
+
+// Optional: watch DOM size changes more closely
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => {
+    mssNotifyParentOfHeight();
+  });
+  ro.observe(document.documentElement);
+}
 
 /* -----------------------------------------------------------------------
    API ENDPOINTS
@@ -1317,7 +1365,9 @@ function updateRecUi(isRecording) {
   if (stopBtn) stopBtn.disabled = !isRecording;
 }
 
-function encodeWav(chunks, sampleRate) {
+// Replaces old encodeWav/writeString
+function encodeWav(chunks, inputSampleRate, targetSampleRate = 16000) {
+  // Merge Float32 chunks into one big buffer
   let length = 0;
   for (const c of chunks) length += c.length;
   const pcmData = new Float32Array(length);
@@ -1327,32 +1377,56 @@ function encodeWav(chunks, sampleRate) {
     offset += c.length;
   }
 
-  const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+  // If needed, resample to 16 kHz (or whatever targetSampleRate is)
+  let outData = pcmData;
+  let sampleRate = inputSampleRate;
+
+  if (inputSampleRate && targetSampleRate && inputSampleRate !== targetSampleRate) {
+    const sampleRateRatio = inputSampleRate / targetSampleRate;
+    const newLength = Math.round(pcmData.length / sampleRateRatio);
+    outData = new Float32Array(newLength);
+
+    for (let i = 0; i < newLength; i++) {
+      const idx = Math.floor(i * sampleRateRatio);
+      outData[i] = pcmData[idx] || 0;
+    }
+
+    sampleRate = targetSampleRate;
+  }
+
+  // Allocate WAV buffer (16-bit mono PCM)
+  const buffer = new ArrayBuffer(44 + outData.length * 2);
   const view = new DataView(buffer);
 
   writeString(view, 0, "RIFF");
-  view.setUint32(4, 36 + pcmData.length * 2, true);
+  view.setUint32(4, 36 + outData.length * 2, true);
   writeString(view, 8, "WAVE");
   writeString(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
+  view.setUint32(16, 16, true);      // PCM chunk size
+  view.setUint16(20, 1, true);       // audio format = PCM
+  view.setUint16(22, 1, true);       // channels = 1 (mono)
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate = sampleRate * blockAlign
+  view.setUint16(32, 2, true);       // blockAlign = 2 (16-bit mono)
+  view.setUint16(34, 16, true);      // bitsPerSample = 16
   writeString(view, 36, "data");
-  view.setUint32(40, pcmData.length * 2, true);
+  view.setUint32(40, outData.length * 2, true);
 
+  // PCM samples
   let idx16 = 44;
-  for (let i = 0; i < pcmData.length; i++, idx16 += 2) {
-    let s = Math.max(-1, Math.min(1, pcmData[i]));
+  for (let i = 0; i < outData.length; i++, idx16 += 2) {
+    let s = Math.max(-1, Math.min(1, outData[i]));
     view.setInt16(idx16, s < 0 ? s * 0x8000 : s * 0x7fff, true);
   }
 
   return new Blob([view], { type: "audio/wav" });
 }
 
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i));
+  }
+}
 function writeString(view, offset, str) {
   for (let i = 0; i < str.length; i++) {
     view.setUint8(offset + i, str.charCodeAt(i));
