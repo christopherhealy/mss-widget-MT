@@ -1,4 +1,4 @@
-// /public/config-admin/ImageViewer.js — v1.2
+// /public/config-admin/ImageViewer.js — v1.3 (DB-backed branding)
 // Standalone viewer: file choose + resize + upload + postMessage back to opener.
 
 console.log("✅ ImageViewer.js loaded");
@@ -60,9 +60,16 @@ console.log("✅ ImageViewer.js loaded");
   function absolutizeUrl(path) {
     if (!path) return "";
     if (/^https?:\/\//i.test(path)) return path;
+
     const base = ADMIN_API_BASE || "";
-    if (!path.startsWith("/")) path = `/uploads/${path}`;
-    return `${base}${path}`;
+    let p = path;
+
+    // If backend returns just a filename, serve it from /uploads
+    if (!p.startsWith("/")) {
+      p = `/uploads/${p}`;
+    }
+
+    return `${base}${p}`;
   }
 
   /* -------------------------------------------- */
@@ -77,6 +84,7 @@ console.log("✅ ImageViewer.js loaded");
   }
 
   function describeMeta() {
+    if (!metaEl) return;
     const bits = [];
     if (SLUG) bits.push(`slug=${SLUG}`);
     bits.push(`size=${sizePercent}%`);
@@ -153,26 +161,28 @@ console.log("✅ ImageViewer.js loaded");
   }
 
   /* -------------------------------------------- */
-  /* Upload                                       */
+  /* Upload  → DB-backed branding_files            */
   /* -------------------------------------------- */
 
   async function uploadFileIfNeeded() {
     if (!SLUG) {
       setStatus("Missing slug – cannot upload.", "error");
-      return { url: CURRENT_URL };
+      return { id: null, url: CURRENT_URL };
     }
 
-    // No new file → keep existing URL
+    // No new file → keep existing URL (and whatever id the opener already has)
     if (!selectedFile) {
-      return { url: CURRENT_URL };
+      return { id: null, url: CURRENT_URL };
     }
 
     const formData = new FormData();
     formData.append("image", selectedFile);
 
-    const url = `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(
+    // New canonical branding endpoint:
+    // POST /api/admin/branding/:slug/logo
+    const url = `${ADMIN_API_BASE}/api/admin/branding/${encodeURIComponent(
       SLUG
-    )}/image`;
+    )}/logo`;
 
     console.log("[ImageViewer] Uploading image →", url);
 
@@ -195,14 +205,24 @@ console.log("✅ ImageViewer.js loaded");
       throw new Error(`Upload failed (HTTP ${res.status})`);
     }
 
-    const imageUrl = data.url || data.imageUrl || data.image || data.path;
+    // Expected shape: { ok: true, image: { id, url, alt, path? } }
+    const imageObj = data.image || data.logo || data.file || {};
+    const id = imageObj.id != null ? imageObj.id : data.id;
+
+    let imageUrl =
+      imageObj.url ||
+      imageObj.path ||
+      data.url ||
+      data.imageUrl ||
+      data.path;
+
     if (!imageUrl) {
       throw new Error("Upload succeeded but no image URL returned");
     }
 
     const absolute = absolutizeUrl(imageUrl);
-    console.log("[ImageViewer] Upload success, URL:", absolute);
-    return { url: absolute };
+    console.log("[ImageViewer] Upload success, id:", id, "URL:", absolute);
+    return { id, url: absolute };
   }
 
   /* -------------------------------------------- */
@@ -257,14 +277,18 @@ console.log("✅ ImageViewer.js loaded");
     if (applyBtn) {
       applyBtn.addEventListener("click", async () => {
         try {
-          setStatus("Uploading image…");
-          const { url } = await uploadFileIfNeeded();
+          setStatus("Saving image…");
+          const { id, url } = await uploadFileIfNeeded();
           CURRENT_URL = url;
-          urlLabel.textContent = url || "—";
+          if (urlLabel) {
+            urlLabel.textContent = url || "—";
+          }
           setStatus("Image saved. Sending selection back…");
 
+          // 🔑 Include DB id so ConfigAdmin can persist it in settings.image.id
           postResult("apply", {
             slug: SLUG,
+            id,
             url,
             sizePercent,
           });
@@ -294,8 +318,8 @@ console.log("✅ ImageViewer.js loaded");
     sizeSlider.value = String(sizePercent);
     sizeLabel.textContent = `${sizePercent}%`;
 
-    slugLabel.textContent = SLUG || "—";
-    urlLabel.textContent = CURRENT_URL || "—";
+    if (slugLabel) slugLabel.textContent = SLUG || "—";
+    if (urlLabel) urlLabel.textContent = CURRENT_URL || "—";
 
     if (CURRENT_URL) {
       showImagePreview(CURRENT_URL);

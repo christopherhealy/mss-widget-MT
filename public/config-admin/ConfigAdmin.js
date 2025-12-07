@@ -1057,45 +1057,48 @@ console.log("✅ ConfigAdmin.js loaded");
     imgUploadBtn.addEventListener("click", openImageViewer);
   }
 
-  function handleImageViewerMessage(event) {
-    const data = event.data || {};
-    if (!data || data.source !== "MSSImageViewer") return;
+// Dec 7
+ function handleImageViewerMessage(event) {
+  const data = event.data || {};
+  if (!data || data.source !== "MSSImageViewer") return;
 
-    const payload = data.payload || {};
+  const payload = data.payload || {};
 
-    if (data.type === "cancel") {
-      setStatus("Image viewer closed without changes.");
+  if (data.type === "cancel") {
+    setStatus("Image viewer closed without changes.");
+    return;
+  }
+
+  if (data.type === "apply") {
+    const { slug, url, sizePercent, id } = payload;  // ← id from DB
+
+    if (!url) {
+      setStatus("Image viewer did not return an image URL.", true);
       return;
     }
 
-    if (data.type === "apply") {
-      const { slug, url, sizePercent } = payload;
-
-      if (!url) {
-        setStatus("Image viewer did not return an image URL.", true);
-        return;
-      }
-
-      if (slug && slug !== SLUG) {
-        console.warn(
-          "[ConfigAdmin] Image from different slug:",
-          slug,
-          "(current SLUG=", SLUG, ")"
-        );
-      }
-
-      STATE.image = STATE.image || {};
-      STATE.image.url = url;
-      if (typeof sizePercent === "number") {
-        STATE.image.sizePercent = sizePercent;
-      }
-
-      refreshImagePreview();
-      setDirty();
-      setStatus("Updated image from viewer. Don’t forget to Save.");
+    if (slug && slug !== SLUG) {
+      console.warn(
+        "[ConfigAdmin] Image from different slug:",
+        slug,
+        "(current SLUG=", SLUG, ")"
+      );
     }
-  }
 
+    STATE.image = STATE.image || {};
+    if (typeof id === "number") {
+      STATE.image.id = id;                  // ← store branding_files.id
+    }
+    STATE.image.url = url;
+    if (typeof sizePercent === "number") {
+      STATE.image.sizePercent = sizePercent;
+    }
+
+    refreshImagePreview();
+    setDirty();
+    setStatus("Updated image from viewer. Don’t forget to Save.");
+  }
+}
   window.addEventListener("message", handleImageViewerMessage);
 
   /* ------------------------------------------------------------------ */
