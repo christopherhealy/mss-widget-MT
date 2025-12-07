@@ -194,6 +194,13 @@ app.post(
   handleWidgetImageUpload
 );
 
+// Branding logo route – alias used by older ImageViewer / ConfigAdmin Dev 7
+// POST /api/admin/branding/:slug/logo  (field name: "image")
+app.post(
+  "/api/admin/branding/:slug/logo",
+  imageUpload.single("image"),
+  handleWidgetImageUpload
+);
 
 // === ADMIN: list available widgets (public/widgets/*.html) ============
 app.get("/api/admin/widgets", async (req, res) => {
