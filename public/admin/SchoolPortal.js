@@ -943,19 +943,22 @@ function showPrompt(row) {
   );
 }
   // Transcript viewer – uses transcript_clean
+// Transcript viewer – uses transcript_clean and shows the question first
 function showTranscript(row) {
-  const text = (row && row.transcript_clean) || "";
+  const transcript = (row && row.transcript_clean) || "";
+  const question = (row && row.question) || "";
 
   const backdrop = document.getElementById("portal-transcript-backdrop");
   const body = document.getElementById("portal-transcript-body");
   const title = document.getElementById("portal-transcript-title");
-  const subtitle = document.getElementById("portal-transcript-subtitle"); // optional, if you added it
+  const subtitle = document.getElementById("portal-transcript-subtitle");
   const closeBtn = document.getElementById("portal-transcript-close");
   const okBtn = document.getElementById("portal-transcript-ok");
 
-  // If no fancy markup yet, just fall back to alert
+  // Fallback if modal isn’t in the DOM
   if (!backdrop || !body) {
-    alert(text || "No transcript available.");
+    const header = question ? `Question:\n\n${question}\n\n` : "";
+    alert(header + (transcript || "No transcript available."));
     return;
   }
 
@@ -979,7 +982,16 @@ function showTranscript(row) {
       : "";
   }
 
-  body.textContent = text || "No transcript available.";
+  // Build the body text: Question block, then transcript
+  let bodyText = "";
+  if (question) {
+    bodyText += "Question\n\n";
+    bodyText += question + "\n\n";
+  }
+  bodyText += transcript || "No transcript available.";
+
+  // The CSS uses white-space: pre-wrap, so \n\n gives us nice paragraphs
+  body.textContent = bodyText;
 
   // 🔑 build and store the AI prompt for this row
   if (row) {
