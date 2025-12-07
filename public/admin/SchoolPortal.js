@@ -575,32 +575,208 @@ function copyEmbedToClipboard() {
       console.log("📊 Report view mode:", REPORT_VIEW_MODE);
     });
   }
+// to manage the alt text for question in the table Dec 7
+function truncate(text, length = 40) {
+  if (!text) return "—";
+  text = String(text).trim();
+  return text.length > length ? text.slice(0, length) + "…" : text;
+}
+// -----------------------------------------------------------------------
+// Tests table sorting (in-memory, persisted in localStorage)
+// -----------------------------------------------------------------------
 
-  // -----------------------------------------------------------------------
-  // Tests table rendering
-  // -----------------------------------------------------------------------
+let currentSortKey = null;
+let currentSortDir = "asc";
 
-  function renderTestsTable() {
-    const safe = (v) =>
-      v === null || v === undefined || v === "" ? "—" : v;
+const SORT_CONFIG = {
+  id: {
+    type: "number",
+    get: (row) => row.id,
+  },
+  date: {
+    type: "date",
+    get: (row) => row.submitted_at || row.created_at || row.timestamp,
+  },
+  student: {
+    type: "string",
+    get: (row) =>
+      row.student_name ||
+      row.student_email ||
+      (row.student_id != null ? String(row.student_id) : ""),
+  },
+  question: {
+    type: "string",
+    get: (row) => row.question || "",
+  },
+  toefl: {
+    type: "number",
+    get: (row) => row.mss_toefl ?? row.toefl,
+  },
+  ielts: {
+    type: "number",
+    get: (row) => row.mss_ielts ?? row.ielts,
+  },
+  pte: {
+    type: "number",
+    get: (row) => row.mss_pte ?? row.pte,
+  },
+  cefr: {
+    type: "string",
+    get: (row) => row.mss_cefr || row.cefr || "",
+  },
+  help: {
+    type: "string",
+    get: (row) => formatHelpCell(row),
+  },
+  dash: {
+    type: "string",
+    get: (row) => formatDashCell(row),
+  },
+  fluency: {
+    type: "number",
+    get: (row) => row.mss_fluency,
+  },
+  grammar: {
+    type: "number",
+    get: (row) => row.mss_grammar,
+  },
+  pron: {
+    type: "number",
+    get: (row) => row.mss_pron,
+  },
+  vocab: {
+    type: "number",
+    get: (row) => row.mss_vocab,
+  },
+};
 
-    if (!tests || tests.length === 0) {
-      // 1 (Select) + 1 (Actions) + 19 other data columns = 21
-      testsTbody.innerHTML =
-        `<tr><td colspan="21" class="muted">No data for this period.</td></tr>`;
-      testsCountLabel.textContent = "0 tests";
-      return;
+function loadInitialSort() {
+  try {
+    const raw = window.localStorage.getItem("mssPortalSort");
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.key && SORT_CONFIG[parsed.key]) {
+      currentSortKey = parsed.key;
+      currentSortDir = parsed.dir === "desc" ? "desc" : "asc";
+    }
+  } catch (e) {
+    console.warn("[SchoolPortal] Failed to load sort state", e);
+  }
+}
+
+function saveSortState() {
+  try {
+    window.localStorage.setItem(
+      "mssPortalSort",
+      JSON.stringify({ key: currentSortKey, dir: currentSortDir })
+    );
+  } catch (e) {
+    console.warn("[SchoolPortal] Failed to save sort state", e);
+  }
+}
+
+function sortTestsInPlace() {
+  if (!Array.isArray(tests) || !currentSortKey) return;
+  const cfg = SORT_CONFIG[currentSortKey];
+  if (!cfg || typeof cfg.get !== "function") return;
+
+  const { type, get } = cfg;
+
+  tests.sort((a, b) => {
+    const va = get(a);
+    const vb = get(b);
+
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+
+    let cmp = 0;
+    if (type === "number") {
+      cmp = Number(va) - Number(vb);
+    } else if (type === "date") {
+      cmp = new Date(va) - new Date(vb);
+    } else {
+      cmp = String(va).localeCompare(String(vb));
     }
 
-    const rows = tests.map((t) => {
-      const date = formatShortDateTime(
-        t.submitted_at || t.submittedAt || t.created_at
+    return currentSortDir === "asc" ? cmp : -cmp;
+  });
+}
+
+function updateHeaderSortIndicators() {
+  const table = document.getElementById("tests-table");
+  if (!table) return;
+
+  const ths = table.querySelectorAll("thead th[data-sort-key]");
+  ths.forEach((th) => {
+    th.classList.remove("tests-th-sort-asc", "tests-th-sort-desc");
+    const key = th.dataset.sortKey;
+    if (key && key === currentSortKey) {
+      th.classList.add(
+        currentSortDir === "asc" ? "tests-th-sort-asc" : "tests-th-sort-desc"
       );
+    }
+  });
+}
 
-      const helpText = formatHelpCell(t);
-      const dashText = formatDashCell(t);
+function setSort(key) {
+  if (!key || !SORT_CONFIG[key]) return;
 
-      return `<tr data-id="${safe(t.id)}">
+  if (currentSortKey === key) {
+    currentSortDir = currentSortDir === "asc" ? "desc" : "asc";
+  } else {
+    currentSortKey = key;
+    currentSortDir = "asc";
+  }
+
+  saveSortState();
+  sortTestsInPlace();
+  renderTestsTable();
+  updateHeaderSortIndicators();
+}
+
+function wireTableSorting() {
+  const table = document.getElementById("tests-table");
+  if (!table) return;
+
+  const ths = table.querySelectorAll("thead th");
+  ths.forEach((th) => {
+    const key = th.dataset.sortKey;
+    if (!key || !SORT_CONFIG[key]) return;
+
+    th.style.cursor = "pointer";
+    th.addEventListener("click", () => setSort(key));
+  });
+}
+
+/* -----------------------------------------------------------------------
+   Render Tests Table (16-column schema)
+   ----------------------------------------------------------------------- */
+
+function renderTestsTable() {
+  const safe = (v) =>
+    v === null || v === undefined || v === "" ? "—" : v;
+
+  // No data fallback row
+  if (!tests || tests.length === 0) {
+    testsTbody.innerHTML =
+      `<tr><td colspan="16" class="muted">No data for this period.</td></tr>`;
+    testsCountLabel.textContent = "0 tests";
+    return;
+  }
+
+  const rows = tests.map((t) => {
+    const date = formatShortDateTime(
+      t.submitted_at || t.submittedAt || t.created_at
+    );
+
+    const helpText = formatHelpCell(t);
+    const dashText = formatDashCell(t);
+
+    return `
+      <tr data-id="${safe(t.id)}">
+
+        <!-- 1: Select -->
         <td>
           <input 
             type="checkbox" 
@@ -608,6 +784,8 @@ function copyEmbedToClipboard() {
             data-id="${safe(t.id)}"
           />
         </td>
+
+        <!-- 2: Actions -->
         <td>
           <select class="row-action-select" data-id="${safe(t.id)}">
             <option value="">Actions…</option>
@@ -616,37 +794,54 @@ function copyEmbedToClipboard() {
             <option value="dashboard">Dashboard view</option>
           </select>
         </td>
+
+        <!-- 3: ID -->
         <td>${safe(t.id)}</td>
+
+        <!-- 4: Date -->
         <td>${safe(date)}</td>
+
+        <!-- 5: Student -->
         <td>${safe(t.student_id)}</td>
-        <td>${safe(t.question)}</td>
-        <td>${safe(t.toefl)}</td>
-        <td>${safe(t.ielts)}</td>
-        <td>${safe(t.pte)}</td>
-        <td>${safe(t.cefr)}</td>
-        <td>${safe(t.vox_score)}</td>
+
+        <!-- 6: Question -->
+        <td title="${safe(t.question)}">
+          ${truncate(t.question, 30)}
+        </td>
+
+        <!-- 7–10: MSS scores (truth-source) -->
+        <td>${safe(t.mss_toefl)}</td>
+        <td>${safe(t.mss_ielts)}</td>
+        <td>${safe(t.mss_pte)}</td>
+        <td>${safe(t.mss_cefr)}</td>
+
+        <!-- 11: Help -->
         <td>${safe(helpText)}</td>
+
+        <!-- 12: Dash -->
         <td>${safe(dashText)}</td>
+
+        <!-- 13–16: Subscores -->
         <td>${safe(t.mss_fluency)}</td>
         <td>${safe(t.mss_grammar)}</td>
         <td>${safe(t.mss_pron)}</td>
         <td>${safe(t.mss_vocab)}</td>
-        <td>${safe(t.mss_cefr)}</td>
-        <td>${safe(t.mss_toefl)}</td>
-        <td>${safe(t.mss_ielts)}</td>
-        <td>${safe(t.mss_pte)}</td>
-      </tr>`;
-    });
 
-    testsTbody.innerHTML = rows.join("");
-    testsCountLabel.textContent = `${tests.length} test${
-      tests.length === 1 ? "" : "s"
-    }`;
+      </tr>
+    `;
+  });
 
-    wireRowActionSelects();
-  }
+  testsTbody.innerHTML = rows.join("");
 
-  function wireRowActionSelects() {
+  testsCountLabel.textContent = `${tests.length} test${
+    tests.length === 1 ? "" : "s"
+  }`;
+
+  // 🔑 make sure row actions are wired every render
+  wireRowActionSelects();
+}
+
+function wireRowActionSelects() {
   const selects = testsTbody.querySelectorAll(".row-action-select");
   if (!selects.length) return;
 
@@ -668,13 +863,10 @@ function copyEmbedToClipboard() {
       }
 
       if (value === "transcript") {
-        // Transcript dialog
         showTranscript(row);
       } else if (value === "prompt") {
-        // 🔥 AI prompt in the SAME modal
         showPrompt(row);
       } else if (value === "dashboard") {
-        // Open DashboardViewer for this row
         openDashboardPickerForRow(row);
       }
 
@@ -683,6 +875,7 @@ function copyEmbedToClipboard() {
     });
   });
 }
+  
 //Dec 3
 // AI Prompt viewer – reuses the transcript modal shell
 function showPrompt(row) {
