@@ -301,28 +301,11 @@
       color: #4b5563;
     }
 
-.wa-widget-frame-wrap {
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.6);
-  background: #f9fafb;
-  /* no flex, no min-height here */
-  overflow: visible; /* or hidden if you prefer clipping */
-}
-
-.wa-widget-frame {
-  display: block;
-  width: 100%;
-  border: 0;
-}
-
-    @media (max-width: 600px) {
-      .wa-widget-card {
-        padding: 14px;
-      }
-      .wa-widget-frame-wrap,
-      .wa-widget-frame {
-        min-height: 480px;
-      }
+    .wa-widget-frame-wrap {
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      background: #f9fafb;
+      overflow: visible; /* or hidden if you prefer clipping */
     }
 
     /* Footer ---------------------------------------------------------- */
@@ -427,64 +410,15 @@
         </div>
       </div>
 
-<!-- Example generated for school slug "mss-demo" -->
-<textarea readonly class="embed-snippet">
-<div
-  class="mss-widget"
-  data-mss-slug="mss-demo"
-  data-mss-widget="/widgets/Widget3.html"
-  data-mss-height="520"
-  data-mss-maxwidth="720"
-></div>
-<script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>
-</textarea>
-
-<script>
-  (function () {
-    var iframe  = document.getElementById("mss-widget-demo");
-    var wrapper = document.querySelector(".wa-widget-frame-wrap");
-    if (!iframe) return;
-
-    // 1) Fallback: give it a reasonable starting height
-    var fallback = 820;
-    iframe.style.height = fallback + "px";
-    if (wrapper) wrapper.style.minHeight = fallback + "px";
-
-    // 2) Dynamic height from widget
-    window.addEventListener("message", function (event) {
-      var data = event.data || {};
-      if (!data || data.source !== "mss-widget" || !data.height) return;
-
-      var h = Number(data.height);
-      if (!h || !isFinite(h)) return;
-
-      var finalHeight = h + 24; // breathing room
-      iframe.style.height = finalHeight + "px";
-      iframe.style.minHeight = finalHeight + "px";
-      if (wrapper) wrapper.style.minHeight = finalHeight + "px";
-    });
-  })();
-</script>
-</div>
-<script>
-  (function () {
-    var iframe = document.getElementById("mss-widget-demo");
-    if (!iframe) return;
-
-    window.addEventListener("message", function (event) {
-      var data = event.data || {};
-      if (!data || data.source !== "mss-widget" || !data.height) return;
-
-      var h = Number(data.height);
-      if (!h || !isFinite(h)) return;
-
-      // Add a little breathing room
-      iframe.style.height = (h + 16) + "px";
-    });
-  })();
-</script>
-<!-- End MySpeakingScore widget -->
-
+      <!-- Host div for the embed script -->
+      <div class="wa-widget-frame-wrap">
+        <div
+          class="mss-widget"
+          id="mss-widget-demo"
+          data-mss-slug="mss-demo"
+          data-mss-widget="/widgets/Widget3.html"
+          data-mss-maxwidth="720"
+        ></div>
       </div>
     </section>
   </main>
@@ -492,6 +426,9 @@
   <footer class="wa-footer">
     © <span id="wa-year"></span> Widget Academy · Speaking assessment powered by MySpeakingScore Vox.
   </footer>
+
+  <!-- MSS widget embed script -->
+  <script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>
 
   <script>
     // Tiny helper to keep the footer year fresh
