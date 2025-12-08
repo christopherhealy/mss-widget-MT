@@ -10,7 +10,7 @@
 
     // Allow per-host override, but default to a sane fixed height
     var heightAttr = host.getAttribute("data-mss-height");
-    var HEIGHT     = parseInt(heightAttr || "820", 10); // px
+    var HEIGHT     = parseInt(heightAttr || "780", 10); // px
 
     var maxWidthAttr = host.getAttribute("data-mss-maxwidth");
     var MAX_WIDTH    = parseInt(maxWidthAttr || "720", 10); // px
