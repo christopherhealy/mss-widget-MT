@@ -305,7 +305,7 @@
       border-radius: 18px;
       border: 1px solid rgba(148, 163, 184, 0.6);
       background: #f9fafb;
-      overflow: visible; /* or hidden if you prefer clipping */
+      overflow: visible; /* no fixed height; widget-embed.js sets iframe height */
     }
 
     /* Footer ---------------------------------------------------------- */
@@ -410,7 +410,9 @@
         </div>
       </div>
 
-      <!-- Host div for the embed script -->
+      <!-- Host div for the widget-embed script.
+           widget-embed.js will replace this with a responsive iframe and
+           auto-size it using postMessage from the widget. -->
       <div class="wa-widget-frame-wrap">
         <div
           class="mss-widget"
@@ -427,7 +429,7 @@
     © <span id="wa-year"></span> Widget Academy · Speaking assessment powered by MySpeakingScore Vox.
   </footer>
 
-  <!-- MSS widget embed script -->
+  <!-- MSS widget embed script: builds the iframe and manages height -->
   <script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>
 
   <script>
