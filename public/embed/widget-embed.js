@@ -1,132 +1,115 @@
-// /public/embed/widget-embed.js — v0.1 (universal MSS widget embed)
-// Usage on any external site:
-//
-// <div
-//   class="mss-widget"
-//   data-mss-slug="mss-demo"
-//   data-mss-widget="/widgets/Widget3.html"
-//   data-mss-height="520"
-//   data-mss-maxwidth="720"
-// ></div>
-// <script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>
-
+// /embed/widget-embed.js  — v1.0 drop-in embed Dec 8
 (function () {
   "use strict";
 
-  // Small helper: get origin of THIS script (where the widgets actually live)
-  function getScriptOrigin() {
-    try {
-      var script =
-        document.currentScript ||
-        (function () {
-          var scripts = document.getElementsByTagName("script");
-          return scripts[scripts.length - 1];
-        })();
-
-      if (!script || !script.src) return "";
-      var url = new URL(script.src, window.location.href);
-      return url.origin;
-    } catch (e) {
-      return "";
-    }
-  }
-
-  var EMBED_ORIGIN = getScriptOrigin(); // e.g. https://mss-widget-mt.vercel.app
-
-  function buildIframeSrc(container) {
-    var widgetPath = container.getAttribute("data-mss-widget") || "/widgets/Widget.html";
-    var slug = container.getAttribute("data-mss-slug") || "";
-    var explicitOrigin = container.getAttribute("data-mss-origin") || "";
-
-    var origin = explicitOrigin || EMBED_ORIGIN || "";
-
-    // If widgetPath is absolute (starts with http), use as-is.
-    // Otherwise, resolve against EMBED_ORIGIN.
-    var src;
-    if (/^https?:\/\//i.test(widgetPath)) {
-      src = widgetPath;
-    } else {
-      if (!origin) {
-        // Last-ditch: relative to embedding page
-        src = widgetPath;
-      } else {
-        var base = origin.replace(/\/+$/, "");
-        if (!widgetPath.startsWith("/")) {
-          widgetPath = "/" + widgetPath;
-        }
-        src = base + widgetPath;
-      }
-    }
-
-    try {
-      var url = new URL(src, window.location.href);
-      if (slug && !url.searchParams.has("slug")) {
-        url.searchParams.set("slug", slug);
-      }
-      return url.toString();
-    } catch (e) {
-      // If URL constructor fails for some reason, just return raw
-      return src;
-    }
-  }
-
-  function enhanceContainer(container) {
-    if (!container || container.dataset.mssProcessed === "1") return;
-
-    container.dataset.mssProcessed = "1";
-
-    var iframeSrc = buildIframeSrc(container);
-
-    var height = container.getAttribute("data-mss-height") || "480px";
-    var maxWidth = container.getAttribute("data-mss-maxwidth") || "768px";
-
-    // Ensure the container has a nice shell class
-    if (!container.classList.contains("mss-widget-shell")) {
-      container.classList.add("mss-widget-shell");
-    }
-
-    // Apply minimal styling so it "just looks good" everywhere.
-    if (!container.style.maxWidth) container.style.maxWidth = maxWidth;
-    if (!container.style.marginLeft && !container.style.marginRight) {
-      container.style.marginLeft = "auto";
-      container.style.marginRight = "auto";
-    }
-    if (!container.style.boxSizing) container.style.boxSizing = "border-box";
-
-    // Clear any placeholder text
-    container.innerHTML = "";
-
-    var iframe = document.createElement("iframe");
-    iframe.src = iframeSrc;
-    iframe.setAttribute("allow", "microphone; camera; autoplay");
-    iframe.setAttribute("frameborder", "0");
-    iframe.setAttribute("scrolling", "no");
-
-    iframe.style.width = "100%";
-    iframe.style.minHeight = height;
-    iframe.style.border = "0";
-    iframe.style.display = "block";
-
-    container.appendChild(iframe);
+  // Figure out our own origin so we can resolve /widgets/Widget3.html
+  var scriptEl = document.currentScript || (function () {
+    var scripts = document.getElementsByTagName("script");
+    return scripts[scripts.length - 1];
+  })();
+  var scriptOrigin;
+  try {
+    scriptOrigin = new URL(scriptEl.src).origin;
+  } catch (e) {
+    scriptOrigin = "";
   }
 
   function initEmbeds() {
-    var containers = document.querySelectorAll("[data-mss-widget]");
-    if (!containers || !containers.length) return;
+    var nodes = document.querySelectorAll(".mss-widget[data-mss-widget]");
+    if (!nodes.length) return;
 
-    for (var i = 0; i < containers.length; i++) {
-      enhanceContainer(containers[i]);
-    }
+    nodes.forEach(function (placeholder, index) {
+      var slug = placeholder.getAttribute("data-mss-slug") || "";
+      var widgetPath = placeholder.getAttribute("data-mss-widget") || "/widgets/Widget3.html";
+      var heightAttr = placeholder.getAttribute("data-mss-height") || "520";
+      var maxWidthAttr = placeholder.getAttribute("data-mss-maxwidth") || "720";
+
+      var initialHeight = parseInt(heightAttr, 10);
+      if (!isFinite(initialHeight) || initialHeight <= 0) {
+        initialHeight = 520;
+      }
+      var maxWidth = parseInt(maxWidthAttr, 10);
+      if (!isFinite(maxWidth) || maxWidth <= 0) {
+        maxWidth = 720;
+      }
+
+      // Resolve the widget URL: absolute URLs pass through; relative ones use our origin
+      var widgetUrl;
+      if (/^https?:\/\//i.test(widgetPath)) {
+        widgetUrl = widgetPath;
+      } else {
+        widgetUrl = scriptOrigin + widgetPath;
+      }
+
+      // Outer wrapper that we fully control
+      var wrapper = document.createElement("div");
+      wrapper.className = "mss-widget-wrap";
+      wrapper.style.boxSizing = "border-box";
+      wrapper.style.maxWidth = maxWidth + "px";
+      wrapper.style.margin = "0 auto";
+      wrapper.style.borderRadius = "18px";
+      wrapper.style.border = "1px solid rgba(148,163,184,0.6)";
+      wrapper.style.background = "#f9fafb";
+      wrapper.style.boxShadow = "0 16px 40px rgba(15,23,42,0.12)";
+      wrapper.style.overflow = "hidden";
+
+      // The iframe that will render the actual widget
+      var iframe = document.createElement("iframe");
+      var iframeId = "mss-widget-frame-" + (index + 1);
+
+      iframe.id = iframeId;
+      iframe.setAttribute("title", "MySpeakingScore speaking practice widget");
+      iframe.setAttribute("allow", "microphone; autoplay");
+      iframe.setAttribute("loading", "lazy");
+
+      iframe.style.display = "block";
+      iframe.style.width = "100%";
+      iframe.style.border = "0";
+      iframe.style.height = initialHeight + "px";
+      iframe.style.minHeight = initialHeight + "px";
+
+      // Build the widget URL with query params for slug if needed
+      var url = new URL(widgetUrl, scriptOrigin || window.location.origin);
+      if (slug) {
+        url.searchParams.set("slug", slug);
+      }
+      iframe.src = url.toString();
+
+      // Insert the wrapper + iframe into the DOM, replacing the placeholder
+      placeholder.parentNode.insertBefore(wrapper, placeholder);
+      wrapper.appendChild(iframe);
+      placeholder.remove(); // we don't need the original div anymore
+    });
+
+    // Set up postMessage-based resizing (optional but nice)
+    window.addEventListener("message", function (event) {
+      try {
+        // Only trust messages from our own origin if we know it
+        if (scriptOrigin && event.origin !== scriptOrigin) return;
+
+        var data = event.data || {};
+        if (!data || data.source !== "mss-widget" || !data.height || !data.frameId) {
+          return;
+        }
+
+        var h = Number(data.height);
+        if (!isFinite(h) || h <= 0) return;
+
+        var iframe = document.getElementById(String(data.frameId));
+        if (!iframe) return;
+
+        var finalHeight = h + 24; // breathing room
+        iframe.style.height = finalHeight + "px";
+        iframe.style.minHeight = finalHeight + "px";
+      } catch (e) {
+        // fail silently; we never want to break the host page
+      }
+    });
   }
 
-  // Public refresh hook in case the host page uses SPA navigation
-  window.MSSWidgetEmbed = {
-    refresh: initEmbeds
-  };
-
-  if (document.readyState === "complete" || document.readyState === "interactive") {
-    initEmbeds();
-  } else {
+  if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initEmbeds);
+  } else {
+    initEmbeds();
   }
 })();
