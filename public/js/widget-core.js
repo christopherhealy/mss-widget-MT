@@ -1740,14 +1740,19 @@ async function onSubmitClick() {
       const elapsedSec = ((performance.now() - t0Local) / 1000).toFixed(1);
       console.log("🎯 Submit response from MSS:", res);
 
-      if (!res.ok) {
+            if (!res.ok) {
         console.error("❌ Submit error:", res.status, res.body);
-        setStatus("We could not submit your answer. Please try again.");
+
+        // Turn backend / Vox errors into friendly messages
+        const friendlyMessage = buildFriendlySubmitError(res.status, res.body);
+        setStatus(friendlyMessage);
+
         hideSubmitProgress();
         logEvent("submit_error", {
           questionId,
           status: res.status,
           body: res.body,
+          friendlyMessage,
         });
         return;
       }
@@ -1892,6 +1897,65 @@ async function onSubmitClick() {
       });
     });
 } // end onSubmitClick
+
+//Dec 8 to handle error messages
+function extractSubmitErrorMessage(payload) {
+  if (!payload) return "";
+  if (typeof payload === "string") return payload;
+
+  // Common patterns: { message, error, body: "..." } or nested { body: { message } }
+  if (payload.message) return String(payload.message);
+  if (payload.error) return String(payload.error);
+
+  if (payload.body) {
+    const inner = payload.body;
+    if (typeof inner === "string") return inner;
+    if (inner.message) return String(inner.message);
+    if (inner.error) return String(inner.error);
+  }
+
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Map raw backend / Vox errors (including "Input X contains NaN")
+ * to student-friendly status messages.
+ */
+function buildFriendlySubmitError(status, body) {
+  const raw = extractSubmitErrorMessage(body);
+  const lower = raw.toLowerCase();
+
+  // NaN / ML pipeline issues
+  if (lower.includes("nan")) {
+    return (
+      "We couldn’t score that attempt. Please record again – " +
+      "sometimes the scoring engine has trouble with certain audio."
+    );
+  }
+
+  // Validation / bad request
+  if (status === 400) {
+    return (
+      "We weren’t able to score this recording. Please try again " +
+      "with a clear answer of about 30–60 seconds."
+    );
+  }
+
+  // Server problems
+  if (status >= 500) {
+    return (
+      "The scoring service is temporarily unavailable. " +
+      "Please wait a moment and try again."
+    );
+  }
+
+  // Fallback
+  return "We could not submit your answer. Please try again.";
+}
 /* -----------------------------------------------------------------------
    TIMERS / RESET
    ----------------------------------------------------------------------- */

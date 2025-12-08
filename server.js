@@ -194,34 +194,164 @@ app.post(
   handleWidgetImageUpload
 );
 
-// Branding logo route – alias used by older ImageViewer / ConfigAdmin Dev 7
-// POST /api/admin/branding/:slug/logo  (field name: "image")
+// In-memory storage for branding logos
+const logoUpload = multer({ storage: multer.memoryStorage() });
+
+// POST /api/admin/branding/:slug/logo
 app.post(
   "/api/admin/branding/:slug/logo",
-  imageUpload.single("image"),
-  handleWidgetImageUpload
+  logoUpload.single("image"),           // field *must* be "image"
+  async (req, res) => {
+    const { slug } = req.params;
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          ok: false,
+          error: "NO_FILE",
+          message: "No image uploaded",
+        });
+      }
+
+      // 1) Look up school
+      const schoolRes = await pool.query(
+        `SELECT id
+           FROM schools
+          WHERE slug = $1
+          LIMIT 1`,
+        [slug]
+      );
+
+      if (!schoolRes.rowCount) {
+        return res.status(404).json({
+          ok: false,
+          error: "school_not_found",
+          message: `No school found for slug ${slug}`,
+        });
+      }
+
+      const schoolId = schoolRes.rows[0].id;
+
+      const buffer     = req.file.buffer; // raw image bytes
+      const filename   = req.file.originalname || `${slug}-logo`;
+      const mimeType   = req.file.mimetype || "image/png";
+      const sizeBytes  = req.file.size ?? (buffer ? buffer.length : null);
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // 2) Insert branding_files row
+        const insertRes = await client.query(
+          `
+          INSERT INTO branding_files (
+            school_id,
+            kind,
+            filename,
+            mime_type,
+            size_bytes,
+            bytes
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id
+          `,
+          [schoolId, "logo", filename, mimeType, sizeBytes, buffer]
+        );
+
+        const fileId = insertRes.rows[0].id;
+
+        // 3) Point school at this logo
+        await client.query(
+          `
+          UPDATE schools
+             SET branding_logo_id = $2
+           WHERE id = $1
+          `,
+          [schoolId, fileId]
+        );
+
+        await client.query("COMMIT");
+
+        const url = `/api/admin/branding/${encodeURIComponent(
+          slug
+        )}/logo`;
+
+        return res.json({
+          ok: true,
+          fileId,
+          url,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        console.error("❌ Logo upload DB error:", err);
+        return res.status(500).json({
+          ok: false,
+          error: "UPLOAD_DB_FAILED",
+          message: err.message || "Failed to save logo.",
+        });
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error("❌ Logo upload handler error:", err);
+      return res.status(500).json({
+        ok: false,
+        error: "UPLOAD_FAILED",
+        message: err.message || "Logo upload failed.",
+      });
+    }
+  }
 );
 
-// === ADMIN: list available widgets (public/widgets/*.html) ============
-app.get("/api/admin/widgets", async (req, res) => {
+// GET /api/admin/branding/:slug/logo
+app.get("/api/admin/branding/:slug/logo", async (req, res) => {
+  const { slug } = req.params;
+
   try {
-    const widgetsDir = path.join(PUBLIC_DIR, "widgets");
-
-    // fs is fs/promises, so we await it
-    const files = await fs.readdir(widgetsDir);
-
-    const htmlFiles = files.filter((f) =>
-      f.toLowerCase().endsWith(".html")
+    const schoolRes = await pool.query(
+      `
+      SELECT id, branding_logo_id
+      FROM schools
+      WHERE slug = $1
+      LIMIT 1
+      `,
+      [slug]
     );
 
-    // Return simple list of filenames – ConfigAdmin.js expects { widgets: [...] }
-    res.json({ widgets: htmlFiles });
+    if (!schoolRes.rowCount) {
+      return res.status(404).send("School not found");
+    }
+
+    const schoolId   = schoolRes.rows[0].id;
+    const logoFileId = schoolRes.rows[0].branding_logo_id;
+
+    if (!logoFileId) {
+      return res.status(404).send("Logo not set");
+    }
+
+    const fileRes = await pool.query(
+      `
+      SELECT mime_type, bytes
+      FROM branding_files
+      WHERE id = $1 AND school_id = $2
+      LIMIT 1
+      `,
+      [logoFileId, schoolId]
+    );
+
+    if (!fileRes.rowCount) {
+      return res.status(404).send("Logo not found");
+    }
+
+    const row = fileRes.rows[0];
+
+    res.setHeader("Content-Type", row.mime_type || "image/png");
+    res.send(row.bytes);
   } catch (err) {
-    console.error("Error reading widgets dir:", err);
-    res.json({ widgets: [] });
+    console.error("❌ GET /api/admin/branding/:slug/logo error:", err);
+    res.status(500).send("Server error");
   }
 });
-
 // Helper: normalize transcript text into a clean single-line string
 
 
@@ -1640,14 +1770,25 @@ app.get("/api/widget/:slug/bootstrap", async (req, res) => {
       slug: String(r.id),
     }));
 
-    // 4) Image (unchanged)
+      // 4) Image / logo
     const uploadedImageUrl =
       settings.image && typeof settings.image.url === "string"
         ? settings.image.url
         : null;
 
-    let imageUrl = uploadedImageUrl;
+    let imageUrl = null;
 
+    // 4a) New DB-backed branding logo
+    if (school.branding_logo_id) {
+      imageUrl = `/api/admin/branding/${encodeURIComponent(slug)}/logo`;
+    }
+
+    // 4b) Fallback to settings.image.url if present
+    if (!imageUrl && uploadedImageUrl) {
+      imageUrl = uploadedImageUrl;
+    }
+
+    // 4c) Legacy school_assets fallback
     if (!imageUrl) {
       const logoRes = await pool.query(
         `

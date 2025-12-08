@@ -15,7 +15,6 @@
   <div class="portal-shell">
     <header class="portal-header">
       <div class="portal-header-main">
-      
         <h1 id="portal-title">School Portal</h1>
         <p id="portal-subtitle">
           Manage your questions, widget, dashboard, and reports.
@@ -28,7 +27,6 @@
           </span>
         </div>
 
-        
         <div class="portal-school-picker">
           <label for="portal-school-selector" class="portal-school-label">
             School:
@@ -42,183 +40,176 @@
 
     <!-- Quick access cards -->
     <div class="portal-quick-links">
-      
-    <div class="grid">
-      <!-- Left: Widget & Reports -->
-      <div class="column">
-
-
-        <!-- Widget & Dashboard card -->
-        <section class="card">
-          <div class="card-header">
-            <div class="card-title">Widget & Dashboard</div>
-            <div class="card-actions">
-              <button class="btn" id="btn-widgetSurvey">Open Question Editor</button>
-              <button class="btn" id="btn-configAdmin">Open Config Admin</button>
-              <div class="portal-top-actions">
-                <button id="openReportsBtn" class="btn">View reports</button>
-              </div>
-                <!-- New: school selector Dec 4 -->
-                   <button id="portal-logout" class="btn btn-ghost">
-                    Log out as Admin
-                 </button>
-            </div>
-          </div>
-
-          <div class="portal-tab-row">
-            <div class="widget-preview-tabs">
-              <button
-                class="widget-preview-tab active"
-                data-target="widget"
-                id="tab-widget">
-                Show Widget
-              </button>
-              <button
-                class="widget-preview-tab"
-                data-target="dashboard"
-                id="tab-dashboard">
-                Show Dashboard
-              </button>
-            </div>
-
-            <div class="muted" id="portal-assessment-label">Assessment: —</div>
-          </div>
-
-          <div class="widget-frame">
-            <iframe id="portal-iframe" src="about:blank"></iframe>
-          </div>
-
-        <section class="portal-embed">
-         
-       
-
-
-          <div class="embed-snippet">
-            <div class="embed-snippet-label">Embed snippet for your school website</div>
-            <textarea id="embed-snippet" readonly></textarea>
-<div class="embed-options-row">
-         
-         
-      </div>
-
-            <div style="margin-top:4px;display:flex;justify-content:flex-end;">
-              <button class="btn" id="btn-copy-embed">Copy embed code</button>
-        <select id="embed-size" class="embed-select">
-           <option value="mobile">Mobile / sidebar</option>
-           <option value="tablet" selected>Tablet / standard</option>
-           <option value="desktop">Desktop / tall</option>
-       </select>
-            </div>
-         
-          </div>
-        </section>
-
-        <!-- Reports card -->
-        <section class="card" style="margin-top:14px;" data-role="tests-card">
-          <div class="card-header">
-            <div class="card-title">Test Results</div>
-            <div class="card-actions">
-              <button class="btn" id="btn-refresh-tests">
-                <span class="muted">Refresh</span>
-              </button>
-              <button class="btn btn-primary" id="btn-download-csv" type="button">
-                Download CSV
-              </button>
-              <button class="btn btn-danger" id="btn-delete-selected" type="button">
-                Delete Selected
-              </button>
-            </div>
-          </div>
-
-          <div class="filters-row">
-            <label>
-              From
-              <input type="date" id="filter-from" />
-            </label>
-            <label>
-              To
-              <input type="date" id="filter-to" />
-            </label>
-            <span class="muted" id="tests-count-label">0 tests</span>
-          </div>
-
-          <div class="tests-table-wrapper">
-           <table class="tests-table" id="tests-table">
-  <thead>
-    <tr>
-      <th data-sortable="false">Select</th>
-      <th data-sortable="false">Actions</th>
-      <th data-sort-key="id">ID</th>
-      <th data-sort-key="date">Date</th>
-      <th data-sort-key="student">Student</th>
-      <th data-sort-key="question">Question</th>
-      <th data-sort-key="toefl">TOEFL</th>
-      <th data-sort-key="ielts">IELTS</th>
-      <th data-sort-key="pte">PTE</th>
-      <th data-sort-key="cefr">CEFR</th>
-      <th data-sort-key="help">Help</th>
-      <th data-sort-key="dash">Dash</th>
-      <th data-sort-key="fluency">Fluency</th>
-      <th data-sort-key="grammar">Grammar</th>
-      <th data-sort-key="pron">Pron.</th>
-      <th data-sort-key="vocab">Vocab</th>
-    </tr>
-  </thead>
-  <tbody id="tests-tbody">
-    <tr><td colspan="16" class="muted">No data yet.</td></tr>
-  </tbody>
-</table>
-          </div>
-        </section>
-      </div>
-
-      <!-- Right: Stats -->
-      <div class="column">
-        <section class="card">
-          <div class="card-header">
-            <div class="card-title">Activity Snapshot</div>
-            <div class="timeframe-toggle" id="timeframe-toggle">
-              <button class="timeframe-btn active" data-range="today">Today</button>
-              <button class="timeframe-btn" data-range="week">This Week</button>
-              <button class="timeframe-btn" data-range="month">This Month</button>
-              <button class="timeframe-btn" data-range="year">This Year</button>
-            </div>
-          </div>
-
-          <div id="stats-loading" class="muted">
-            <span class="spinner"></span> Fetching stats…
-          </div>
-
-          <div id="stats-content" style="display:none;">
-            <div class="muted" id="stats-range-label"></div>
-
-            <div class="stats-row" style="margin-top:6px;">
-              <div class="stat-pill">
-                <div class="stat-label">Total tests</div>
-                <div class="stat-value" id="stat-totalTests">—</div>
-              </div>
-              <div class="stat-pill">
-                <div class="stat-label">Most popular question</div>
-                <div class="stat-value" id="stat-topQuestion">—</div>
+      <div class="grid">
+        <!-- Left: Widget & Reports -->
+        <div class="column">
+          <!-- Widget & Dashboard card -->
+          <section class="card">
+            <div class="card-header">
+              <div class="card-title">Widget & Dashboard</div>
+              <div class="card-actions">
+                <button class="btn" id="btn-widgetSurvey">Open Question Editor</button>
+                <button class="btn" id="btn-configAdmin">Open Config Admin</button>
+                <div class="portal-top-actions">
+                  <button id="openReportsBtn" class="btn">View reports</button>
+                </div>
+                <!-- New: logout Dec 4 -->
+                <button id="portal-logout" class="btn btn-ghost">
+                  Log out as Admin
+                </button>
               </div>
             </div>
 
-            <div class="stats-row">
-              <div class="stat-pill">
-                <div class="stat-label">Highest CEFR</div>
-                <div class="stat-value" id="stat-highestCEFR">—</div>
+            <div class="portal-tab-row">
+              <div class="widget-preview-tabs">
+                <button
+                  class="widget-preview-tab active"
+                  data-target="widget"
+                  id="tab-widget">
+                  Show Widget
+                </button>
+                <button
+                  class="widget-preview-tab"
+                  data-target="dashboard"
+                  id="tab-dashboard">
+                  Show Dashboard
+                </button>
               </div>
-              <div class="stat-pill">
-                <div class="stat-label">Lowest CEFR</div>
-                <div class="stat-value" id="stat-lowestCEFR">—</div>
+
+              <!-- Inline label (separate ID to avoid clashing with badge) -->
+              <div class="muted" id="portal-assessment-inline">Assessment: —</div>
+            </div>
+
+            <div class="widget-frame">
+              <iframe id="portal-iframe" src="about:blank"></iframe>
+            </div>
+
+            <!-- Embed snippet card -->
+            <section class="portal-embed">
+              <div class="embed-snippet">
+                <div class="embed-snippet-label">Embed snippet for your school website</div>
+                <p class="embed-snippet-help muted">
+                  Paste this code into any page on your site where you want the speaking test
+                  to appear. It loads the widget automatically and adjusts its height as students
+                  move through the questions.
+                </p>
+                <textarea id="embed-snippet" readonly></textarea>
+
+                <div style="margin-top:4px;display:flex;justify-content:flex-end;">
+                  <button class="btn" id="btn-copy-embed">Copy embed code</button>
+                </div>
               </div>
-              <div class="stat-pill">
-                <div class="stat-label">Average CEFR</div>
-                <div class="stat-value" id="stat-avgCEFR">—</div>
+            </section>
+
+            <!-- Reports card -->
+            <section class="card" style="margin-top:14px;" data-role="tests-card">
+              <div class="card-header">
+                <div class="card-title">Test Results</div>
+                <div class="card-actions">
+                  <button class="btn" id="btn-refresh-tests">
+                    <span class="muted">Refresh</span>
+                  </button>
+                  <button class="btn btn-primary" id="btn-download-csv" type="button">
+                    Download CSV
+                  </button>
+                  <button class="btn btn-danger" id="btn-delete-selected" type="button">
+                    Delete Selected
+                  </button>
+                </div>
+              </div>
+
+              <div class="filters-row">
+                <label>
+                  From
+                  <input type="date" id="filter-from" />
+                </label>
+                <label>
+                  To
+                  <input type="date" id="filter-to" />
+                </label>
+                <span class="muted" id="tests-count-label">0 tests</span>
+              </div>
+
+              <div class="tests-table-wrapper">
+                <table class="tests-table" id="tests-table">
+                  <thead>
+                    <tr>
+                      <th data-sortable="false">Select</th>
+                      <th data-sortable="false">Actions</th>
+                      <th data-sort-key="id">ID</th>
+                      <th data-sort-key="date">Date</th>
+                      <th data-sort-key="student">Student</th>
+                      <th data-sort-key="question">Question</th>
+                      <th data-sort-key="toefl">TOEFL</th>
+                      <th data-sort-key="ielts">IELTS</th>
+                      <th data-sort-key="pte">PTE</th>
+                      <th data-sort-key="cefr">CEFR</th>
+                      <th data-sort-key="help">Help</th>
+                      <th data-sort-key="dash">Dash</th>
+                      <th data-sort-key="fluency">Fluency</th>
+                      <th data-sort-key="grammar">Grammar</th>
+                      <th data-sort-key="pron">Pron.</th>
+                      <th data-sort-key="vocab">Vocab</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tests-tbody">
+                    <tr><td colspan="16" class="muted">No data yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </div>
+
+        <!-- Right: Stats -->
+        <div class="column">
+          <section class="card">
+            <div class="card-header">
+              <div class="card-title">Activity Snapshot</div>
+              <div class="timeframe-toggle" id="timeframe-toggle">
+                <button class="timeframe-btn active" data-range="today">Today</button>
+                <button class="timeframe-btn" data-range="week">This Week</button>
+                <button class="timeframe-btn" data-range="month">This Month</button>
+                <button class="timeframe-btn" data-range="year">This Year</button>
               </div>
             </div>
-          </div>
-        </section>
+
+            <div id="stats-loading" class="muted">
+              <span class="spinner"></span> Fetching stats…
+            </div>
+
+            <div id="stats-content" style="display:none;">
+              <div class="muted" id="stats-range-label"></div>
+
+              <div class="stats-row" style="margin-top:6px;">
+                <div class="stat-pill">
+                  <div class="stat-label">Total tests</div>
+                  <div class="stat-value" id="stat-totalTests">—</div>
+                </div>
+                <div class="stat-pill">
+                  <div class="stat-label">Most popular question</div>
+                  <div class="stat-value" id="stat-topQuestion">—</div>
+                </div>
+              </div>
+
+              <div class="stats-row">
+                <div class="stat-pill">
+                  <div class="stat-label">Highest CEFR</div>
+                  <div class="stat-value" id="stat-highestCEFR">—</div>
+                </div>
+                <div class="stat-pill">
+                  <div class="stat-label">Lowest CEFR</div>
+                  <div class="stat-value" id="stat-lowestCEFR">—</div>
+                </div>
+                <div class="stat-pill">
+                  <div class="stat-label">Average CEFR</div>
+                  <div class="stat-value" id="stat-avgCEFR">—</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
       </div>
     </div>
   </div>
@@ -249,36 +240,33 @@
   </div>
 
   <!-- Transcript modal -->
-<div id="portal-transcript-backdrop" class="sp-modal-backdrop hidden">
-  <div class="sp-modal">
-    <header class="sp-modal-header">
-      <div class="sp-modal-titleblock">
-        <h2 id="portal-transcript-title" class="sp-modal-title"></h2>
-        <p id="portal-transcript-subtitle" class="sp-modal-subtitle"></p>
-      </div>
-      <button type="button" id="portal-transcript-close" class="sp-modal-close">×</button>
-    </header>
+  <div id="portal-transcript-backdrop" class="sp-modal-backdrop hidden">
+    <div class="sp-modal">
+      <header class="sp-modal-header">
+        <div class="sp-modal-titleblock">
+          <h2 id="portal-transcript-title" class="sp-modal-title"></h2>
+          <p id="portal-transcript-subtitle" class="sp-modal-subtitle"></p>
+        </div>
+        <button type="button" id="portal-transcript-close" class="sp-modal-close">×</button>
+      </header>
 
-    <main id="portal-transcript-body" class="sp-modal-body"></main>
+      <main id="portal-transcript-body" class="sp-modal-body"></main>
 
-    <footer class="sp-modal-footer">
+      <footer class="sp-modal-footer">
+        <button class="mss-btn" data-copy-modal>
+          Copy to Clipboard
+        </button>
 
-<button class="mss-btn" data-copy-modal>
-  Copy to Clipboard
-</button>
-
-
-
-  <button
-    type="button"
-    id="portal-transcript-ok"
-    class="mss-btn mss-btn-primary"
-  >
-    Close
-  </button>
-</footer>
+        <button
+          type="button"
+          id="portal-transcript-ok"
+          class="mss-btn mss-btn-primary"
+        >
+          Close
+        </button>
+      </footer>
+    </div>
   </div>
-</div>
 
   <!-- Delete confirmation modal -->
   <div id="portal-delete-backdrop" class="portal-warning-backdrop hidden">

@@ -397,79 +397,34 @@ function init() {
   }
 
  // -----------------------------------------------------------------------
-// Embed snippet builder (responsive with auto-resize + size presets)
+// Embed snippet builder – simple, one-size widget-embed.js pattern Dec 8
 // -----------------------------------------------------------------------
-
-const EMBED_SIZE_PRESETS = {
-  mobile:  { maxWidth: "420px", minHeight: "600px" },
-  tablet:  { maxWidth: "640px", minHeight: "720px" },   // default
-  desktop: { maxWidth: "840px", minHeight: "820px" },
-};
 
 function buildEmbedSnippet() {
   if (!embedSnippetEl || !CURRENT_SLUG) return;
 
-  const sizeSel = document.getElementById("embed-size");
-  const sizeKey = sizeSel?.value || "tablet";
-  const preset = EMBED_SIZE_PRESETS[sizeKey] || EMBED_SIZE_PRESETS.tablet;
+  // Canonical slug and widget path
+  const safeSlug = String(CURRENT_SLUG || "").trim() || "mss-demo";
 
-  const baseEmbedOrigin = "https://mss-widget-mt.vercel.app";
-
-  // Resolve widgetPath (absolute or relative)
-  let base;
-  if (/^https?:\/\//i.test(widgetPath)) {
-    base = widgetPath;
-  } else {
-    const path = widgetPath.startsWith("/") ? widgetPath : `/${widgetPath}`;
-    base = `${baseEmbedOrigin}${path}`;
+  let widgetHtmlPath = widgetPath || "/widgets/Widget3.html";
+  // For safety, make sure non-absolute paths get a leading slash
+  if (!/^https?:\/\//i.test(widgetHtmlPath) && !widgetHtmlPath.startsWith("/")) {
+    widgetHtmlPath = `/${widgetHtmlPath}`;
   }
 
-  const url = `${base}?slug=${encodeURIComponent(CURRENT_SLUG)}`;
+  const snippet = [
+    "<!-- MySpeakingScore Speaking Widget -->",
+    '<div',
+    '  class="mss-widget"',
+    `  data-mss-slug="${safeSlug}"`,
+    `  data-mss-widget="${widgetHtmlPath}"`,
+    "></div>",
+    '<script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>',
+    "<!-- End MySpeakingScore widget -->",
+    ""
+  ].join("\n");
 
-  // Make a reasonably safe ID based on slug
-  const safeSlug = String(CURRENT_SLUG)
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "-");
-  const iframeId = `mss-widget-${safeSlug || "school"}`;
-
-  // Final embed snippet shown to the admin
-  embedSnippetEl.value =
-`<!-- MySpeakingScore Speaking Widget -->
-<div class="mss-widget-container" style="display:flex;justify-content:center;">
-  <iframe
-    id="${iframeId}"
-    src="${url}"
-    allow="microphone"
-    loading="lazy"
-    style="
-      width:100%;
-      max-width:${preset.maxWidth};
-      height:${preset.minHeight};
-      min-height:${preset.minHeight};
-      border:0;
-      border-radius:18px;
-      box-shadow:0 16px 40px rgba(15,23,42,0.12);
-    ">
-  </iframe>
-</div>
-<script>
-  (function () {
-    var iframe = document.getElementById("${iframeId}");
-    if (!iframe) return;
-
-    window.addEventListener("message", function (event) {
-      var data = event.data || {};
-      if (!data || data.source !== "mss-widget" || !data.height) return;
-
-      var h = Number(data.height);
-      if (!h || !isFinite(h)) return;
-
-      // Add a little breathing room
-      iframe.style.height = (h + 16) + "px";
-    });
-  })();
-</script>
-<!-- End MySpeakingScore widget -->`;
+  embedSnippetEl.value = snippet;
 }
 
 function copyEmbedToClipboard() {
@@ -1954,15 +1909,6 @@ if (copyPromptBtn) {
     }
   }
 
-  // When user changes size Dec 6
-   function initEmbedSizeSelector() {
-     const sizeSel = document.getElementById("embed-size");
-     if (!sizeSel) return;
-
-        sizeSel.addEventListener("change", () => {
-      buildEmbedSnippet();
-      });
-   }
   
   // -----------------------------------------------------------------------
   // Init
@@ -2010,11 +1956,7 @@ if (copyPromptBtn) {
     await fetchStats("today");
     await fetchTests();
   }
-  // NOW that slug + widgetPath are known, wire the size selector Dec 6
-  // and build the initial embed snippet
-  initEmbedSizeSelector();
-  buildEmbedSnippet();
-
+  
   document.addEventListener("DOMContentLoaded", init);
 })();
 
