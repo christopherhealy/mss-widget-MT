@@ -1,72 +1,80 @@
-// /public/signup/VerifySignup.js
+// /signup/VerifySignup.js
 console.log("✅ VerifySignup.js loaded");
 
 (function () {
-  "use strict";
+  // Try a few likely IDs; fall back to body if none found
+  const statusEl =
+    document.getElementById("verifyStatus") ||
+    document.getElementById("signupStatus") ||
+    document.querySelector(".verify-status") ||
+    document.body;
 
-  const statusEl = document.getElementById("verifyStatus");
-  const msgEl = document.getElementById("verifyMessage");
-  const linkBox = document.getElementById("verifyLink");
-
-  function setStatus(text, isError = false) {
+  function setStatus(message, isError = false) {
     if (!statusEl) return;
-    statusEl.textContent = text || "";
-    statusEl.className = "verify-status " + (isError ? "err" : "ok");
-  }
-
-  function getTokenFromUrl() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("token") || "";
-  }
-
-  async function verify() {
-    const token = getTokenFromUrl().trim();
-    if (!token) {
-      msgEl.textContent = "This verification link is missing its token.";
-      setStatus("Please check that you clicked the full link from your email.", true);
-      return;
+    statusEl.textContent = message;
+    if (isError) {
+      statusEl.style.color = "#d00";
+    } else {
+      statusEl.style.color = "";
     }
+  }
 
-    msgEl.textContent = "Checking your verification token…";
+  // 1. Grab token from URL
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token");
 
-    try {
-      const res = await fetch("/api/school-signup/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
+  if (!token) {
+    console.error("[VerifySignup] No token in URL");
+    setStatus(
+      "The verification link is missing its token. Please click the full link in your email.",
+      true
+    );
+    return;
+  }
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) {
-        const msg =
-          json.message ||
-          json.error ||
-          "We could not verify this link. It may have expired or already been used.";
-        setStatus(msg, true);
-        msgEl.textContent = "Sorry — we couldn't complete your sign-up.";
-        return;
+  setStatus("Verifying your school sign-up…");
+
+  // 2. Call backend, sending token in BOTH query + body
+  const url = `/api/school-signup/verify?token=${encodeURIComponent(token)}`;
+
+  fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ token }),
+  })
+    .then(async (res) => {
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        // ignore JSON parse errors; we'll fall back to generic message
       }
 
-      // Success: school + admin created
-      const slug = json.slug;
-      const portalUrl = `/admin/SchoolPortal.html?slug=${encodeURIComponent(slug)}`;
+      if (!res.ok) {
+        const msg =
+          (data && (data.message || data.error)) ||
+          "We couldn't complete your sign-up.";
+        throw new Error(msg);
+      }
 
-      msgEl.textContent = `You're all set, ${json.adminName || "there"}!`;
+      return data;
+    })
+    .then((data) => {
+      console.log("[VerifySignup] success:", data);
+
+      const msg =
+        data.message ||
+        "Your MySpeakingScore school has been created. You can now sign in to your admin portal with your email and password.";
+      setStatus(msg, false);
+    })
+    .catch((err) => {
+      console.error("[VerifySignup] error:", err);
       setStatus(
-        `We created your MySpeakingScore school portal for “${json.schoolName}”.`,
-        false
+        err.message ||
+          "We couldn't complete your sign-up due to a technical problem.",
+        true
       );
-
-      linkBox.style.display = "block";
-      linkBox.innerHTML = `
-        <a href="${portalUrl}">Go to your School Portal</a>
-      `;
-    } catch (err) {
-      console.error("Verification error:", err);
-      msgEl.textContent = "Something went wrong while talking to the server.";
-      setStatus("Please try your link again in a moment.", true);
-    }
-  }
-
-  verify();
+    });
 })();

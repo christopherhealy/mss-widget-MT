@@ -33,7 +33,13 @@ console.log("✅ ConfigAdmin.js loaded");
   // Dashboard + widget selectors
   const dashboardTemplateSelect = $("dashboardTemplate");
   const dashboardPreviewFrame   = $("dashboardPreview");
-  const widgetTemplateSelect    = $("widgetTemplate");
+  const widgetTemplateSelect = $("widgetTemplate");
+
+
+  
+
+// Use the HTML id "widgetTemplate"
+
 
   // Image / branding elements
   const imgFileInput          = $("img-file");           // hidden input (not used directly now)

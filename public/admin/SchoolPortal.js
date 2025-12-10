@@ -1,72 +1,85 @@
-// /admin/SchoolPortal.js — v0.16 Portal logic, Build: 2025-11-30
+// /admin/SchoolPortal.js — v0.20 Portal logic, Build: 2025-12-09
 // - Multi-school support via /api/admin/my-schools (email + adminId)
-// - Superadmin vs normal admin enforced server-side via adminId
-// - Uses /api/admin/reports/:slug (view-backed) for the Tests/Reports table
-// - Uses /api/list-dashboards to list *all* dashboards in /public/dashboards
-// - "Dashboard view" opens DashboardViewer.html in a new tab/window
-// - Admin logout via #portal-logout and MSS_ADMIN_SESSION
+// - Superadmin vs normal admin enforced server-side
+// - Uses /api/admin/reports/:slug (view-backed) for Test Results
+// - Uses /api/list-dashboards to list dashboards for DashboardViewer
+// - Admin logout via #portal-logout and mssAdminSession in localStorage
 
 console.log("✅ SchoolPortal.js loaded");
 
 (function () {
   "use strict";
 
-const LS_KEY = "mssAdminSession";
+  // Simple ID helper
+  const $ = (id) => document.getElementById(id);
 
-function loadAdminSession() {
-  try {
-    const raw = window.localStorage.getItem(LS_KEY);
-    if (!raw) return null;
+  const LS_KEY = "mssAdminSession";
 
-    const session = JSON.parse(raw);
-    if (!session || !session.adminId || !session.email) {
+  function loadAdminSession() {
+    try {
+      const raw = window.localStorage.getItem(LS_KEY);
+      console.log("[SchoolPortal] raw mssAdminSession:", raw);
+      if (!raw) return null;
+
+      const session = JSON.parse(raw);
+      if (!session) return null;
+
+      const adminId =
+        session.adminId != null
+          ? session.adminId
+          : session.id != null
+          ? session.id
+          : null;
+
+      if (!adminId || !session.email) {
+        console.warn(
+          "[SchoolPortal] session missing adminId or email; treating as not logged in",
+          session
+        );
+        return null;
+      }
+
+      session.adminId = adminId;
+      return session;
+    } catch (e) {
+      console.warn("[SchoolPortal] Failed to read/parse admin session", e);
       return null;
     }
-    return session;
-  } catch (e) {
-    console.warn("[SchoolPortal] Failed to read admin session", e);
-    return null;
   }
-}
 
-  const $ = (id) => document.getElementById(id);
-  //const logoutBtn = $("portal-logout");   // 👈 NEW on Dec 4
-  
- 
   // -----------------------------------------------------------------------
   // Query params + admin session
   // -----------------------------------------------------------------------
 
   const params = new URLSearchParams(window.location.search);
-  const INITIAL_SLUG = params.get("slug"); // optional preselect
-  const ASSESSMENT_ID_FROM_URL = params.get("assessmentId"); // optional override
+  const INITIAL_SLUG = params.get("slug");
+  const ASSESSMENT_ID_FROM_URL = params.get("assessmentId");
 
-  // ✅ Load admin session created by AdminLogin.js (mssAdminSession)
-  const ADMIN_SESSION = loadAdminSession() || {};
+  const ADMIN_SESSION = loadAdminSession();
 
-  if (!ADMIN_SESSION.adminId && !ADMIN_SESSION.email) {
-    console.warn("[SchoolPortal] No admin session found; redirecting to login.");
+  if (!ADMIN_SESSION) {
+    console.warn(
+      "[SchoolPortal] No valid admin session; redirecting to login."
+    );
     window.location.href = "/admin-login/AdminLogin.html";
-    return; // stop running the portal script
+    return;
   }
 
   const ADMIN_EMAIL = ADMIN_SESSION.email || null;
-  const ADMIN_ID =
-    ADMIN_SESSION.adminId != null ? ADMIN_SESSION.adminId : ADMIN_SESSION.id;
-
-  const SCHOOL_SWITCH_WARNING_HTML = `
-   <p>You have changed schools.</p>
-   <p style="margin-top:6px;">
-    <strong>Important:</strong> Please close any open
-    <b>Config Admin</b> or <b>Question Editor</b> tabs from the previous school
-    before continuing.
-   </p>
-  `;
-   const embedCopyBtn = document.getElementById("portal-embed-copy");
+  const ADMIN_ID = ADMIN_SESSION.adminId;
 
   // -----------------------------------------------------------------------
   // DOM refs
   // -----------------------------------------------------------------------
+
+  const SCHOOL_SWITCH_WARNING_HTML = `
+    <p>You have changed schools.</p>
+    <p style="margin-top:6px;">
+      <strong>Important:</strong> Please close any open
+      <b>Config Admin</b> or <b>Question Editor</b> tabs from the previous school
+      before continuing.
+    </p>
+  `;
 
   const titleEl = $("portal-title");
   const subtitleEl = $("portal-subtitle");
@@ -79,10 +92,8 @@ function loadAdminSession() {
 
   const btnWidgetSurvey = $("btn-widgetSurvey");
   const btnConfigAdmin = $("btn-configAdmin");
-  const btnCopyEmbed =
-  $("portal-embed-copy") || $("btn-copy-embed");
-  const embedSnippetEl =
-  $("portal-embed-code") || $("embed-snippet");
+  const btnCopyEmbed = $("btn-copy-embed");
+  const embedSnippetEl = $("embed-snippet");
 
   const statsLoadingEl = $("stats-loading");
   const statsContentEl = $("stats-content");
@@ -105,36 +116,23 @@ function loadAdminSession() {
 
   const schoolSelectEl = $("portal-school-selector");
 
-  // Quick-link cards (top row) – safe if missing in HTML
+  // Quick-link anchors (optional / older layouts)
   const linkConfigEl = $("portal-link-config");
   const linkQuestionsEl = $("portal-link-questions");
   const linkDashboardEl = $("portal-link-dashboard");
   const linkReportsEl = $("portal-link-reports");
 
-  // NEW: logout button - Dec 4
-  const logoutBtn = document.getElementById("portal-logout");
-
-function init() {
-  console.log("SchoolPortal.js loaded");
-
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", onPortalLogoutClick);
-  }
-
-  // ... other init logic ...
-}
+  const logoutBtn = $("portal-logout");
 
   // -----------------------------------------------------------------------
   // State
   // -----------------------------------------------------------------------
 
-  // Multi-school
   let SCHOOLS = []; // [{id, slug, name, ...}]
   let CURRENT_SCHOOL = null;
   let CURRENT_SLUG = INITIAL_SLUG || null;
 
-  // Defaults for widget/dashboard if config is missing
-  let widgetPath = "/widgets/WidgetMin.html"; // light theme preview
+  let widgetPath = "/widgets/WidgetMin.html";
   let dashboardPath = "/dashboards/Dashboard3.html";
 
   let assessmentId = ASSESSMENT_ID_FROM_URL
@@ -144,49 +142,44 @@ function init() {
 
   let currentTimeRange = "today";
 
-  // tests == submissions from vw_widget_reports for CURRENT_SLUG
   let tests = [];
-
-  // holds IDs waiting for confirmation in the delete modal
   let pendingDeleteIds = [];
 
-  // Current report view mode from the global dropdown:
-  // "transcript", "dashboard3", "dashboard4", etc.
   let REPORT_VIEW_MODE = "transcript";
-
-  // Cached dashboard options loaded from /api/list-dashboards
-  // [{ value: "dashboard3", label: "Dashboard3" }, ...]
   let DASHBOARD_OPTIONS = [];
-  // Dec 3
-  let LAST_ROW = null;        // the row currently shown in the modal
-  let LAST_AI_PROMPT = "";    // the AI prompt built for that row
+
+  let LAST_ROW = null;
+  let LAST_AI_PROMPT = "";
+
+  console.log("[SchoolPortal] Admin session in portal:", {
+    ADMIN_EMAIL,
+    ADMIN_ID,
+  });
 
   // -----------------------------------------------------------------------
-  // Helpers: Slug / school handling
+  // Helpers: School / slug
   // -----------------------------------------------------------------------
-    function showSchoolChangeWarning() {
+
+  function showSchoolChangeWarning() {
     return new Promise((resolve) => {
       const backdrop = $("portal-warning-backdrop");
       const msgEl = $("portal-warning-message");
       const okBtn = $("portal-warning-ok");
 
       if (backdrop && msgEl && okBtn) {
-        // Use HTML content so we get the nice formatting
         msgEl.innerHTML = SCHOOL_SWITCH_WARNING_HTML;
         backdrop.classList.remove("hidden");
 
         okBtn.onclick = () => {
           backdrop.classList.add("hidden");
-          // Restore default warning text behavior for other uses
-          msgEl.textContent = ""; 
+          msgEl.textContent = "";
           resolve();
         };
       } else {
-        // Fallback if modal is missing for some reason
         window.alert(
           "You have changed schools.\n\n" +
-          "Important: Please close any open Config Admin or Question Editor tabs " +
-          "from the previous school before continuing."
+            "Important: Please close any open Config Admin or Question Editor tabs " +
+            "from the previous school before continuing."
         );
         resolve();
       }
@@ -205,8 +198,6 @@ function init() {
     }
 
     if (subtitleEl) {
-      // Keep whatever subtitle was set by widget meta if available,
-      // otherwise fallback to a generic line
       if (!subtitleEl.textContent || subtitleEl.textContent.includes("Loading")) {
         subtitleEl.textContent =
           "Manage your questions, widget, dashboard, and reports.";
@@ -245,29 +236,35 @@ function init() {
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Schools API
+  // -----------------------------------------------------------------------
+
   async function fetchSchoolsForAdmin() {
+    console.log("[SchoolPortal] fetchSchoolsForAdmin() starting", {
+      ADMIN_EMAIL,
+      ADMIN_ID,
+    });
+
     try {
-      // Build query string with email and adminId (if present)
       const qs = new URLSearchParams();
-      if (ADMIN_EMAIL) {
-        qs.set("email", ADMIN_EMAIL);
-      }
-      if (ADMIN_ID) {
-        qs.set("adminId", String(ADMIN_ID));
-      }
+      if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
+      if (ADMIN_ID) qs.set("adminId", String(ADMIN_ID));
 
       let url = "/api/admin/my-schools";
       const query = qs.toString();
-      if (query) {
-        url += `?${query}`;
-      }
+      if (query) url += `?${query}`;
 
       const res = await fetch(url);
       const data = await res.json();
 
+      console.log("[SchoolPortal] my-schools response:", {
+        status: res.status,
+        data,
+      });
+
       if (!res.ok || data.ok === false) {
         console.warn("my-schools error:", data);
-        // Fall back to requiring CURRENT_SLUG from URL if nothing else
         if (!CURRENT_SLUG) {
           alert(
             "No schools found for this admin, and no slug in the URL. Please contact support."
@@ -276,9 +273,6 @@ function init() {
         return;
       }
 
-      // Server already enforces:
-      // - Superadmin: all schools
-      // - Normal admin: only their schools
       SCHOOLS = Array.isArray(data.schools) ? data.schools : [];
 
       if (!schoolSelectEl) return;
@@ -299,9 +293,6 @@ function init() {
         return;
       }
 
-      // Determine which school to select:
-      // 1) If INITIAL_SLUG matches, use that.
-      // 2) Otherwise, first school in the list.
       let initialSlug = INITIAL_SLUG;
       if (
         !initialSlug ||
@@ -337,35 +328,31 @@ function init() {
     }
   }
 
- async function onSchoolChanged() {
-  if (!schoolSelectEl) return;
-  const newSlug = schoolSelectEl.value;
-  if (!newSlug || newSlug === CURRENT_SLUG) return;
+  async function onSchoolChanged() {
+    if (!schoolSelectEl) return;
+    const newSlug = schoolSelectEl.value;
+    if (!newSlug || newSlug === CURRENT_SLUG) return;
 
-  // Only warn if we are switching *from* an already-selected school
-  if (CURRENT_SLUG) {
-    await showSchoolChangeWarning();
+    if (CURRENT_SLUG) {
+      await showSchoolChangeWarning();
+    }
+
+    CURRENT_SLUG = newSlug;
+    CURRENT_SCHOOL =
+      SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
+
+    updateSlugUi();
+    applySlugToQuickLinks();
+    buildEmbedSnippet();
+
+    await fetchWidgetMeta();
+    await fetchAssessmentMeta();
+    await fetchStats("today");
+    await fetchTests();
   }
 
-  CURRENT_SLUG = newSlug;
-  CURRENT_SCHOOL =
-    SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
-
-  updateSlugUi();
-  applySlugToQuickLinks();
-
-  // 🔹 Immediately update the embed snippet for this new slug
-  buildEmbedSnippet();
-
-  // Reload all slug-dependent data (widget meta will ALSO refresh snippet
-  // once it loads, using the correct widgetPath from config)
-  await fetchWidgetMeta();
-  await fetchAssessmentMeta();
-  await fetchStats("today");
-  await fetchTests();
-}
   // -----------------------------------------------------------------------
-  // Preview tab helpers
+  // Widget / Dashboard preview
   // -----------------------------------------------------------------------
 
   function setActivePreviewTab(target) {
@@ -396,50 +383,60 @@ function init() {
     iframeEl.src = url;
   }
 
- // -----------------------------------------------------------------------
-// Embed snippet builder – simple, one-size widget-embed.js pattern Dec 8
-// -----------------------------------------------------------------------
+  // -----------------------------------------------------------------------
+  // Embed snippet builder
+  // -----------------------------------------------------------------------
 
-function buildEmbedSnippet() {
-  if (!embedSnippetEl || !CURRENT_SLUG) return;
+  function buildEmbedSnippet() {
+    if (!embedSnippetEl || !CURRENT_SLUG) return;
 
-  // Canonical slug and widget path
-  const safeSlug = String(CURRENT_SLUG || "").trim() || "mss-demo";
+    const safeSlug = String(CURRENT_SLUG || "").trim() || "mss-demo";
 
-  let widgetHtmlPath = widgetPath || "/widgets/Widget3.html";
-  // For safety, make sure non-absolute paths get a leading slash
-  if (!/^https?:\/\//i.test(widgetHtmlPath) && !widgetHtmlPath.startsWith("/")) {
-    widgetHtmlPath = `/${widgetHtmlPath}`;
+    let widgetHtmlPath = widgetPath || "/widgets/Widget3.html";
+    if (
+      !/^https?:\/\//i.test(widgetHtmlPath) &&
+      !widgetHtmlPath.startsWith("/")
+    ) {
+      widgetHtmlPath = `/${widgetHtmlPath}`;
+    }
+
+    const snippet = [
+      "<!-- MySpeakingScore Speaking Widget -->",
+      "<div",
+      '  class="mss-widget"',
+      `  data-mss-slug="${safeSlug}"`,
+      `  data-mss-widget="${widgetHtmlPath}"`,
+      "></div>",
+      '<script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>',
+      "<!-- End MySpeakingScore widget -->",
+      "",
+    ].join("\n");
+
+    embedSnippetEl.value = snippet;
   }
 
-  const snippet = [
-    "<!-- MySpeakingScore Speaking Widget -->",
-    '<div',
-    '  class="mss-widget"',
-    `  data-mss-slug="${safeSlug}"`,
-    `  data-mss-widget="${widgetHtmlPath}"`,
-    "></div>",
-    '<script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>',
-    "<!-- End MySpeakingScore widget -->",
-    ""
-  ].join("\n");
+  function copyEmbedToClipboard() {
+    if (!embedSnippetEl || !btnCopyEmbed) return;
+    embedSnippetEl.select();
+    embedSnippetEl.setSelectionRange(0, 99999);
 
-  embedSnippetEl.value = snippet;
-}
-
-function copyEmbedToClipboard() {
-  if (!embedSnippetEl || !btnCopyEmbed) return;
-  embedSnippetEl.select();
-  embedSnippetEl.setSelectionRange(0, 99999);
-  try {
-    document.execCommand("copy");
-    btnCopyEmbed.textContent = "Copied!";
-    setTimeout(() => (btnCopyEmbed.textContent = "Copy embed code"), 1500);
-  } catch (e) {
-    console.warn("Copy failed", e);
-    alert("Copy failed. Please select the text and copy manually.");
+    try {
+      document.execCommand("copy");
+      const original = btnCopyEmbed.textContent;
+      btnCopyEmbed.textContent = "Copied!";
+      setTimeout(() => {
+        btnCopyEmbed.textContent = original || "Copy embed code";
+      }, 1500);
+    } catch (e) {
+      console.warn("Copy failed", e);
+      alert("Copy failed. Please select the text and copy manually.");
+    }
   }
-}
+
+  // -----------------------------------------------------------------------
+  // Small formatting helpers
+  // -----------------------------------------------------------------------
+
   function formatShortDateTime(iso) {
     if (!iso) return "";
     const d = new Date(iso);
@@ -452,7 +449,6 @@ function copyEmbedToClipboard() {
     });
   }
 
-  // Small helpers for Help / Dash columns
   function formatHelpCell(t) {
     const level = t.help_level || "none";
     const surface = t.help_surface || "";
@@ -470,16 +466,14 @@ function copyEmbedToClipboard() {
   }
 
   // -----------------------------------------------------------------------
-  // Global report view selector (top dropdown)
+  // Dashboard list + Report view mode
   // -----------------------------------------------------------------------
 
-  // Populate #reportViewSelect from /api/list-dashboards
   async function loadDashboardOptionsIntoSelect() {
     const select = document.getElementById("reportViewSelect");
     const hasSelect = !!select;
 
     if (hasSelect) {
-      // Keep transcript first
       select.innerHTML = `
         <option value="transcript">Transcript + AI Prompt</option>
       `;
@@ -494,8 +488,7 @@ function copyEmbedToClipboard() {
 
       if (Array.isArray(json.dashboards)) {
         json.dashboards.forEach((dashName) => {
-          // e.g. "Dashboard3"
-          const value = dashName.toLowerCase(); // "dashboard3"
+          const value = dashName.toLowerCase();
           const label = dashName;
 
           DASHBOARD_OPTIONS.push({ value, label });
@@ -522,7 +515,6 @@ function copyEmbedToClipboard() {
       return;
     }
 
-    // Initial value after options have loaded
     REPORT_VIEW_MODE = select.value || "transcript";
 
     select.addEventListener("change", () => {
@@ -530,461 +522,454 @@ function copyEmbedToClipboard() {
       console.log("📊 Report view mode:", REPORT_VIEW_MODE);
     });
   }
-// to manage the alt text for question in the table Dec 7
-function truncate(text, length = 40) {
-  if (!text) return "—";
-  text = String(text).trim();
-  return text.length > length ? text.slice(0, length) + "…" : text;
-}
-// -----------------------------------------------------------------------
-// Tests table sorting (in-memory, persisted in localStorage)
-// -----------------------------------------------------------------------
 
-let currentSortKey = null;
-let currentSortDir = "asc";
-
-const SORT_CONFIG = {
-  id: {
-    type: "number",
-    get: (row) => row.id,
-  },
-  date: {
-    type: "date",
-    get: (row) => row.submitted_at || row.created_at || row.timestamp,
-  },
-  student: {
-    type: "string",
-    get: (row) =>
-      row.student_name ||
-      row.student_email ||
-      (row.student_id != null ? String(row.student_id) : ""),
-  },
-  question: {
-    type: "string",
-    get: (row) => row.question || "",
-  },
-  toefl: {
-    type: "number",
-    get: (row) => row.mss_toefl ?? row.toefl,
-  },
-  ielts: {
-    type: "number",
-    get: (row) => row.mss_ielts ?? row.ielts,
-  },
-  pte: {
-    type: "number",
-    get: (row) => row.mss_pte ?? row.pte,
-  },
-  cefr: {
-    type: "string",
-    get: (row) => row.mss_cefr || row.cefr || "",
-  },
-  help: {
-    type: "string",
-    get: (row) => formatHelpCell(row),
-  },
-  dash: {
-    type: "string",
-    get: (row) => formatDashCell(row),
-  },
-  fluency: {
-    type: "number",
-    get: (row) => row.mss_fluency,
-  },
-  grammar: {
-    type: "number",
-    get: (row) => row.mss_grammar,
-  },
-  pron: {
-    type: "number",
-    get: (row) => row.mss_pron,
-  },
-  vocab: {
-    type: "number",
-    get: (row) => row.mss_vocab,
-  },
-};
-
-function loadInitialSort() {
-  try {
-    const raw = window.localStorage.getItem("mssPortalSort");
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed && parsed.key && SORT_CONFIG[parsed.key]) {
-      currentSortKey = parsed.key;
-      currentSortDir = parsed.dir === "desc" ? "desc" : "asc";
-    }
-  } catch (e) {
-    console.warn("[SchoolPortal] Failed to load sort state", e);
+  function truncate(text, length = 40) {
+    if (!text) return "—";
+    text = String(text).trim();
+    return text.length > length ? text.slice(0, length) + "…" : text;
   }
-}
 
-function saveSortState() {
-  try {
-    window.localStorage.setItem(
-      "mssPortalSort",
-      JSON.stringify({ key: currentSortKey, dir: currentSortDir })
-    );
-  } catch (e) {
-    console.warn("[SchoolPortal] Failed to save sort state", e);
-  }
-}
+  // -----------------------------------------------------------------------
+  // Tests table sorting
+  // -----------------------------------------------------------------------
 
-function sortTestsInPlace() {
-  if (!Array.isArray(tests) || !currentSortKey) return;
-  const cfg = SORT_CONFIG[currentSortKey];
-  if (!cfg || typeof cfg.get !== "function") return;
+  let currentSortKey = null;
+  let currentSortDir = "asc";
 
-  const { type, get } = cfg;
+  const SORT_CONFIG = {
+    id: {
+      type: "number",
+      get: (row) => row.id,
+    },
+    date: {
+      type: "date",
+      get: (row) => row.submitted_at || row.created_at || row.timestamp,
+    },
+    student: {
+      type: "string",
+      get: (row) =>
+        row.student_name ||
+        row.student_email ||
+        (row.student_id != null ? String(row.student_id) : ""),
+    },
+    question: {
+      type: "string",
+      get: (row) => row.question || "",
+    },
+    toefl: {
+      type: "number",
+      get: (row) => row.mss_toefl ?? row.toefl,
+    },
+    ielts: {
+      type: "number",
+      get: (row) => row.mss_ielts ?? row.ielts,
+    },
+    pte: {
+      type: "number",
+      get: (row) => row.mss_pte ?? row.pte,
+    },
+    cefr: {
+      type: "string",
+      get: (row) => row.mss_cefr || row.cefr || "",
+    },
+    help: {
+      type: "string",
+      get: (row) => formatHelpCell(row),
+    },
+    dash: {
+      type: "string",
+      get: (row) => formatDashCell(row),
+    },
+    fluency: {
+      type: "number",
+      get: (row) => row.mss_fluency,
+    },
+    grammar: {
+      type: "number",
+      get: (row) => row.mss_grammar,
+    },
+    pron: {
+      type: "number",
+      get: (row) => row.mss_pron,
+    },
+    vocab: {
+      type: "number",
+      get: (row) => row.mss_vocab,
+    },
+  };
 
-  tests.sort((a, b) => {
-    const va = get(a);
-    const vb = get(b);
-
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-
-    let cmp = 0;
-    if (type === "number") {
-      cmp = Number(va) - Number(vb);
-    } else if (type === "date") {
-      cmp = new Date(va) - new Date(vb);
-    } else {
-      cmp = String(va).localeCompare(String(vb));
+  function loadInitialSort() {
+    try {
+      const raw = window.localStorage.getItem("mssPortalSort");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.key && SORT_CONFIG[parsed.key]) {
+        currentSortKey = parsed.key;
+        currentSortDir = parsed.dir === "desc" ? "desc" : "asc";
+      }
+    } catch (e) {
+      console.warn("[SchoolPortal] Failed to load sort state", e);
     }
+  }
 
-    return currentSortDir === "asc" ? cmp : -cmp;
-  });
-}
-
-function updateHeaderSortIndicators() {
-  const table = document.getElementById("tests-table");
-  if (!table) return;
-
-  const ths = table.querySelectorAll("thead th[data-sort-key]");
-  ths.forEach((th) => {
-    th.classList.remove("tests-th-sort-asc", "tests-th-sort-desc");
-    const key = th.dataset.sortKey;
-    if (key && key === currentSortKey) {
-      th.classList.add(
-        currentSortDir === "asc" ? "tests-th-sort-asc" : "tests-th-sort-desc"
+  function saveSortState() {
+    try {
+      window.localStorage.setItem(
+        "mssPortalSort",
+        JSON.stringify({ key: currentSortKey, dir: currentSortDir })
       );
+    } catch (e) {
+      console.warn("[SchoolPortal] Failed to save sort state", e);
     }
-  });
-}
-
-function setSort(key) {
-  if (!key || !SORT_CONFIG[key]) return;
-
-  if (currentSortKey === key) {
-    currentSortDir = currentSortDir === "asc" ? "desc" : "asc";
-  } else {
-    currentSortKey = key;
-    currentSortDir = "asc";
   }
 
-  saveSortState();
-  sortTestsInPlace();
-  renderTestsTable();
-  updateHeaderSortIndicators();
-}
+  function sortTestsInPlace() {
+    if (!Array.isArray(tests) || !currentSortKey) return;
+    const cfg = SORT_CONFIG[currentSortKey];
+    if (!cfg || typeof cfg.get !== "function") return;
 
-function wireTableSorting() {
-  const table = document.getElementById("tests-table");
-  if (!table) return;
+    const { type, get } = cfg;
 
-  const ths = table.querySelectorAll("thead th");
-  ths.forEach((th) => {
-    const key = th.dataset.sortKey;
+    tests.sort((a, b) => {
+      const va = get(a);
+      const vb = get(b);
+
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+
+      let cmp = 0;
+      if (type === "number") {
+        cmp = Number(va) - Number(vb);
+      } else if (type === "date") {
+        cmp = new Date(va) - new Date(vb);
+      } else {
+        cmp = String(va).localeCompare(String(vb));
+      }
+
+      return currentSortDir === "asc" ? cmp : -cmp;
+    });
+  }
+
+  function updateHeaderSortIndicators() {
+    const table = document.getElementById("tests-table");
+    if (!table) return;
+
+    const ths = table.querySelectorAll("thead th[data-sort-key]");
+    ths.forEach((th) => {
+      th.classList.remove("tests-th-sort-asc", "tests-th-sort-desc");
+      const key = th.dataset.sortKey;
+      if (key && key === currentSortKey) {
+        th.classList.add(
+          currentSortDir === "asc" ? "tests-th-sort-asc" : "tests-th-sort-desc"
+        );
+      }
+    });
+  }
+
+  function setSort(key) {
     if (!key || !SORT_CONFIG[key]) return;
 
-    th.style.cursor = "pointer";
-    th.addEventListener("click", () => setSort(key));
-  });
-}
+    if (currentSortKey === key) {
+      currentSortDir = currentSortDir === "asc" ? "desc" : "asc";
+    } else {
+      currentSortKey = key;
+      currentSortDir = "asc";
+    }
 
-/* -----------------------------------------------------------------------
-   Render Tests Table (16-column schema)
-   ----------------------------------------------------------------------- */
-
-function renderTestsTable() {
-  const safe = (v) =>
-    v === null || v === undefined || v === "" ? "—" : v;
-
-  // No data fallback row
-  if (!tests || tests.length === 0) {
-    testsTbody.innerHTML =
-      `<tr><td colspan="16" class="muted">No data for this period.</td></tr>`;
-    testsCountLabel.textContent = "0 tests";
-    return;
+    saveSortState();
+    sortTestsInPlace();
+    renderTestsTable();
+    updateHeaderSortIndicators();
   }
 
-  const rows = tests.map((t) => {
-    const date = formatShortDateTime(
-      t.submitted_at || t.submittedAt || t.created_at
-    );
+  function wireTableSorting() {
+    const table = document.getElementById("tests-table");
+    if (!table) return;
 
-    const helpText = formatHelpCell(t);
-    const dashText = formatDashCell(t);
+    const ths = table.querySelectorAll("thead th");
+    ths.forEach((th) => {
+      const key = th.dataset.sortKey;
+      if (!key || !SORT_CONFIG[key]) return;
 
-    return `
-      <tr data-id="${safe(t.id)}">
-
-        <!-- 1: Select -->
-        <td>
-          <input 
-            type="checkbox" 
-            class="test-select" 
-            data-id="${safe(t.id)}"
-          />
-        </td>
-
-        <!-- 2: Actions -->
-        <td>
-          <select class="row-action-select" data-id="${safe(t.id)}">
-            <option value="">Actions…</option>
-            <option value="transcript">Transcript</option>
-            <option value="prompt">AI Prompt</option>
-            <option value="dashboard">Dashboard view</option>
-          </select>
-        </td>
-
-        <!-- 3: ID -->
-        <td>${safe(t.id)}</td>
-
-        <!-- 4: Date -->
-        <td>${safe(date)}</td>
-
-        <!-- 5: Student -->
-        <td>${safe(t.student_id)}</td>
-
-        <!-- 6: Question -->
-        <td title="${safe(t.question)}">
-          ${truncate(t.question, 30)}
-        </td>
-
-        <!-- 7–10: MSS scores (truth-source) -->
-        <td>${safe(t.mss_toefl)}</td>
-        <td>${safe(t.mss_ielts)}</td>
-        <td>${safe(t.mss_pte)}</td>
-        <td>${safe(t.mss_cefr)}</td>
-
-        <!-- 11: Help -->
-        <td>${safe(helpText)}</td>
-
-        <!-- 12: Dash -->
-        <td>${safe(dashText)}</td>
-
-        <!-- 13–16: Subscores -->
-        <td>${safe(t.mss_fluency)}</td>
-        <td>${safe(t.mss_grammar)}</td>
-        <td>${safe(t.mss_pron)}</td>
-        <td>${safe(t.mss_vocab)}</td>
-
-      </tr>
-    `;
-  });
-
-  testsTbody.innerHTML = rows.join("");
-
-  testsCountLabel.textContent = `${tests.length} test${
-    tests.length === 1 ? "" : "s"
-  }`;
-
-  // 🔑 make sure row actions are wired every render
-  wireRowActionSelects();
-}
-
-function wireRowActionSelects() {
-  const selects = testsTbody.querySelectorAll(".row-action-select");
-  if (!selects.length) return;
-
-  selects.forEach((select) => {
-    select.addEventListener("change", () => {
-      const value = select.value;
-      if (!value) return;
-
-      const id = select.dataset.id;
-      if (!id) {
-        select.value = "";
-        return;
-      }
-
-      const row = tests.find((t) => String(t.id) === String(id));
-      if (!row) {
-        select.value = "";
-        return;
-      }
-
-      if (value === "transcript") {
-        showTranscript(row);
-      } else if (value === "prompt") {
-        showPrompt(row);
-      } else if (value === "dashboard") {
-        openDashboardPickerForRow(row);
-      }
-
-      // Reset dropdown so user can choose again
-      select.value = "";
+      th.style.cursor = "pointer";
+      th.addEventListener("click", () => setSort(key));
     });
-  });
-}
-  
-//Dec 3
-// AI Prompt viewer – reuses the transcript modal shell
-function showPrompt(row) {
-  if (!row) return;
-
-  const promptText = buildAIPromptFromRow(row);
-
-  const backdrop = document.getElementById("portal-transcript-backdrop");
-  const body = document.getElementById("portal-transcript-body");
-  const title = document.getElementById("portal-transcript-title");
-  const subtitle = document.getElementById("portal-transcript-subtitle");
-  const closeBtn = document.getElementById("portal-transcript-close");
-  const okBtn = document.getElementById("portal-transcript-ok");
-
-  if (!backdrop || !body) {
-    // Fallback: at least show the text
-    alert(promptText || "No AI prompt available.");
-    return;
   }
 
-  LAST_ROW = row;
-  LAST_AI_PROMPT = promptText;
+  // -----------------------------------------------------------------------
+  // Render Tests table
+  // -----------------------------------------------------------------------
 
-  const submittedAt = row.submitted_at || row.created_at || "";
+  function renderTestsTable() {
+    const safe = (v) =>
+      v === null || v === undefined || v === "" ? "—" : v;
 
-  if (title) {
-    title.textContent =
-      "AI Prompt – " + formatShortDateTime(submittedAt || "");
+    if (!tests || tests.length === 0) {
+      testsTbody.innerHTML =
+        `<tr><td colspan="16" class="muted">No data for this period.</td></tr>`;
+      testsCountLabel.textContent = "0 tests";
+      return;
+    }
+
+    const rows = tests.map((t) => {
+      const date = formatShortDateTime(
+        t.submitted_at || t.submittedAt || t.created_at
+      );
+
+      const helpText = formatHelpCell(t);
+      const dashText = formatDashCell(t);
+
+      return `
+        <tr data-id="${safe(t.id)}">
+
+          <!-- 1: Select -->
+          <td>
+            <input 
+              type="checkbox" 
+              class="test-select" 
+              data-id="${safe(t.id)}"
+            />
+          </td>
+
+          <!-- 2: Actions -->
+          <td>
+            <select class="row-action-select" data-id="${safe(t.id)}">
+              <option value="">Actions…</option>
+              <option value="transcript">Transcript</option>
+              <option value="prompt">AI Prompt</option>
+              <option value="dashboard">Dashboard view</option>
+            </select>
+          </td>
+
+          <!-- 3: ID -->
+          <td>${safe(t.id)}</td>
+
+          <!-- 4: Date -->
+          <td>${safe(date)}</td>
+
+          <!-- 5: Student -->
+          <td>${safe(t.student_id)}</td>
+
+          <!-- 6: Question -->
+          <td title="${safe(t.question)}">
+            ${truncate(t.question, 30)}
+          </td>
+
+          <!-- 7–10: MSS scores -->
+          <td>${safe(t.mss_toefl)}</td>
+          <td>${safe(t.mss_ielts)}</td>
+          <td>${safe(t.mss_pte)}</td>
+          <td>${safe(t.mss_cefr)}</td>
+
+          <!-- 11: Help -->
+          <td>${safe(helpText)}</td>
+
+          <!-- 12: Dash -->
+          <td>${safe(dashText)}</td>
+
+          <!-- 13–16: Subscores -->
+          <td>${safe(t.mss_fluency)}</td>
+          <td>${safe(t.mss_grammar)}</td>
+          <td>${safe(t.mss_pron)}</td>
+          <td>${safe(t.mss_vocab)}</td>
+
+        </tr>
+      `;
+    });
+
+    testsTbody.innerHTML = rows.join("");
+
+    testsCountLabel.textContent = `${tests.length} test${
+      tests.length === 1 ? "" : "s"
+    }`;
+
+    wireRowActionSelects();
   }
 
-  if (subtitle) {
-    subtitle.textContent = row.student_name
-      ? row.student_name
-      : row.student_email
-      ? row.student_email
-      : row.student_id
-      ? "Student #" + row.student_id
-      : "";
+  function wireRowActionSelects() {
+    const selects = testsTbody.querySelectorAll(".row-action-select");
+    if (!selects.length) return;
+
+    selects.forEach((select) => {
+      select.addEventListener("change", () => {
+        const value = select.value;
+        if (!value) return;
+
+        const id = select.dataset.id;
+        if (!id) {
+          select.value = "";
+          return;
+        }
+
+        const row = tests.find((t) => String(t.id) === String(id));
+        if (!row) {
+          select.value = "";
+          return;
+        }
+
+        if (value === "transcript") {
+          showTranscript(row);
+        } else if (value === "prompt") {
+          showPrompt(row);
+        } else if (value === "dashboard") {
+          openDashboardPickerForRow(row);
+        }
+
+        select.value = "";
+      });
+    });
   }
 
-  body.textContent = promptText || "No AI prompt available.";
+  // -----------------------------------------------------------------------
+  // Transcript + AI Prompt modals
+  // -----------------------------------------------------------------------
 
-  backdrop.classList.remove("hidden");
+  function showPrompt(row) {
+    if (!row) return;
 
-  const close = () => backdrop.classList.add("hidden");
+    const promptText = buildAIPromptFromRow(row);
 
-  if (closeBtn && !closeBtn._mssBound) {
-    closeBtn.addEventListener("click", close);
-    closeBtn._mssBound = true;
-  }
-  if (okBtn && !okBtn._mssBound) {
-    okBtn.addEventListener("click", close);
-    okBtn._mssBound = true;
-  }
+    const backdrop = document.getElementById("portal-transcript-backdrop");
+    const body = document.getElementById("portal-transcript-body");
+    const title = document.getElementById("portal-transcript-title");
+    const subtitle = document.getElementById("portal-transcript-subtitle");
+    const closeBtn = document.getElementById("portal-transcript-close");
+    const okBtn = document.getElementById("portal-transcript-ok");
 
-  document.addEventListener(
-    "keydown",
-    function escHandler(e) {
-      if (e.key === "Escape") {
-        close();
-        document.removeEventListener("keydown", escHandler);
-      }
-    },
-    { once: true }
-  );
-}
-  // Transcript viewer – uses transcript_clean
-// Transcript viewer – uses transcript_clean and shows the question first
-function showTranscript(row) {
-  const transcript = (row && row.transcript_clean) || "";
-  const question = (row && row.question) || "";
+    if (!backdrop || !body) {
+      alert(promptText || "No AI prompt available.");
+      return;
+    }
 
-  const backdrop = document.getElementById("portal-transcript-backdrop");
-  const body = document.getElementById("portal-transcript-body");
-  const title = document.getElementById("portal-transcript-title");
-  const subtitle = document.getElementById("portal-transcript-subtitle");
-  const closeBtn = document.getElementById("portal-transcript-close");
-  const okBtn = document.getElementById("portal-transcript-ok");
+    LAST_ROW = row;
+    LAST_AI_PROMPT = promptText;
 
-  // Fallback if modal isn’t in the DOM
-  if (!backdrop || !body) {
-    const header = question ? `Question:\n\n${question}\n\n` : "";
-    alert(header + (transcript || "No transcript available."));
-    return;
-  }
+    const submittedAt = row.submitted_at || row.created_at || "";
 
-  // 🔑 remember which row is active
-  LAST_ROW = row || null;
+    if (title) {
+      title.textContent =
+        "AI Prompt – " + formatShortDateTime(submittedAt || "");
+    }
 
-  const submittedAt = row?.submitted_at || row?.created_at || "";
+    if (subtitle) {
+      subtitle.textContent = row.student_name
+        ? row.student_name
+        : row.student_email
+        ? row.student_email
+        : row.student_id
+        ? "Student #" + row.student_id
+        : "";
+    }
 
-  if (title) {
-    title.textContent =
-      "Transcript – " + formatShortDateTime(submittedAt || "");
-  }
+    body.textContent = promptText || "No AI prompt available.";
 
-  if (subtitle) {
-    subtitle.textContent = row?.student_name
-      ? row.student_name
-      : row?.student_email
-      ? row.student_email
-      : row?.student_id
-      ? "Student #" + row.student_id
-      : "";
-  }
+    backdrop.classList.remove("hidden");
 
-  // Build the body text: Question block, then transcript
-  let bodyText = "";
-  if (question) {
-    bodyText += "Question\n\n";
-    bodyText += question + "\n\n";
-  }
-  bodyText += transcript || "No transcript available.";
+    const close = () => backdrop.classList.add("hidden");
 
-  // The CSS uses white-space: pre-wrap, so \n\n gives us nice paragraphs
-  body.textContent = bodyText;
+    if (closeBtn && !closeBtn._mssBound) {
+      closeBtn.addEventListener("click", close);
+      closeBtn._mssBound = true;
+    }
+    if (okBtn && !okBtn._mssBound) {
+      okBtn.addEventListener("click", close);
+      okBtn._mssBound = true;
+    }
 
-  // 🔑 build and store the AI prompt for this row
-  if (row) {
-    LAST_AI_PROMPT = buildAIPromptFromRow(row);
-    console.log("🧠 AI prompt prepared for row", row.id);
-  } else {
-    LAST_AI_PROMPT = "";
+    document.addEventListener(
+      "keydown",
+      function escHandler(e) {
+        if (e.key === "Escape") {
+          close();
+          document.removeEventListener("keydown", escHandler);
+        }
+      },
+      { once: true }
+    );
   }
 
-  backdrop.classList.remove("hidden");
+  function showTranscript(row) {
+    const transcript = (row && row.transcript_clean) || "";
+    const question = (row && row.question) || "";
 
-  const close = () => backdrop.classList.add("hidden");
+    const backdrop = document.getElementById("portal-transcript-backdrop");
+    const body = document.getElementById("portal-transcript-body");
+    const title = document.getElementById("portal-transcript-title");
+    const subtitle = document.getElementById("portal-transcript-subtitle");
+    const closeBtn = document.getElementById("portal-transcript-close");
+    const okBtn = document.getElementById("portal-transcript-ok");
 
-  if (closeBtn && !closeBtn._mssBound) {
-    closeBtn.addEventListener("click", close);
-    closeBtn._mssBound = true;
+    if (!backdrop || !body) {
+      const header = question ? `Question:\n\n${question}\n\n` : "";
+      alert(header + (transcript || "No transcript available."));
+      return;
+    }
+
+    LAST_ROW = row || null;
+
+    const submittedAt = row?.submitted_at || row?.created_at || "";
+
+    if (title) {
+      title.textContent =
+        "Transcript – " + formatShortDateTime(submittedAt || "");
+    }
+
+    if (subtitle) {
+      subtitle.textContent = row?.student_name
+        ? row.student_name
+        : row?.student_email
+        ? row.student_email
+        : row?.student_id
+        ? "Student #" + row.student_id
+        : "";
+    }
+
+    let bodyText = "";
+    if (question) {
+      bodyText += "Question\n\n";
+      bodyText += question + "\n\n";
+    }
+    bodyText += transcript || "No transcript available.";
+
+    body.textContent = bodyText;
+
+    if (row) {
+      LAST_AI_PROMPT = buildAIPromptFromRow(row);
+      console.log("🧠 AI prompt prepared for row", row.id);
+    } else {
+      LAST_AI_PROMPT = "";
+    }
+
+    backdrop.classList.remove("hidden");
+
+    const close = () => backdrop.classList.add("hidden");
+
+    if (closeBtn && !closeBtn._mssBound) {
+      closeBtn.addEventListener("click", close);
+      closeBtn._mssBound = true;
+    }
+    if (okBtn && !okBtn._mssBound) {
+      okBtn.addEventListener("click", close);
+      okBtn._mssBound = true;
+    }
+
+    document.addEventListener(
+      "keydown",
+      function escHandler(e) {
+        if (e.key === "Escape") {
+          close();
+          document.removeEventListener("keydown", escHandler);
+        }
+      },
+      { once: true }
+    );
   }
-  if (okBtn && !okBtn._mssBound) {
-    okBtn.addEventListener("click", close);
-    okBtn._mssBound = true;
-  }
 
-  document.addEventListener(
-    "keydown",
-    function escHandler(e) {
-      if (e.key === "Escape") {
-        close();
-        document.removeEventListener("keydown", escHandler);
-      }
-    },
-    { once: true }
-  );
-}
   // -----------------------------------------------------------------------
   // DashboardViewer integration
   // -----------------------------------------------------------------------
 
-  // Build URL for the new DashboardViewer.html
   function buildDashboardViewerUrl(row, explicitLayout) {
     const baseLayout =
       explicitLayout && explicitLayout !== "transcript"
@@ -995,25 +980,22 @@ function showTranscript(row) {
 
     const schoolSlug = row.school_slug || CURRENT_SLUG;
 
-    const params = new URLSearchParams({
+    const p = new URLSearchParams({
       slug: schoolSlug || "",
       submissionId: row.id,
-      layout: baseLayout, // e.g. "dashboard3"
+      layout: baseLayout,
     });
 
-    return `/DashboardViewer.html?${params.toString()}`;
+    return `/DashboardViewer.html?${p.toString()}`;
   }
 
-  // Per-row dashboard view: ALWAYS use DashboardViewer (new tab)
   function openDashboardPickerForRow(row) {
     if (!row) return;
-
     const url = buildDashboardViewerUrl(row);
     console.log("🧭 Opening DashboardViewer:", url);
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  // Used by any future "Open report" button that respects REPORT_VIEW_MODE
   function openReportForRow(row) {
     if (!row) return;
 
@@ -1031,7 +1013,7 @@ function showTranscript(row) {
   }
 
   // -----------------------------------------------------------------------
-  // API calls
+  // API calls: widget meta, assessment meta, stats, tests
   // -----------------------------------------------------------------------
 
   async function fetchWidgetMeta() {
@@ -1045,15 +1027,11 @@ function showTranscript(row) {
 
       const data = await res.json();
 
-      // Merge both possible config shapes:
-      //  - new:  data.config
-      //  - old:  data.settings.config
       const rootCfg = data.config || {};
       const nestedCfg =
         (data.settings && data.settings.config) || {};
       const cfg = { ...nestedCfg, ...rootCfg };
 
-      // --------- Derive widget + dashboard paths from multiple keys -----
       const rawWidget =
         cfg.widgetPath ||
         cfg.widgetUrl ||
@@ -1062,10 +1040,12 @@ function showTranscript(row) {
         null;
 
       if (rawWidget) {
-        if (/^https?:\/\//i.test(rawWidget) || rawWidget.startsWith("/")) {
+        if (
+          /^https?:\/\//i.test(rawWidget) ||
+          rawWidget.startsWith("/")
+        ) {
           widgetPath = rawWidget;
         } else {
-          // assume bare filename like "WidgetMin.html"
           widgetPath = `/widgets/${rawWidget}`;
         }
       }
@@ -1078,10 +1058,12 @@ function showTranscript(row) {
         null;
 
       if (rawDash) {
-        if (/^https?:\/\//i.test(rawDash) || rawDash.startsWith("/")) {
+        if (
+          /^https?:\/\//i.test(rawDash) ||
+          rawDash.startsWith("/")
+        ) {
           dashboardPath = rawDash;
         } else {
-          // assume bare filename like "Dashboard3.html"
           dashboardPath = `/dashboards/${rawDash}`;
         }
       }
@@ -1094,9 +1076,7 @@ function showTranscript(row) {
         cfg,
         data,
       });
-      // ----------------------------------------------------------------------
 
-      // Titles / labels
       const schoolName =
         (data.school && data.school.name) ||
         (CURRENT_SCHOOL && CURRENT_SCHOOL.name) ||
@@ -1115,7 +1095,6 @@ function showTranscript(row) {
       updateSlugUi();
       applySlugToQuickLinks();
 
-      // Initial view
       setActivePreviewTab("widget");
       buildEmbedSnippet();
     } catch (err) {
@@ -1129,7 +1108,6 @@ function showTranscript(row) {
   async function fetchAssessmentMeta() {
     if (!CURRENT_SLUG) return;
     if (assessmentId && ASSESSMENT_ID_FROM_URL) {
-      // If user explicitly provided assessmentId, just label it simply
       assessmentLabelEl.textContent = `Assessment ID: ${assessmentId}`;
       return;
     }
@@ -1193,16 +1171,14 @@ function showTranscript(row) {
   }
 
   // -----------------------------------------------------------------------
-  // Shared date-range helpers
+  // Date helpers
   // -----------------------------------------------------------------------
-
-
 
   function parseYmd(str) {
     if (!str) return null;
     const [y, m, d] = str.split("-").map((v) => Number(v));
     if (!y || !m || !d) return null;
-    return new Date(y, m - 1, d); // local date, no time
+    return new Date(y, m - 1, d);
   }
 
   function validateDateRangeFields(fromInput, toInput) {
@@ -1221,7 +1197,6 @@ function showTranscript(row) {
       showWarning(
         "The end date cannot be earlier than the start date. I've adjusted it for you."
       );
-      // Snap "to" back to "from"
       toInput.value = fromVal;
       return false;
     }
@@ -1245,13 +1220,12 @@ function showTranscript(row) {
         backdrop.classList.add("hidden");
       };
     } else {
-      // Fallback so we still show *something* if the modal isn't in the HTML yet
       window.alert(message);
     }
   }
 
   // -----------------------------------------------------------------------
-  // Tests table API + CSV (backed by vw_widget_reports)
+  // Reports API + CSV
   // -----------------------------------------------------------------------
 
   function filterRowsByDate(rows) {
@@ -1292,7 +1266,6 @@ function showTranscript(row) {
   async function fetchTests() {
     if (!CURRENT_SLUG) return;
 
-    // Front-end guard so we don't hit the server with a bad range
     if (!validateDateRange()) {
       tests = [];
       renderTestsTable();
@@ -1303,7 +1276,6 @@ function showTranscript(row) {
     btnRefreshTests.innerHTML = `<span class="spinner"></span>`;
 
     try {
-      // New reports endpoint backed by view
       const url = `/api/admin/reports/${encodeURIComponent(
         CURRENT_SLUG
       )}?limit=500`;
@@ -1318,7 +1290,10 @@ function showTranscript(row) {
         [];
 
       tests = filterRowsByDate(allRows);
+      loadInitialSort();
+      sortTestsInPlace();
       renderTestsTable();
+      updateHeaderSortIndicators();
     } catch (err) {
       console.error("Failed to fetch tests/reports", err);
       tests = [];
@@ -1329,13 +1304,33 @@ function showTranscript(row) {
     }
   }
 
-  // Client-side CSV based on tests[]
+  function normalizeTranscriptForCsv(value) {
+    if (!value) return "";
+
+    let s = String(value);
+    s = s.replace(/<[^>]*>/g, "");
+    s = s.replace(/\u00A0/g, " ");
+    s = s.replace(/\s+/g, " ").trim();
+
+    return s;
+  }
+
+  function toCsvRow(cells) {
+    return cells
+      .map((val) => {
+        if (val == null) return '""';
+        let s = String(val);
+        s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        s = s.replace(/"/g, '""');
+        return `"${s}"`;
+      })
+      .join(",");
+  }
+
   function downloadCsv() {
     if (!CURRENT_SLUG) return;
 
-    if (!validateDateRange()) {
-      return;
-    }
+    if (!validateDateRange()) return;
 
     if (!tests || !tests.length) {
       alert("No tests to export for this period.");
@@ -1416,36 +1411,8 @@ function showTranscript(row) {
     URL.revokeObjectURL(url);
   }
 
-  function normalizeTranscriptForCsv(value) {
-    if (!value) return "";
-
-    let s = String(value);
-
-    // Strip any stray HTML tags (defensive)
-    s = s.replace(/<[^>]*>/g, "");
-
-    // Normalise whitespace and NBSP
-    s = s.replace(/\u00A0/g, " "); // NBSP → space
-    s = s.replace(/\s+/g, " ").trim();
-
-    return s;
-  }
-
-  function toCsvRow(cells) {
-    return cells
-      .map((val) => {
-        if (val == null) return '""';
-        let s = String(val);
-        // normalise line breaks for CSV
-        s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-        s = s.replace(/"/g, '""');
-        return `"${s}"`;
-      })
-      .join(",");
-  }
-
   // -----------------------------------------------------------------------
-  // Delete Selected (soft delete via /api/admin/reports/delete)
+  // Delete Selected
   // -----------------------------------------------------------------------
 
   function onDeleteSelected() {
@@ -1499,14 +1466,13 @@ function showTranscript(row) {
       try {
         data = await res.json();
       } catch {
-        // if non-JSON, fall back to generic error
+        // ignore non-JSON
       }
 
       if (!res.ok || data.ok === false) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      // Remove deleted rows from local tests[] and re-render
       tests = tests.filter((t) => !ids.includes(Number(t.id)));
       renderTestsTable();
     } catch (err) {
@@ -1518,7 +1484,7 @@ function showTranscript(row) {
   }
 
   // -----------------------------------------------------------------------
-  // Prompt dialog helpers
+  // Prompt overlay (separate modal used by mssShowPrompt)
   // -----------------------------------------------------------------------
 
   (function () {
@@ -1535,7 +1501,6 @@ function showTranscript(row) {
       overlay.hidden = false;
       modal.hidden = false;
       statusEl && (statusEl.textContent = "");
-      // focus + select for quick Cmd+C / Ctrl+C
       textarea.focus();
       textarea.select();
     }
@@ -1555,7 +1520,6 @@ function showTranscript(row) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           await navigator.clipboard.writeText(text);
         } else {
-          // Fallback
           textarea.focus();
           textarea.select();
           document.execCommand("copy");
@@ -1569,7 +1533,6 @@ function showTranscript(row) {
       }
     }
 
-    // Wire events
     if (closeBtn) closeBtn.addEventListener("click", closePrompt);
     if (copyBtn) copyBtn.addEventListener("click", copyPrompt);
     if (overlay) {
@@ -1582,11 +1545,13 @@ function showTranscript(row) {
       }
     });
 
-    // Expose a global entry point we can call from the Reports table
     window.mssShowPrompt = openPrompt;
   })();
 
-  // Build AI prompt (feedback + email) for a single submission row
+  // -----------------------------------------------------------------------
+  // AI Prompt builder for a single submission row
+  // -----------------------------------------------------------------------
+
   function buildAIPromptFromRow(row) {
     const safe = (v, fallback = "N/A") =>
       v === null || v === undefined || v === "" ? fallback : v;
@@ -1594,7 +1559,6 @@ function showTranscript(row) {
     const question = safe(row.question, "Not specified");
     const studentId = safe(row.student_id, "Unknown student");
 
-    // Scores: use what we know is in vw_widget_reports, but allow for optional fields
     const taskScore = safe(row.task_score ?? row.task, "N/A");
     const speedWpm = safe(row.speed_wpm ?? row.speed ?? row.wpm, "N/A");
 
@@ -1658,82 +1622,49 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
 `.trim();
   }
 
-function wireEmbedCopy() {
-  if (!embedCopyBtn || !embedCodeEl) return;
-
-  embedCopyBtn.addEventListener("click", async () => {
-    const text = (embedCodeEl.value || "").trim();
-    if (!text) return;
-
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback for older browsers
-        embedCodeEl.focus();
-        embedCodeEl.select();
-        document.execCommand("copy");
-      }
-
-      const original = embedCopyBtn.textContent;
-      embedCopyBtn.textContent = "Copied!";
-      embedCopyBtn.disabled = true;
-
-      setTimeout(() => {
-        embedCopyBtn.textContent = original;
-        embedCopyBtn.disabled = false;
-      }, 1500);
-    } catch (e) {
-      console.warn("[SchoolPortal] Failed to copy embed code", e);
-      alert("Sorry, your browser wouldn’t let us copy automatically. Please copy the code manually.");
-    }
-  });
-}
   // -----------------------------------------------------------------------
-  // Logout support
+  // Logout
   // -----------------------------------------------------------------------
 
-  // Where to send admins after logout (adjust if your login URL is different)
   const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
 
   function handleLogout(event) {
-  if (event) event.preventDefault();
+    if (event) event.preventDefault();
 
-  try {
-    localStorage.removeItem("mssAdminSession");
-    localStorage.removeItem("MSS_ADMIN_SESSION");
-    localStorage.removeItem("MSS_ADMIN_SESSION_V2");
-    localStorage.removeItem("MSS_ADMIN_TOKEN");
-    localStorage.removeItem("MSS_ADMIN_EMAIL");
-  } catch (e) {
-    console.warn("[SchoolPortal] Error clearing admin session", e);
+    try {
+      localStorage.removeItem("mssAdminSession");
+      localStorage.removeItem("MSS_ADMIN_SESSION");
+      localStorage.removeItem("MSS_ADMIN_SESSION_V2");
+      localStorage.removeItem("MSS_ADMIN_TOKEN");
+      localStorage.removeItem("MSS_ADMIN_EMAIL");
+    } catch (e) {
+      console.warn("[SchoolPortal] Error clearing admin session", e);
+    }
+
+    window.location.href = ADMIN_LOGIN_URL;
   }
 
-  window.location.href = ADMIN_LOGIN_URL;
-}
   // -----------------------------------------------------------------------
   // Event wiring
   // -----------------------------------------------------------------------
 
   function wireEvents() {
-
-    //logout
-    // NEW: logout Dec 4
+    // Logout
     if (logoutBtn && !logoutBtn._mssLogoutBound) {
       logoutBtn.addEventListener("click", handleLogout);
       logoutBtn._mssLogoutBound = true;
     }
 
-   // Embed snippet copy
-     if (btnCopyEmbed && !btnCopyEmbed._mssBound) {
-       btnCopyEmbed.addEventListener("click", (ev) => {
+    // Embed snippet copy
+    if (btnCopyEmbed && !btnCopyEmbed._mssBound) {
+      btnCopyEmbed.addEventListener("click", (ev) => {
         ev.preventDefault();
-       console.log("📋 Copy embed clicked");
-       copyEmbedToClipboard();
+        console.log("📋 Copy embed clicked");
+        copyEmbedToClipboard();
       });
+      btnCopyEmbed._mssBound = true;
+    }
 
-    btnCopyEmbed._mssBound = true;
-  }
     // Widget/Dashboard tabs
     if (tabWidgetEl) {
       tabWidgetEl.addEventListener("click", () =>
@@ -1746,7 +1677,7 @@ function wireEmbedCopy() {
       );
     }
 
-    // Open Question Editor (WidgetSurvey)
+    // Open Question Editor
     if (btnWidgetSurvey) {
       btnWidgetSurvey.addEventListener("click", () => {
         let url;
@@ -1759,7 +1690,6 @@ function wireEmbedCopy() {
             ASSESSMENT_ID_FROM_URL
           )}`;
         } else {
-          // fallback – old behavior if no assessment meta
           url = `/questions-admin/WidgetSurvey.html`;
         }
         window.open(url, "_blank");
@@ -1776,51 +1706,6 @@ function wireEmbedCopy() {
         window.open(url, "_blank");
       });
     }
-//Dec 3
-const copyPromptBtn = document.getElementById("portal-transcript-copyPrompt");
-if (copyPromptBtn) {
-  copyPromptBtn.addEventListener("click", async () => {
-    const bodyEl = document.getElementById("portal-transcript-body");
-    if (!bodyEl) {
-      console.warn("No modal body element found.");
-      return;
-    }
-
-    const text = (bodyEl.innerText || bodyEl.textContent || "").trim();
-    if (!text) {
-      console.warn("Nothing to copy from modal body.");
-      alert("There is no text to copy.");
-      return;
-    }
-
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback for older browsers / odd environments
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }
-
-      console.log("✅ Modal content copied to clipboard");
-      // Optional: little UX ping
-      copyPromptBtn.textContent = "Copied!";
-      setTimeout(() => {
-        copyPromptBtn.textContent = "Copy to Clipboard";
-      }, 1500);
-    } catch (err) {
-      console.error("Clipboard error:", err);
-      alert("Unable to copy. Please copy manually.");
-    }
-  });
-}
 
     // Timeframe toggle
     if (timeframeToggleEl) {
@@ -1839,7 +1724,7 @@ if (copyPromptBtn) {
       });
     }
 
-    // Date filter validation
+    // Date validation
     if (filterFromEl) {
       filterFromEl.addEventListener("change", () => {
         validateDateRange();
@@ -1850,11 +1735,6 @@ if (copyPromptBtn) {
       filterToEl.addEventListener("change", () => {
         validateDateRange();
       });
-    }
-
-    // NEW: logout
-    if (logoutBtn) {
-      logoutBtn.addEventListener("click", handleLogout);
     }
 
     // Delete modal buttons
@@ -1888,35 +1768,16 @@ if (copyPromptBtn) {
     if (schoolSelectEl) {
       schoolSelectEl.addEventListener("change", onSchoolChanged);
     }
+
+    // Table sort
+    wireTableSorting();
   }
 
-  /* ------------------------------------------------------------------ */
-  /* ADMIN SESSION / LOGOUT                                             */
-  /* ------------------------------------------------------------------ */
-
-  function clearAdminSessionStorage() {
-    try {
-      localStorage.removeItem("mssAdminSession");  // main session object
-
-      // Optional extra keys if we ever use them
-      localStorage.removeItem("mssAdminEmail");
-      localStorage.removeItem("mssAdminSchools");
-      localStorage.removeItem("mssAdminIsSuper");
-
-      console.log("[SchoolPortal] Cleared admin session from localStorage");
-    } catch (err) {
-      console.warn("[SchoolPortal] Unable to access localStorage during logout", err);
-    }
-  }
-
-  
   // -----------------------------------------------------------------------
   // Init
   // -----------------------------------------------------------------------
 
-   
-  
-   function initDefaultDateFilters() {
+  function initDefaultDateFilters() {
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, "0");
@@ -1933,21 +1794,18 @@ if (copyPromptBtn) {
     if (filterFromEl) filterFromEl.value = `${yyyy2}-${mm2}-${dd2}`;
   }
 
-  async function init() {  
+  async function init() {
+    console.log("🔧 SchoolPortal init()");
     wireEvents();
-    initDefaultDateFilters();    
+    initDefaultDateFilters();
 
-    // Populate global report view dropdown from /api/list-dashboards
     await loadDashboardOptionsIntoSelect();
-
-    // Track current selection ("transcript", "dashboard3", etc.)
     initReportViewMode();
 
-    // Load schools for this admin and choose CURRENT_SLUG
     await fetchSchoolsForAdmin();
 
     if (!CURRENT_SLUG) {
-      // Without a school we can't proceed
+      console.warn("[SchoolPortal] No CURRENT_SLUG after fetchSchoolsForAdmin");
       return;
     }
 
@@ -1956,9 +1814,13 @@ if (copyPromptBtn) {
     await fetchStats("today");
     await fetchTests();
   }
-  
+
   document.addEventListener("DOMContentLoaded", init);
 })();
+
+// -------------------------------------------------------------------------
+// Global handler: any button with data-copy-modal copies current modal text
+// -------------------------------------------------------------------------
 
 document.addEventListener("click", async function (e) {
   const btn = e.target.closest("[data-copy-modal]");
@@ -1966,7 +1828,6 @@ document.addEventListener("click", async function (e) {
 
   console.log("🔥 COPY BUTTON CLICKED");
 
-  // Find whichever modal is currently visible
   const activeModal =
     document.querySelector(".sp-modal:not(.hidden)") ||
     document.querySelector("#mssPromptModal:not([hidden])");
@@ -1976,7 +1837,6 @@ document.addEventListener("click", async function (e) {
     return;
   }
 
-  // Try transcript body first
   let textEl =
     activeModal.querySelector("#portal-transcript-body") ||
     activeModal.querySelector("#mssPromptText");

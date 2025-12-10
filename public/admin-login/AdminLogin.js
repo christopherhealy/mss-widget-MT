@@ -1,139 +1,76 @@
-// /admin-login/AdminLogin.js
-// Handles admin login + creates localStorage session for SchoolPortal/ConfigAdmin
-
+// /admin/AdminLogin.js
 console.log("✅ AdminLogin.js loaded");
 
-(function () {
-  "use strict";
+// Decide where the API lives
+const ADMIN_API_BASE =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? "http://localhost:3000"                       // local dev (Node server)
+    : "https://mss-widget-mt.onrender.com";        // Render production API
 
-  const LS_KEY = "mssAdminSession";
+const form = document.getElementById("adminLoginForm");
+const statusEl = document.getElementById("loginStatus");
 
-  const form          = document.getElementById("adminLoginForm");
-  const emailInput    = document.getElementById("email");
-  const passwordInput = document.getElementById("password");
-  const statusEl      = document.getElementById("loginStatus");
+function setStatus(msg, isError = false) {
+  if (!statusEl) return;
+  statusEl.textContent = msg;
+  statusEl.style.color = isError ? "#d00" : "";
+}
 
-  function setStatus(msg, isError) {
-    if (!statusEl) return;
-    statusEl.textContent = msg;
-    statusEl.classList.toggle("error", !!isError);
-  }
+if (form) {
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  function localStorageAvailable() {
-    try {
-      const testKey = "__mss_ls_test__";
-      window.localStorage.setItem(testKey, "1");
-      window.localStorage.removeItem(testKey);
-      return true;
-    } catch (e) {
-      console.warn("[AdminLogin] localStorage unavailable", e);
-      return false;
-    }
-  }
-
-  function saveAdminSession(admin, schools) {
-    if (!localStorageAvailable()) {
-      setStatus(
-        "Local storage is disabled. Please enable it in your browser to use the admin portal.",
-        true
-      );
-      return;
-    }
-
-    const safeSchools = Array.isArray(schools) ? schools : [];
-    const currentSlug =
-      safeSchools.length && safeSchools[0].slug ? safeSchools[0].slug : null;
-
-    const session = {
-      adminId: admin.id,
-      email: admin.email,
-      name: admin.name,
-      // be defensive about the flag name
-      superAdmin: !!(
-        admin.is_super_admin ||
-        admin.super_admin ||
-        admin.isSuperAdmin
-      ),
-      schools: safeSchools.map((s) => ({
-        id: s.id,
-        slug: s.slug,
-        name: s.name,
-      })),
-      currentSlug,
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      window.localStorage.setItem(LS_KEY, JSON.stringify(session));
-      console.log("[AdminLogin] Saved admin session to localStorage:", session);
-    } catch (e) {
-      console.error("[AdminLogin] Failed to save session", e);
-      setStatus(
-        "Could not save login session. Check browser storage settings.",
-        true
-      );
-    }
-
-    return currentSlug;
-  }
-
-  async function onLoginSubmit(event) {
-    event.preventDefault();
-
-    const email    = (emailInput && emailInput.value.trim()) || "";
-    const password = (passwordInput && passwordInput.value) || "";
+    const email = (form.email?.value || "").trim();
+    const password = form.password?.value || "";
 
     if (!email || !password) {
-      setStatus("Please enter both email and password.", true);
+      setStatus("Please enter your email and password.", true);
       return;
     }
 
-    setStatus("Signing in…", false);
+    setStatus("Signing you in…");
 
     try {
-      const res = await fetch("/api/admin/login", {
+      const res = await fetch(`${ADMIN_API_BASE}/api/admin/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // get/set admin cookies
         body: JSON.stringify({ email, password }),
       });
 
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        // ignore JSON parse error, fall back to generic message
+      }
+
       if (!res.ok) {
-        setStatus("Login failed. Check your email and password.", true);
+        const msg =
+          data.message ||
+          data.error ||
+          "Login failed. Please check your email and password.";
+        console.error("[AdminLogin] login failed:", data);
+        setStatus(msg, true);
         return;
       }
 
-      const data = await res.json();
-      if (!data.ok || !data.admin) {
-        setStatus("Login failed. Check your email and password.", true);
-        return;
-      }
+      console.log("[AdminLogin] login success:", data);
+      setStatus("Signed in. Redirecting…", false);
 
-      const admin   = data.admin;
-      const schools = data.schools || [];
-
-      const slug = saveAdminSession(admin, schools);
-
-      // Redirect into the portal; for now we still pass slug via query
-      let target = "/admin/SchoolPortal.html";
-      if (slug) {
-        target += `?slug=${encodeURIComponent(slug)}`;
-      }
-
-      setStatus("Login successful. Redirecting…", false);
-      window.location.href = target;
+      // Redirect to Config Admin or School Portal
+      window.location.href = "/config-admin/ConfigAdmin.html";
     } catch (err) {
-      console.error("[AdminLogin] Login error", err);
-      setStatus("Network or server error during login.", true);
+      console.error("[AdminLogin] network error:", err);
+      setStatus(
+        "We couldn’t reach the admin server. Please try again in a moment.",
+        true
+      );
     }
-  }
-
-  function init() {
-    if (!form) {
-      console.warn("[AdminLogin] adminLoginForm not found");
-      return;
-    }
-    form.addEventListener("submit", onLoginSubmit);
-  }
-
-  document.addEventListener("DOMContentLoaded", init);
-})();
+  });
+} else {
+  console.warn("[AdminLogin] form#adminLoginForm not found");
+}

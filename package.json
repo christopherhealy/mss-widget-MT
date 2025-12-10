@@ -8,11 +8,13 @@
     "build": "echo \"Vercel build step (no-op)\""
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.11",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "slugify": "^1.6.6"
   }
 }
