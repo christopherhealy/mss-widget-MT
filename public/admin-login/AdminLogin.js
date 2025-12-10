@@ -62,7 +62,7 @@ if (form) {
       setStatus("Signed in. Redirecting…", false);
 
       // Redirect to Config Admin or School Portal
-      window.location.href = "/config-admin/ConfigAdmin.html";
+      window.location.href = "/admin/SchoolPortal.html";
     } catch (err) {
       console.error("[AdminLogin] network error:", err);
       setStatus(
