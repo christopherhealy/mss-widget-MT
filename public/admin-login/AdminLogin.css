@@ -155,3 +155,8 @@ footer {
   color: #374151;           /* Slightly darker on hover */
   text-decoration: underline;
 }
+.login-status {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: #666;
+}

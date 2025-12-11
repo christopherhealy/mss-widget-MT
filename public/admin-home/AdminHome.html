@@ -1,0 +1,149 @@
+<!-- /public/admin-home/AdminHome.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – Admin Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      padding: 0;
+    }
+    .admin-shell {
+      max-width: 720px;
+      margin: 48px auto;
+      padding: 32px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+    }
+    .admin-header h1 {
+      margin: 0 0 4px;
+      font-size: 26px;
+    }
+    .admin-header p {
+      margin: 0;
+      color: #64748b;
+      font-size: 14px;
+    }
+    .admin-meta {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: #f1f5f9;
+      font-size: 14px;
+      color: #475569;
+    }
+    .admin-meta span.label {
+      font-weight: 600;
+    }
+    .admin-buttons {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .admin-btn {
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 500;
+      background: #1d4ed8;
+      color: #fff;
+      transition: transform 0.05s ease-out, box-shadow 0.05s ease-out, background 0.1s ease-out;
+    }
+    .admin-btn.secondary {
+      background: #0f172a;
+    }
+    .admin-btn.danger {
+      background: #b91c1c;
+    }
+    .admin-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+    .admin-btn:hover:not(:disabled) {
+      background: #1e40af;
+      box-shadow: 0 6px 14px rgba(37, 99, 235, 0.35);
+      transform: translateY(-1px);
+    }
+    .admin-btn.secondary:hover:not(:disabled) {
+      background: #020617;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.35);
+    }
+    .admin-btn.danger:hover:not(:disabled) {
+      background: #991b1b;
+      box-shadow: 0 6px 14px rgba(185, 28, 28, 0.35);
+    }
+    .admin-footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .badge.super {
+      background: #f97316;
+      color: #0f172a;
+    }
+    .status {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #64748b;
+    }
+    .status.error {
+      color: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <header class="admin-header">
+      <h1>Admin Home</h1>
+      <p>Quick links to your MSS admin tools.</p>
+    </header>
+
+    <section class="admin-meta" id="admin-meta">
+      <div><span class="label">Signed in as:</span> <span id="admin-email">—</span></div>
+      <div><span class="label">Admin ID:</span> <span id="admin-id">—</span></div>
+      <div><span class="label">Role:</span> <span id="admin-role">—</span></div>
+    </section>
+
+    <div class="status" id="admin-status"></div>
+
+    <section class="admin-buttons">
+      <button class="admin-btn" id="btn-portal">School Portal</button>
+      <button class="admin-btn secondary" id="btn-config">Configuration Admin</button>
+      <button class="admin-btn secondary" id="btn-questions">Questions Admin</button>
+      <button class="admin-btn danger" id="btn-logout">Log out</button>
+    </section>
+
+    <footer class="admin-footer">
+      <span id="admin-key-badge" class="badge">key: none</span>
+      <span class="badge super" id="admin-super-badge" style="display:none;">SUPER ADMIN</span>
+    </footer>
+  </div>
+
+  <script src="/admin-home/AdminHome.js"></script>
+</body>
+</html>
