@@ -302,33 +302,42 @@ async function loadAdminSession() {
  // -----------------------------------------------------------------------
 // Schools API – use email + adminId like ConfigAdmin (Dec 5 behaviour)
 // -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
+// Schools API – use email + adminId AND (if present) admin key header
+// -----------------------------------------------------------------------
 async function fetchSchoolsForAdmin() {
   console.log("[SchoolPortal] fetchSchoolsForAdmin() starting", {
     ADMIN_EMAIL,
     ADMIN_ID,
   });
 
-  // Build query string with email and adminId (same pattern as ConfigAdmin)
+  // Read admin key from localStorage (set by AdminLogin)
+  const adminKey = getAdminKey();
+
+  // Build query string with email and adminId
   const qs = new URLSearchParams();
-  if (ADMIN_EMAIL) {
-    qs.set("email", ADMIN_EMAIL);
-  }
-  if (ADMIN_ID != null) {
-    qs.set("adminId", String(ADMIN_ID));
-  }
+  if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
+  if (ADMIN_ID != null) qs.set("adminId", String(ADMIN_ID));
 
   let url = "/api/admin/my-schools";
   const query = qs.toString();
-  if (query) {
-    url += `?${query}`;
-  }
+  if (query) url += `?${query}`;
 
-  console.log("[SchoolPortal] my-schools URL:", url);
+  console.log("[SchoolPortal] my-schools URL:", url, {
+    adminKeyPresent: !!adminKey,
+  });
+
+  const headers = {};
+  // ✅ Backwards-compat: old server expects this header
+  if (adminKey) {
+    headers["x-mss-admin-key"] = adminKey;
+  }
 
   try {
     const res = await fetch(url, {
       method: "GET",
-      credentials: "include", // ok to keep cookie as well
+      headers,
+      credentials: "include", // keep cookie/session if present
     });
 
     let data = {};
@@ -343,28 +352,26 @@ async function fetchSchoolsForAdmin() {
       data,
     });
 
-//Dec 11 - temp security workaround while we re-consider a design
-         if (res.status === 401) {
-        console.warn(
-          "[SchoolPortal] my-schools returned 401 – DEV mode: keeping local session and showing empty school list."
-        );
+    // Dec 11 – temp security workaround while we re-consider a design
+    if (res.status === 401) {
+      console.warn(
+        "[SchoolPortal] my-schools returned 401 – DEV mode: keeping local session and showing empty school list."
+      );
 
-        SCHOOLS = [];
+      SCHOOLS = [];
 
-        if (schoolSelectEl) {
-          schoolSelectEl.innerHTML = "";
-          const opt = document.createElement("option");
-          opt.value = "";
-          opt.textContent = "No schools (401 – not logged in on server)";
-          schoolSelectEl.appendChild(opt);
-          schoolSelectEl.disabled = true;
-        }
-
-        // We do NOT clear localStorage or redirect here in DEV mode.
-        // This lets us QA the rest of the portal UI even without a real server session.
-        updateSlugUi();
-        return;
+      if (schoolSelectEl) {
+        schoolSelectEl.innerHTML = "";
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No schools (401 – not logged in on server)";
+        schoolSelectEl.appendChild(opt);
+        schoolSelectEl.disabled = true;
       }
+
+      updateSlugUi();
+      return;
+    }
 
     if (!res.ok || data.ok === false) {
       console.warn("[SchoolPortal] my-schools error payload:", data);
@@ -376,7 +383,7 @@ async function fetchSchoolsForAdmin() {
       return;
     }
 
-    // Server enforces superadmin vs normal admin based on email/adminId
+    // Server enforces superadmin vs normal admin
     SCHOOLS = Array.isArray(data.schools) ? data.schools : [];
 
     if (!schoolSelectEl) return;
@@ -399,8 +406,6 @@ async function fetchSchoolsForAdmin() {
     }
 
     // Pick initial slug:
-    // 1) URL slug if valid
-    // 2) otherwise first school
     let initialSlug = INITIAL_SLUG;
     if (
       !initialSlug ||
