@@ -65,6 +65,10 @@ console.log("✅ AdminLogin.js loaded");
   } catch (e) {
     console.warn("[AdminLogin] localStorage not accessible:", e);
   }
+   function deriveIsSuperadminFromEmail(email) {
+     if (!email) return false;
+     return /@mss\.com$/i.test(email.trim());
+  }
 
   // ---------------------------------------------------------------------------
   // Normalize whatever /api/admin/login returns
@@ -231,6 +235,7 @@ console.log("✅ AdminLogin.js loaded");
           // DEV: map known admin emails → real admin IDs from the DB
           const DEV_KNOWN_ADMIN_IDS = {
             "chrish@mss.com": 24,
+            "andrew@mss.com": 25,
             "tickittaskit@gmail.com": 29,
             "tickittaskit+ott-esl@gmail.com": 30,
             // add others here as needed
@@ -268,33 +273,37 @@ console.log("✅ AdminLogin.js loaded");
         return;
       }
 
-      // ----------------------------------------------------
-      // SUCCESS – normalize and save session
-      // ----------------------------------------------------
-      const norm = normalizeLoginResponse(data, email);
-      console.log("[AdminLogin] Normalized SUCCESS:", norm);
+   // ----------------------------------------------------
+   // SUCCESS – normalize and save session
+   // ----------------------------------------------------
+     const norm = normalizeLoginResponse(data, email);
+     console.log("[AdminLogin] Normalized SUCCESS:", norm);
 
-      if (!norm || !norm.adminId || !norm.email) {
-        setStatus(
-          "Login succeeded but session data is incomplete. Please contact support.",
-          true
-        );
+     if (!norm || !norm.adminId || !norm.email) {
+       setStatus(
+        "Login succeeded but session data is incomplete. Please contact support.",
+        true
+       );
         return;
-      }
+    }
+
+     // NEW: derive isSuperadmin from email domain
+      const sessionEmail = norm.email;
+      const isSuperadmin = deriveIsSuperadminFromEmail(sessionEmail);
 
       saveAdminSession({
-        adminId: norm.adminId,
-        email: norm.email,
-        isSuperadmin: norm.isSuperadmin,
-      });
+      adminId: norm.adminId,
+      email: sessionEmail,
+      isSuperadmin,         // <<--- canonical flag we will use everywhere
+     });
 
-      saveAdminKey(norm.adminKey);
+     saveAdminKey(norm.adminKey);
 
-      setStatus("");
-      window.location.href = ADMIN_HOME_URL;
-    } catch (err) {
-      console.error("[AdminLogin] Network error:", err);
-      setStatus(
+     setStatus("");
+     window.location.href = ADMIN_HOME_URL;
+       } catch (err) {
+        console.error("[AdminLogin] Network error:", err);
+        setStatus(
         "We couldn't sign you in due to a technical problem. Please try again.",
         true
       );

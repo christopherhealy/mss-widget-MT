@@ -214,3 +214,53 @@ button.primary[disabled] {
   max-height: 100px;
   display: none;
 }
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.config-header-left h1 {
+  margin: 0 0 4px 0;
+}
+
+.slug-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1a5cff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.config-header-right {
+  display: flex;
+  align-items: center;
+}
+
+/* Buttons (match MSS look) */
+.btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--mss-border);
+  background: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:hover {
+  filter: brightness(0.98);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--mss-primary);
+  color: #fff;
+  border-color: transparent;
+}

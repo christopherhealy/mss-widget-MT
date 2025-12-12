@@ -365,7 +365,52 @@ console.log("✅ ConfigAdmin.js loaded");
 
     await loadFromServer();
   }
+  /* ------------------------------------------------------------------ */
+  /* ADMIN HOME (return)                                                */
+  /* ------------------------------------------------------------------ */
 
+  const ADMIN_HOME_URL = "/admin-home/AdminHome.html"; // adjust if needed
+
+  function buildAdminHomeUrl() {
+    const base = (typeof ADMIN_HOME_URL === "string" && ADMIN_HOME_URL.trim())
+      ? ADMIN_HOME_URL.trim()
+      : "/admin-home/AdminHome.html";
+
+    // Preserve adminKey if present
+    try {
+      const u = new URL(window.location.href);
+      const adminKey = u.searchParams.get("adminKey");
+      if (adminKey) {
+        const dest = new URL(base, window.location.origin);
+        dest.searchParams.set("adminKey", adminKey);
+        return dest.pathname + dest.search;
+      }
+    } catch (_) {}
+
+    return base;
+  }
+
+  function returnToAdminHome() {
+    try {
+      // If opened via window.open from AdminHome/Portal, close & refocus
+      if (window.opener && !window.opener.closed) {
+        window.opener.focus();
+        window.close(); // only works if script-opened
+        return;
+      }
+    } catch (_) {}
+
+    // Fallback: navigate this tab
+    window.location.href = buildAdminHomeUrl();
+  }
+
+  function wireAdminHomeButton() {
+    const btn = document.getElementById("btn-admin-home");
+    if (btn && !btn._mssBound) {
+      btn.addEventListener("click", returnToAdminHome);
+      btn._mssBound = true;
+    }
+  }
   /* ------------------------------------------------------------------ */
   /* STATUS HELPER                                                      */
   /* ------------------------------------------------------------------ */
@@ -1111,47 +1156,50 @@ console.log("✅ ConfigAdmin.js loaded");
   /* INIT                                                               */
   /* ------------------------------------------------------------------ */
 
-  async function init() {
-    const session = requireAdminSession(
-      "Your admin session has ended. Please sign in again to manage school settings."
-    );
+ async function init() {
+  const session = requireAdminSession(
+    "Your admin session has ended. Please sign in again to manage school settings."
+  );
 
-    console.log("[ConfigAdmin] Admin session:", session);
-    console.log("[ConfigAdmin] init() starting");
+  // Wire Admin Home button (DOM is ready because init runs on DOMContentLoaded)
+  wireAdminHomeButton();
 
-    // Wire base UI
-    wireFormFields();
-    wireAfterDashboardEvents();
-    wireSave();
-    wireImageUpload();
-    wireDashboardSelector();
-    wireWidgetSelector();
+  console.log("[ConfigAdmin] Admin session:", session);
+  console.log("[ConfigAdmin] init() starting");
 
-    if (schoolRenameBtn) {
-      schoolRenameBtn.addEventListener("click", onSchoolRenameClick);
-    }
+  // Wire base UI
+  wireFormFields();
+  wireAfterDashboardEvents();
+  wireSave();
+  wireImageUpload();
+  wireDashboardSelector();
+  wireWidgetSelector();
 
-    if (schoolSelectEl) {
-      schoolSelectEl.addEventListener("change", onConfigSchoolChanged);
-    }
-
-    const urlSlug = urlParams.get("slug");
-    if (!SLUG && urlSlug) {
-      SLUG = urlSlug;
-    }
-
-    await fetchConfigSchoolsForAdmin();
-
-    if (!SLUG) {
-      SLUG = urlSlug || "mss-demo";
-    }
-
-    syncSlugUi();
-
-    await loadFromServer();
-    await loadDashboardTemplates();
-    await loadWidgetTemplates();
+  if (schoolRenameBtn) {
+    schoolRenameBtn.addEventListener("click", onSchoolRenameClick);
   }
 
-  document.addEventListener("DOMContentLoaded", init);
+  if (schoolSelectEl) {
+    schoolSelectEl.addEventListener("change", onConfigSchoolChanged);
+  }
+
+  const urlSlug = urlParams.get("slug");
+  if (!SLUG && urlSlug) {
+    SLUG = urlSlug;
+  }
+
+  await fetchConfigSchoolsForAdmin();
+
+  if (!SLUG) {
+    SLUG = urlSlug || "mss-demo";
+  }
+
+  syncSlugUi();
+
+  await loadFromServer();
+  await loadDashboardTemplates();
+  await loadWidgetTemplates();
+}
+
+document.addEventListener("DOMContentLoaded", init);
 })();

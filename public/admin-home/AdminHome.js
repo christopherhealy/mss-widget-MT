@@ -124,7 +124,7 @@ console.log("✅ AdminHome.js loaded");
     if (btnQuestions) {
       btnQuestions.addEventListener("click", () => {
         // You can swap this path to /questions-admin/WidgetSurvey.html if you prefer.
-        window.location.href = "/admin/Questions.html";
+        window.location.href = "/questions-admin/WidgetSurvey.html";
       });
     }
 

@@ -17,8 +17,8 @@ console.log("✅ SchoolPortal.js loaded");
 
   const ADMIN_API_BASE = ""; // same origin
   const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
-  const ADMIN_KEY_STORAGE = "mss_admin_key";
-  //const ADMIN_KEY_STORAGE = "mssAdminSession";
+  const ADMIN_KEY_STORAGE = "mss_admin_key"; 
+  const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
 
   // Simple ID helper
   const $ = (id) => document.getElementById(id);
@@ -27,6 +27,7 @@ console.log("✅ SchoolPortal.js loaded");
   let ADMIN_SESSION = null;
   let ADMIN_EMAIL = null;
   let ADMIN_ID = null;
+  let ADMIN_KEY = null;
 
   function getAdminKey() {
     try {
@@ -38,6 +39,21 @@ console.log("✅ SchoolPortal.js loaded");
       return null;
     }
   }
+
+async function adminFetch(url, options = {}) {
+  const key = getAdminKey();
+  const headers = new Headers(options.headers || {});
+  if (key) {
+    headers.set("x-mss-admin-key", key);
+    headers.set("x-admin-key", key); // harmless if unused server-side
+  }
+  return fetch(url, {
+    ...options,
+    headers,
+    credentials: "include",
+    cache: "no-store",
+  });
+}
 
   function getLegacySession() {
     try {
@@ -53,7 +69,102 @@ console.log("✅ SchoolPortal.js loaded");
     }
   }
 
-  function clearAdminSessionAndRedirect() {
+  const DEFAULT_ADMIN_HOME_URL = "/admin/AdminHome.html"; // change if needed
+
+ // -----------------------------------------------------------------------
+  // Query params
+  // -----------------------------------------------------------------------
+
+  const params = new URLSearchParams(window.location.search);
+  let INITIAL_SLUG = params.get("slug");
+  const ASSESSMENT_ID_FROM_URL = params.get("assessmentId");
+
+  // -----------------------------------------------------------------------
+  // Admin Home navigation helper
+  // -----------------------------------------------------------------------
+
+  function buildAdminHomeUrl() {
+    let base = ADMIN_HOME_URL;
+
+    try {
+      const url = new URL(base, window.location.origin);
+
+      // Prefer adminKey from URL, else from localStorage
+      const params = new URLSearchParams(window.location.search);
+      const adminKey =
+        params.get("adminKey") ||
+        window.localStorage.getItem(ADMIN_KEY_STORAGE);
+
+      if (adminKey) {
+        url.searchParams.set("adminKey", adminKey);
+      }
+
+      return url.pathname + url.search;
+    } catch (e) {
+      console.warn("[SchoolPortal] buildAdminHomeUrl failed:", e);
+      return ADMIN_HOME_URL;
+    }
+  }
+
+function returnToAdminHome() {
+    try {
+      // If opened from AdminHome via window.open()
+      if (window.opener && !window.opener.closed) {
+        window.opener.focus();
+        window.close(); // only works if script-opened
+        return;
+      }
+    } catch (e) {
+      // ignore cross-window issues
+    }
+
+    // Fallback: navigate in same tab
+    window.location.href = buildAdminHomeUrl();
+  }
+
+async function ensureSlugFromSingleSchoolOrThrow() {
+  // If URL already has slug (or already set), we're done
+  if ((INITIAL_SLUG && String(INITIAL_SLUG).trim()) || (CURRENT_SLUG && String(CURRENT_SLUG).trim())) {
+    return;
+  }
+
+  // Must have a loaded session at this point
+  if (!ADMIN_SESSION || !ADMIN_EMAIL || !ADMIN_ID) {
+    throw new Error("No admin session available to infer slug.");
+  }
+
+  const qs = new URLSearchParams();
+  if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
+  if (ADMIN_ID != null) qs.set("adminId", String(ADMIN_ID));
+
+  const url = "/api/admin/my-schools" + (qs.toString() ? "?" + qs.toString() : "");
+  const res = await adminFetch(url, { method: "GET" });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error("my-schools failed");
+  }
+
+  const schools = Array.isArray(data.schools) ? data.schools : [];
+  if (schools.length === 1 && schools[0].slug) {
+    const inferred = String(schools[0].slug);
+
+    INITIAL_SLUG = inferred;
+    CURRENT_SLUG = inferred;
+
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("slug", inferred);
+      window.history.replaceState({}, "", u.toString());
+    } catch (_) {}
+
+    return;
+  }
+
+  throw new Error("No slug provided and cannot infer a single school.");
+}
+
+ function clearAdminSessionAndRedirect() {
     try {
       window.localStorage.removeItem(ADMIN_KEY_STORAGE);
       window.localStorage.removeItem("mssAdminSession");
@@ -71,6 +182,7 @@ console.log("✅ SchoolPortal.js loaded");
  // ✅ New: load admin session directly from localStorage.mssAdminSession
 async function loadAdminSession() {
   const legacy = getLegacySession(); // reads mssAdminSession
+  ADMIN_KEY = getAdminKey(); // may be null; ok
 
   if (!legacy) {
     console.warn("[SchoolPortal] No mssAdminSession – redirecting to login");
@@ -86,10 +198,17 @@ async function loadAdminSession() {
       : null;
 
   const email = legacy.email || null;
-  const isSuper =
+
+  // Derive role from stored flags OR email domain
+  const storedIsSuper =
     !!legacy.isSuper ||
     !!legacy.isSuperadmin ||
     !!legacy.is_superadmin;
+
+  const derivedIsSuper =
+    email && /@mss\.com$/i.test(email);
+
+  const isSuper = storedIsSuper || derivedIsSuper;
 
   if (!adminId || !email) {
     console.warn(
@@ -114,16 +233,10 @@ async function loadAdminSession() {
     isSuper,
   });
 
-  // Keep async signature for init() compatibility
+  // Keep async signature
   return ADMIN_SESSION;
 }
-  // -----------------------------------------------------------------------
-  // Query params
-  // -----------------------------------------------------------------------
 
-  const params = new URLSearchParams(window.location.search);
-  const INITIAL_SLUG = params.get("slug");
-  const ASSESSMENT_ID_FROM_URL = params.get("assessmentId");
 
   // -----------------------------------------------------------------------
   // DOM refs
@@ -190,7 +303,7 @@ async function loadAdminSession() {
   let CURRENT_SLUG = INITIAL_SLUG || null;
 
   let widgetPath = "/widgets/WidgetMin.html";
-  let dashboardPath = "/dashboards/Dashboard3.html";
+  let dashboardPath = "/dashboards/Dashboard2.html";
 
   let assessmentId = ASSESSMENT_ID_FROM_URL
     ? Number(ASSESSMENT_ID_FROM_URL)
@@ -295,13 +408,7 @@ async function loadAdminSession() {
   // -----------------------------------------------------------------------
 
 // ✅ New: rely on cookie/session; do NOT require mss_admin_key
-   // -----------------------------------------------------------------------
-  // Schools API  (cookie-based, no admin key required for now)
-  // -----------------------------------------------------------------------
-
- // -----------------------------------------------------------------------
-// Schools API – use email + adminId like ConfigAdmin (Dec 5 behaviour)
-// -----------------------------------------------------------------------
+ 
 // -----------------------------------------------------------------------
 // Schools API – use email + adminId AND (if present) admin key header
 // -----------------------------------------------------------------------
@@ -309,83 +416,82 @@ async function fetchSchoolsForAdmin() {
   console.log("[SchoolPortal] fetchSchoolsForAdmin() starting", {
     ADMIN_EMAIL,
     ADMIN_ID,
+    ADMIN_SESSION,
   });
 
-  // Read admin key from localStorage (set by AdminLogin)
-  const adminKey = getAdminKey();
+  if (!ADMIN_SESSION || !ADMIN_EMAIL || !ADMIN_ID) {
+    console.warn("[SchoolPortal] No valid admin session; redirecting to login");
+    clearAdminSessionAndRedirect();
+    return;
+  }
 
-  // Build query string with email and adminId
+  // 1) NON-SUPER ADMIN → single school only, driven by ?slug=
+  if (!ADMIN_SESSION.isSuper) {
+    console.log("[SchoolPortal] Non-super admin – single school mode");
+
+    if (!INITIAL_SLUG) {
+      alert(
+        "No school slug is available for this account.\n\n" +
+        "Please open the portal link that includes ?slug=your-school-slug or contact support."
+      );
+      return;
+    }
+
+    SCHOOLS = [{ id: null, slug: INITIAL_SLUG, name: INITIAL_SLUG }];
+    CURRENT_SLUG = INITIAL_SLUG;
+    CURRENT_SCHOOL = SCHOOLS[0];
+
+    if (schoolSelectEl) {
+      schoolSelectEl.innerHTML = "";
+      const opt = document.createElement("option");
+      opt.value = CURRENT_SLUG;
+      opt.textContent = CURRENT_SCHOOL.name;
+      schoolSelectEl.appendChild(opt);
+      schoolSelectEl.disabled = true;
+    }
+
+    updateSlugUi();
+    applySlugToQuickLinks();
+    return;
+  }
+
+  // 2) SUPER ADMIN → use /api/admin/my-schools (multi-school)
+  console.log("[SchoolPortal] Super admin – loading all schools via my-schools");
+
   const qs = new URLSearchParams();
-  if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
-  if (ADMIN_ID != null) qs.set("adminId", String(ADMIN_ID));
+  qs.set("email", ADMIN_EMAIL);
+  qs.set("adminId", String(ADMIN_ID));
 
   let url = "/api/admin/my-schools";
   const query = qs.toString();
   if (query) url += `?${query}`;
 
-  console.log("[SchoolPortal] my-schools URL:", url, {
-    adminKeyPresent: !!adminKey,
-  });
-
-  const headers = {};
-  // ✅ Backwards-compat: old server expects this header
-  if (adminKey) {
-    headers["x-mss-admin-key"] = adminKey;
-  }
+  console.log("[SchoolPortal] my-schools URL:", url);
 
   try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers,
-      credentials: "include", // keep cookie/session if present
-    });
+    const res = await adminFetch(url, { method: "GET" });
 
     let data = {};
-    try {
-      data = await res.json();
-    } catch (e) {
-      console.warn("[SchoolPortal] my-schools non-JSON response:", e);
-    }
+    try { data = await res.json(); } catch {}
 
     console.log("[SchoolPortal] my-schools response:", {
       status: res.status,
       data,
     });
 
-    // Dec 11 – temp security workaround while we re-consider a design
     if (res.status === 401) {
-      console.warn(
-        "[SchoolPortal] my-schools returned 401 – DEV mode: keeping local session and showing empty school list."
-      );
-
-      SCHOOLS = [];
-
-      if (schoolSelectEl) {
-        schoolSelectEl.innerHTML = "";
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = "No schools (401 – not logged in on server)";
-        schoolSelectEl.appendChild(opt);
-        schoolSelectEl.disabled = true;
-      }
-
-      updateSlugUi();
+      clearAdminSessionAndRedirect();
       return;
     }
 
     if (!res.ok || data.ok === false) {
-      console.warn("[SchoolPortal] my-schools error payload:", data);
       if (!CURRENT_SLUG) {
-        alert(
-          "No schools found for this admin, and no slug in the URL. Please contact support."
-        );
+        alert("No schools found for this admin, and no slug in the URL. Please contact support.");
       }
       return;
     }
 
-    // Server enforces superadmin vs normal admin
     SCHOOLS = Array.isArray(data.schools) ? data.schools : [];
-
     if (!schoolSelectEl) return;
 
     if (!SCHOOLS.length) {
@@ -397,29 +503,20 @@ async function fetchSchoolsForAdmin() {
       schoolSelectEl.disabled = true;
 
       if (!CURRENT_SLUG) {
-        alert(
-          "No schools are associated with this admin account. Please contact support."
-        );
+        alert("No schools are associated with this super admin account. Please contact support.");
       }
       updateSlugUi();
       return;
     }
 
-    // Pick initial slug:
     let initialSlug = INITIAL_SLUG;
-    if (
-      !initialSlug ||
-      !SCHOOLS.some((s) => String(s.slug) === String(initialSlug))
-    ) {
+    if (!initialSlug || !SCHOOLS.some((s) => String(s.slug) === String(initialSlug))) {
       initialSlug = SCHOOLS[0].slug;
     }
 
     CURRENT_SLUG = initialSlug;
-    CURRENT_SCHOOL =
-      SCHOOLS.find((s) => String(s.slug) === String(initialSlug)) ||
-      SCHOOLS[0];
+    CURRENT_SCHOOL = SCHOOLS.find((s) => String(s.slug) === String(initialSlug)) || SCHOOLS[0];
 
-    // Populate selector
     schoolSelectEl.innerHTML = "";
     SCHOOLS.forEach((s) => {
       const opt = document.createElement("option");
@@ -431,17 +528,12 @@ async function fetchSchoolsForAdmin() {
     schoolSelectEl.value = CURRENT_SLUG;
     schoolSelectEl.disabled = SCHOOLS.length === 1;
 
-    console.log("[SchoolPortal] SCHOOLS loaded:", SCHOOLS);
-    console.log("[SchoolPortal] CURRENT_SLUG:", CURRENT_SLUG);
-
     updateSlugUi();
     applySlugToQuickLinks();
   } catch (err) {
     console.error("[SchoolPortal] fetchSchoolsForAdmin failed", err);
     if (!CURRENT_SLUG) {
-      alert(
-        "Unable to load schools for this admin and no slug was provided. Please contact support."
-      );
+      alert("Unable to load schools for this admin and no slug was provided. Please contact support.");
     }
   }
 }
@@ -1768,17 +1860,18 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
     await fetchTests();
   }
 
+    const btnAdminHome = $("btn-admin-home");
+  if (btnAdminHome && !btnAdminHome._mssBound) {
+    btnAdminHome.addEventListener("click", returnToAdminHome);
+    btnAdminHome._mssBound = true;
+  }
 
   // -----------------------------------------------------------------------
   // Event wiring
   // -----------------------------------------------------------------------
 
   function wireEvents() {
-    // Logout
-    if (logoutBtn && !logoutBtn._mssLogoutBound) {
-      logoutBtn.addEventListener("click", handleLogout);
-      logoutBtn._mssLogoutBound = true;
-    }
+   
 
     // Embed snippet copy
     if (btnCopyEmbed && !btnCopyEmbed._mssBound) {
@@ -1889,6 +1982,7 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
       btnDeleteSelected.addEventListener("click", onDeleteSelected);
     }
 
+
     // School selector
     if (schoolSelectEl) {
       schoolSelectEl.addEventListener("change", onSchoolChanged);
@@ -1934,7 +2028,10 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
       ADMIN_EMAIL,
       ADMIN_ID,
     });
-
+    
+   if (!ADMIN_SESSION?.isSuper) {
+     await ensureSlugFromSingleSchoolOrThrow();
+   }
     await loadDashboardOptionsIntoSelect();
     initReportViewMode();
 
