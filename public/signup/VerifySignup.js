@@ -2,29 +2,38 @@
 console.log("✅ VerifySignup.js loaded");
 
 (function () {
-  // Try a few likely IDs; fall back to body if none found
-  const statusEl =
-    document.getElementById("verifyStatus") ||
-    document.getElementById("signupStatus") ||
-    document.querySelector(".verify-status") ||
-    document.body;
+  const msgEl = document.getElementById("verifyMessage") || null;
+  const statusEl = document.getElementById("verifyStatus") || null;
+  const linkEl = document.getElementById("verifyLink") || null;
+
+  function setMessage(text) {
+    if (msgEl) msgEl.textContent = text || "";
+  }
 
   function setStatus(message, isError = false) {
     if (!statusEl) return;
-    statusEl.textContent = message;
-    if (isError) {
-      statusEl.style.color = "#d00";
-    } else {
-      statusEl.style.color = "";
-    }
+    statusEl.textContent = message || "";
+    statusEl.classList.toggle("ok", !isError);
+    statusEl.classList.toggle("err", !!isError);
   }
 
-  // 1. Grab token from URL
+  function showLoginLink(email) {
+    if (!linkEl) return;
+    const href =
+      "/admin-login/AdminLogin.html" +
+      (email ? `?email=${encodeURIComponent(email)}` : "");
+
+    linkEl.style.display = "block";
+    linkEl.innerHTML = `<a href="${href}">Go to Admin Login</a>`;
+  }
+
+  // 1) Grab token from URL
   const params = new URLSearchParams(window.location.search);
   const token = params.get("token");
 
   if (!token) {
     console.error("[VerifySignup] No token in URL");
+    setMessage("Verification link problem");
     setStatus(
       "The verification link is missing its token. Please click the full link in your email.",
       true
@@ -32,27 +41,26 @@ console.log("✅ VerifySignup.js loaded");
     return;
   }
 
-  setStatus("Verifying your school sign-up…");
+  setMessage("Please wait while we confirm your email.");
+  setStatus("Verifying your school sign-up…", false);
 
-  // 2. Call backend, sending token in BOTH query + body
+  // 2) Call backend
   const url = `/api/school-signup/verify?token=${encodeURIComponent(token)}`;
 
   fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
   })
     .then(async (res) => {
       let data = {};
       try {
         data = await res.json();
-      } catch (e) {
-        // ignore JSON parse errors; we'll fall back to generic message
+      } catch {
+        // ignore
       }
 
-      if (!res.ok) {
+      if (!res.ok || data.ok === false) {
         const msg =
           (data && (data.message || data.error)) ||
           "We couldn't complete your sign-up.";
@@ -67,10 +75,16 @@ console.log("✅ VerifySignup.js loaded");
       const msg =
         data.message ||
         "Your MySpeakingScore school has been created. You can now sign in to your admin portal with your email and password.";
+
+      setMessage("Verified.");
       setStatus(msg, false);
+
+      // If API returned adminEmail, wire it into login link
+      showLoginLink(data.adminEmail || null);
     })
     .catch((err) => {
       console.error("[VerifySignup] error:", err);
+      setMessage("We could not verify your sign-up.");
       setStatus(
         err.message ||
           "We couldn't complete your sign-up due to a technical problem.",

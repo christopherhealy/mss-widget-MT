@@ -46,15 +46,22 @@ console.log("✅ AdminHome.js loaded");
     el.classList.toggle("error", !!isError);
   }
 
+function isSuperAdmin(session) {
+  if (!session) return false;
+  return (
+    !!session.isSuperadmin ||
+    !!session.is_superadmin ||
+    !!session.isSuper ||
+    (session.email && /@mss\.com$/i.test(session.email))
+  );
+}
+
   function populateMeta(session, adminKey) {
     $("admin-email").textContent = session.email || "—";
     $("admin-id").textContent =
       session.adminId != null ? String(session.adminId) : "—";
 
-    const isSuper =
-      !!session.isSuperadmin ||
-      !!session.is_superadmin ||
-      !!session.isSuper;
+    const isSuper = isSuperAdmin(session);
 
     $("admin-role").textContent = isSuper ? "Super admin" : "Admin";
 
@@ -104,10 +111,24 @@ console.log("✅ AdminHome.js loaded");
 
     // Wire buttons
     const btnPortal = $("btn-portal");
+    const btnSchoolSignup = $("btn-school-signup"); // ✅ NEW
     const btnConfig = $("btn-config");
     const btnQuestions = $("btn-questions");
     const btnLogout = $("btn-logout");
 
+    const isSuper = isSuperAdmin(session);
+
+// ✅ Super admin only: School Sign Up
+if (btnSchoolSignup) {
+  btnSchoolSignup.style.display = isSuper ? "inline-flex" : "none";
+
+  if (isSuper) {
+    btnSchoolSignup.addEventListener("click", () => {
+      // Update this path if your actual location differs
+      window.location.href = "/signup/SchoolSignUp.html";
+    });
+  }
+}
     if (btnPortal) {
       btnPortal.addEventListener("click", () => {
         window.location.href = "/admin/SchoolPortal.html";

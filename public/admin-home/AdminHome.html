@@ -131,12 +131,22 @@
 
     <div class="status" id="admin-status"></div>
 
-    <section class="admin-buttons">
-      <button class="admin-btn" id="btn-portal">School Portal</button>
-      <button class="admin-btn secondary" id="btn-config">Configuration Admin</button>
-      <button class="admin-btn secondary" id="btn-questions">Questions Admin</button>
-      <button class="admin-btn danger" id="btn-logout">Log out</button>
-    </section>
+   <section class="admin-buttons">
+  <button class="admin-btn" id="btn-portal">School Portal</button>
+
+  <!-- ✅ Super admin only (shown via AdminHome.js) -->
+  <button
+    class="admin-btn secondary"
+    id="btn-school-signup"
+    style="display:none;"
+  >
+    School Sign Up
+  </button>
+
+  <button class="admin-btn secondary" id="btn-config">Configuration Admin</button>
+  <button class="admin-btn secondary" id="btn-questions">Questions Admin</button>
+  <button class="admin-btn danger" id="btn-logout">Log out</button>
+</section>
 
     <footer class="admin-footer">
       <span id="admin-key-badge" class="badge">key: none</span>

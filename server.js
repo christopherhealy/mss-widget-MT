@@ -890,11 +890,135 @@ const LOG_HEADERS = [
   "note",
 ];
 
+// =====================================================================
+// SCHOOL SIGNUP + VERIFY (Pending -> Provision -> Promote Admin)
+// =====================================================================
+
+/**
+ * Finalize a pending signup row:
+ * - provisions a new school via SP
+ * - creates/updates admin row (admins table uses "schoolId")
+ * - optionally links admin_schools (if table exists)
+ * - deletes pending_signups row
+ *
+ * Returns: { schoolId, adminId, slug, adminEmail }
+ */
+async function finalizePendingSignup(client, pending) {
+  const payload = pending.payload || {};
+
+  const schoolName = pending.school_name;
+  const adminEmailRaw = pending.admin_email || payload.contactEmail || "";
+  const adminEmail = String(adminEmailRaw).trim().toLowerCase();
+
+  const adminName =
+    pending.admin_name ||
+    payload.contactName ||
+    payload.adminName ||
+    "Admin";
+
+  const passwordHash = payload.passwordHash;
+
+  const slug =
+    payload.slug ||
+    slugify(schoolName || "new-school", { lower: true, strict: true, trim: true });
+
+  if (!schoolName || !adminEmail || !passwordHash) {
+    throw new Error("Pending signup is missing required fields (schoolName/adminEmail/passwordHash).");
+  }
+
+  const sourceSlug = payload.sourceSlug || "mss-demo";
+
+  // 1) Provision school
+  const spResult = await client.query(
+    "SELECT mss_provision_school_from_slug($1, $2, $3) AS school_id",
+    [slug, schoolName, sourceSlug]
+  );
+
+  const newSchoolId = spResult.rows?.[0]?.school_id;
+  if (!newSchoolId) {
+    throw new Error("Stored procedure did not return school_id");
+  }
+
+ // 2) Upsert admin (admins schema: school_id, email, full_name, password_hash, is_owner, is_active, is_superadmin)
+let adminId;
+
+// Find by email (assumes email is unique in admins, which is what your code already implies)
+const existingAdmin = await client.query(
+  `
+    SELECT id
+    FROM admins
+    WHERE lower(email) = lower($1)
+      AND school_id = $2
+    LIMIT 1
+  `,
+  [adminEmail, newSchoolId]
+);
+
+if (existingAdmin.rows.length > 0) {
+  adminId = existingAdmin.rows[0].id;
+
+  // repair-safe: ensure linkage + keep values current
+ await client.query(
+  `
+    UPDATE admins
+    SET full_name = COALESCE(NULLIF(full_name, ''), $1),
+        password_hash = COALESCE(password_hash, $2),
+        is_active = true
+    WHERE id = $3
+  `,
+  [adminName, passwordHash, adminId]
+);
+
+} else {
+  const insAdmin = await client.query(
+    `
+      INSERT INTO admins (
+        school_id,
+        email,
+        full_name,
+        password_hash,
+        is_owner,
+        is_active,
+        is_superadmin
+      )
+      VALUES ($1, $2, $3, $4, true, true, false)
+      RETURNING id
+    `,
+    [newSchoolId, adminEmail, adminName, passwordHash]
+  );
+  adminId = insAdmin.rows[0].id;
+}
+  // 3) Optional: keep admin_schools link (safe if table exists & has proper unique constraint)
+  // If you don't need it, you can remove this block.
+  try {
+    await client.query(
+      `
+        INSERT INTO admin_schools (admin_id, school_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+      `,
+      [adminId, newSchoolId]
+    );
+  } catch (e) {
+    // If admin_schools isn't present or schema differs, don't break finalize
+    console.warn("[finalizePendingSignup] admin_schools link skipped:", e.message);
+  }
+
+  // 4) Delete pending row
+  await client.query("DELETE FROM pending_signups WHERE id = $1", [pending.id]);
+
+  return { schoolId: newSchoolId, adminId, slug, adminEmail };
+}
+
 // ---------------------------------------------------------------------
 // School sign-up: create pending record + send verification email
+// Supports Super Admin auto-confirm:
+//   - if sendConfirmationEmail === false OR autoConfirm === true, finalize immediately
 // ---------------------------------------------------------------------
 app.post("/api/school-signup", async (req, res) => {
   try {
+    const body = req.body || {};
+
     const {
       schoolName,
       websiteUrl,
@@ -912,7 +1036,16 @@ app.post("/api/school-signup", async (req, res) => {
       funnelUrl,
       notes,
       adminPassword,
-    } = req.body || {};
+
+      // ✅ super admin flags (from SchoolSignUp.js)
+      sendConfirmationEmail,
+      autoConfirm,
+      skipEmailVerification,
+
+      // optional overrides
+      sourceSlug,
+      slug,
+    } = body;
 
     // ---- basic validation ----
     if (!schoolName || !websiteUrl || !country || !contactName || !contactEmail || !adminPassword) {
@@ -923,24 +1056,25 @@ app.post("/api/school-signup", async (req, res) => {
       });
     }
 
-    // normalise some fields
+    // normalise
     const teacherCountNum =
-      typeof teacherCount === "string" ? parseInt(teacherCount, 10) : teacherCount || null;
+      typeof teacherCount === "string" ? parseInt(teacherCount, 10) : (teacherCount ?? null);
+
     const testsPerMonthNum =
-      typeof testsPerMonth === "string" ? parseInt(testsPerMonth, 10) : testsPerMonth || null;
+      typeof testsPerMonth === "string" ? parseInt(testsPerMonth, 10) : (testsPerMonth ?? null);
 
-    const examsArray = Array.isArray(exams)
-      ? exams
-      : exams
-      ? [exams]
-      : [];
+    const examsArray = Array.isArray(exams) ? exams : (exams ? [exams] : []);
 
-    // slug from schoolName (stored in payload so we can reuse at verify)
     const cleanSlug =
-      slugify(schoolName, { lower: true, strict: true, trim: true }) || "new-school";
+      (slug && String(slug).trim()) ||
+      slugify(schoolName, { lower: true, strict: true, trim: true }) ||
+      "new-school";
 
     const token = crypto.randomBytes(32).toString("hex");
     const passwordHash = await bcrypt.hash(adminPassword, 10);
+
+    const adminEmail = String(contactEmail).trim().toLowerCase();
+    const adminName = String(contactName).trim();
 
     const payload = {
       slug: cleanSlug,
@@ -948,7 +1082,7 @@ app.post("/api/school-signup", async (req, res) => {
       country,
       timeZone: timeZone || null,
       contactName,
-      contactEmail,
+      contactEmail: adminEmail,
       roleTitle,
       teacherCount: teacherCountNum,
       heard: heard || null,
@@ -958,39 +1092,76 @@ app.post("/api/school-signup", async (req, res) => {
       anonymousFunnel: anonymousFunnel || "yes",
       funnelUrl: funnelUrl || null,
       notes: notes || null,
-      passwordHash,     // <- we’ll use this on verify
-      sourceSlug: "mss-demo",
+
+      passwordHash,               // used by finalize
+      sourceSlug: sourceSlug || "mss-demo",
+
+      // keep flags for traceability (optional)
+      sendConfirmationEmail: sendConfirmationEmail !== false,
+      autoConfirm: !!autoConfirm,
+      skipEmailVerification: !!skipEmailVerification,
     };
 
-    // ---- insert into pending_signups ----
+    // create pending row
     await pool.query(
       `
-      INSERT INTO pending_signups (admin_email, admin_name, school_name, token, payload)
-      VALUES ($1, $2, $3, $4, $5::jsonb)
+        INSERT INTO pending_signups (admin_email, admin_name, school_name, token, payload)
+        VALUES ($1, $2, $3, $4, $5::jsonb)
       `,
-      [
-        contactEmail,
-        contactName,
-        schoolName,
-        token,
-        payload,
-      ]
+      [adminEmail, adminName, schoolName, token, payload]
     );
 
-    // ---- send confirmation email ----
-    const publicBase =
-      process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+    // If super-admin chose "No email" or requested autoConfirm, finalize immediately
+    const shouldAutoConfirm =
+      autoConfirm === true || sendConfirmationEmail === false || skipEmailVerification === true;
 
-    const verifyUrl = `${publicBase}/signup/VerifySignup.html?token=${encodeURIComponent(
-      token
-    )}`;
+    if (shouldAutoConfirm) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        const pendingRes = await client.query(
+          `SELECT * FROM pending_signups WHERE token = $1 FOR UPDATE`,
+          [token]
+        );
+        if (!pendingRes.rowCount) throw new Error("Pending signup row not found after insert.");
+
+        const out = await finalizePendingSignup(client, pendingRes.rows[0]);
+
+        await client.query("COMMIT");
+
+        return res.json({
+          ok: true,
+          autoConfirmed: true,
+          schoolId: out.schoolId,
+          adminId: out.adminId,
+          slug: out.slug,
+          adminEmail: out.adminEmail,
+          message: "Done. The school was created as CONFIRMED (no verification email sent).",
+        });
+      } catch (e) {
+        await client.query("ROLLBACK");
+        console.error("[school-signup] autoConfirm finalize failed:", e);
+        return res.status(500).json({
+          ok: false,
+          error: "finalize_failed",
+          message: e.message || "Internal error finalizing signup.",
+        });
+      } finally {
+        client.release();
+      }
+    }
+
+    // otherwise, email verification flow
+    const publicBase = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+    const verifyUrl = `${publicBase}/signup/VerifySignup.html?token=${encodeURIComponent(token)}`;
 
     const mailOptions = {
       from: `"MySpeakingScore" <${smtpUser}>`,
-      to: contactEmail,
+      to: adminEmail,
       subject: "Confirm your MySpeakingScore school sign-up",
       html: `
-        <p>Hi ${contactName || "there"},</p>
+        <p>Hi ${adminName || "there"},</p>
         <p>We received a request to set up a <strong>MySpeakingScore school portal</strong> for:</p>
         <p><strong>${schoolName}</strong></p>
         <p>To confirm that this request is really from you, please click the button below:</p>
@@ -1010,7 +1181,7 @@ app.post("/api/school-signup", async (req, res) => {
       await mailTransporter.sendMail(mailOptions);
     } catch (mailErr) {
       console.error("[school-signup] email error:", mailErr);
-      // but we still created the pending record; tell the client
+      // pending record exists; client can still verify via token URL if delivered by other means
     }
 
     return res.json({
@@ -1026,75 +1197,11 @@ app.post("/api/school-signup", async (req, res) => {
     });
   }
 });
+
 // ---------------------------------------------------------------------
 // VERIFY SCHOOL SIGN-UP
 // POST /api/school-signup/verify { token }
-//  - looks up pending_signups
-//  - creates school + admin + default config
-//  - sets verified_at + status='verified'
 // ---------------------------------------------------------------------
-
-// List admins for a given school (by slug) Nov 30 //
-// GET /api/admin/school/:slug/admins
-app.get("/api/admin/school/:slug/admins", async (req, res) => {
-  if (!checkAdminKey(req, res)) return;
-
-  const { slug } = req.params;
-
-  try {
-    const schoolRes = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
-    if (!schoolRes.rowCount) {
-      return res.status(404).json({ ok: false, error: "school_not_found" });
-    }
-    const schoolId = schoolRes.rows[0].id;
-
-    const { rows } = await pool.query(
-      `
-      SELECT
-        id,
-        full_name,
-        email,
-        is_owner,
-        is_active,
-        is_superadmin
-      FROM admins
-      WHERE school_id = $1
-      ORDER BY id ASC
-      `,
-      [schoolId]
-    );
-
-    return res.json({
-      ok: true,
-      schoolId,
-      admins: rows.map(r => ({
-        adminId: r.id,
-        fullName: r.full_name,
-        email: r.email,
-        isOwner: !!r.is_owner,
-        isActive: r.is_active !== false,
-        isSuperAdmin: !!r.is_superadmin,
-      })),
-    });
-  } catch (err) {
-    console.error("GET /api/admin/school/:slug/admins error:", err);
-    return res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
-
-// ---------------------------------------------------------------------
-//  POST /api/school-signup/verify
-//  Body: { token }   (token may also be in ?token=… query for safety)
-// ---------------------------------------------------------------------
-// ---------------------------------------------
-//  POST /api/school-signup/verify
-// ---------------------------------------------
-// ---------------------------------------------
-//  POST /api/school-signup/verify
-// ---------------------------------------------
 app.post("/api/school-signup/verify", async (req, res) => {
   const { token } = req.body || {};
 
@@ -1111,7 +1218,6 @@ app.post("/api/school-signup/verify", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // 1) Load pending signup row
     const { rows } = await client.query(
       `
         SELECT *
@@ -1131,102 +1237,16 @@ app.post("/api/school-signup/verify", async (req, res) => {
       });
     }
 
-    const pending = rows[0];
-    const payload = pending.payload || {};
-
-    const schoolName   = pending.school_name;
-    const adminEmail   = pending.admin_email;
-    const adminName    = pending.admin_name || payload.contactName || "Admin";
-    const passwordHash = payload.passwordHash;
-
-    const slug =
-      payload.slug ||
-      slugify(schoolName || "new-school", {
-        lower: true,
-        strict: true,
-        trim: true,
-      });
-
-    if (!schoolName || !adminEmail || !passwordHash) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({
-        ok: false,
-        error: "incomplete_payload",
-        message: "Signup record is missing required fields.",
-      });
-    }
-
-    // 2) Clone school using our SP
-    const sourceSlug = payload.sourceSlug || "mss-demo";
-
-    const spResult = await client.query(
-      "SELECT mss_provision_school_from_slug($1, $2, $3) AS school_id",
-      [slug, schoolName, sourceSlug]
-    );
-
-    const newSchoolId = spResult.rows[0]?.school_id;
-    if (!newSchoolId) {
-      throw new Error("Stored procedure did not return school_id");
-    }
-
-    // 3) Upsert admin using the *actual* admins table schema:
-    //    (school_id, email, full_name, password_hash, is_owner, is_active)
-    let adminId;
-
-    const existingAdmin = await client.query(
-      `
-        SELECT id
-        FROM admins
-        WHERE email = $1
-          AND school_id = $2
-      `,
-      [adminEmail, newSchoolId]
-    );
-
-    if (existingAdmin.rows.length > 0) {
-      adminId = existingAdmin.rows[0].id;
-    } else {
-      const insAdmin = await client.query(
-        `
-          INSERT INTO admins (
-            school_id,
-            email,
-            full_name,
-            password_hash,
-            is_owner,
-            is_active
-          )
-          VALUES ($1, $2, $3, $4, true, true)
-          RETURNING id
-        `,
-        [newSchoolId, adminEmail, adminName, passwordHash]
-      );
-      adminId = insAdmin.rows[0].id;
-    }
-
-    // 4) Optionally: if you still want admin_schools links, keep this.
-    //    If you're fully on the new admins model, you can remove it.
-    await client.query(
-      `
-        INSERT INTO admin_schools (admin_id, school_id)
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING
-      `,
-      [adminId, newSchoolId]
-    );
-
-    // 5) Delete pending row now that provisioning succeeded
-    await client.query("DELETE FROM pending_signups WHERE id = $1", [
-      pending.id,
-    ]);
+    const out = await finalizePendingSignup(client, rows[0]);
 
     await client.query("COMMIT");
 
     return res.json({
       ok: true,
-      schoolId: newSchoolId,
-      slug,
-      adminEmail,
+      schoolId: out.schoolId,
+      adminId: out.adminId,
+      slug: out.slug,
+      adminEmail: out.adminEmail,
       message:
         "Your MySpeakingScore school has been created. You can now sign in to your admin portal with your email and password.",
     });
@@ -1234,7 +1254,6 @@ app.post("/api/school-signup/verify", async (req, res) => {
     await client.query("ROLLBACK");
     console.error("[school-signup/verify] failed:", err);
 
-    // For now, surface code & message to help QA
     return res.status(500).json({
       ok: false,
       error: "verify_failed",
@@ -1243,6 +1262,62 @@ app.post("/api/school-signup/verify", async (req, res) => {
     });
   } finally {
     client.release();
+  }
+});
+
+// ---------------------------------------------------------------------
+// List admins for a given school (by slug)
+// GET /api/admin/school/:slug/admins
+// ---------------------------------------------------------------------
+app.get("/api/admin/school/:slug/admins", async (req, res) => {
+  if (!checkAdminKey(req, res)) return;
+
+  const { slug } = req.params;
+
+  try {
+    const schoolRes = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!schoolRes.rowCount) {
+      return res.status(404).json({ ok: false, error: "school_not_found" });
+    }
+
+    const schoolId = schoolRes.rows[0].id;
+
+    // ✅ actual schema (admins uses "schoolId")
+    const { rows } = await pool.query(
+  `
+    SELECT
+      id,
+      full_name,
+      email,
+      is_owner,
+      is_active,
+      is_superadmin
+    FROM admins
+    WHERE school_id = $1
+    ORDER BY id ASC
+  `,
+  [schoolId]
+);
+
+    return res.json({
+  ok: true,
+  schoolId,
+  admins: rows.map(r => ({
+    adminId: r.id,
+    fullName: r.full_name,
+    email: r.email,
+    isOwner: !!r.is_owner,
+    isActive: r.is_active !== false,
+    isSuperAdmin: !!r.is_superadmin,
+  })),
+});
+
+  } catch (err) {
+    console.error("GET /api/admin/school/:slug/admins error:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 // ---------------------------------------------------------------------------
@@ -2601,21 +2676,16 @@ app.post("/api/widget/help", async (req, res) => {
 //  - Normal admin → only their own school_id
 // Query: ?adminId=24&email=chrish@mss.com
 // ---------------------------------------------------------------------
-// ---------------------------------------------------------------------
-// GET /api/admin/my-schools
-//  - Superadmin  → all schools
-//  - Normal admin → only their own school_id
-// Query: ?adminId=24&email=chrish@mss.com
-// ---------------------------------------------------------------------
+//Dec 13 - many changes to the whole school sign up process
 // ---------------------------------------------------------------------
 // Which schools can this admin see?
 //  - Superadmin  → all schools
-//  - Normal admin → only their own school (school_id)
+//  - Normal admin → only their own school (admins.school_id)
 // Called by SchoolPortal.js with ?email=&adminId=
 // ---------------------------------------------------------------------
 app.get("/api/admin/my-schools", async (req, res) => {
   const emailRaw = (req.query.email || "").toString().trim().toLowerCase();
-  const adminIdRaw = req.query.adminId;
+  const adminIdRaw = (req.query.adminId ?? "").toString().trim();
 
   if (!emailRaw && !adminIdRaw) {
     return res.status(400).json({
@@ -2627,52 +2697,69 @@ app.get("/api/admin/my-schools", async (req, res) => {
 
   try {
     // --- 1) Look up the admin record ---------------------------------
-    let adminSql;
-    let adminParams;
+    let admin;
+    if (adminIdRaw) {
+      const adminId = Number(adminIdRaw);
+      if (!Number.isInteger(adminId) || adminId <= 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "invalid_adminId",
+          message: "adminId must be a positive integer.",
+        });
+      }
 
-    if (adminIdRaw != null && adminIdRaw !== "") {
-      // Prefer adminId if present – it’s stable and unambiguous
-      adminSql = `
-        SELECT
-          id,
-          email,
-          full_name,
-          is_superadmin,
-          is_active,
-          school_id
-        FROM admins
-        WHERE id = $1
-        LIMIT 1
-      `;
-      adminParams = [Number(adminIdRaw)];
+      const { rows, rowCount } = await pool.query(
+        `
+          SELECT
+            id,
+            email,
+            full_name,
+            is_superadmin,
+            is_active,
+            school_id
+          FROM admins
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [adminId]
+      );
+
+      if (!rowCount) {
+        return res.status(401).json({
+          ok: false,
+          error: "admin_not_found",
+          message: "No admin account found for this login.",
+        });
+      }
+
+      admin = rows[0];
     } else {
-      // Fallback: look up by email only
-      adminSql = `
-        SELECT
-          id,
-          email,
-          full_name,
-          is_superadmin,
-          is_active,
-          school_id
-        FROM admins
-        WHERE LOWER(email) = $1
-        LIMIT 1
-      `;
-      adminParams = [emailRaw];
+      const { rows, rowCount } = await pool.query(
+        `
+          SELECT
+            id,
+            email,
+            full_name,
+            is_superadmin,
+            is_active,
+            school_id
+          FROM admins
+          WHERE lower(email) = $1
+          LIMIT 1
+        `,
+        [emailRaw]
+      );
+
+      if (!rowCount) {
+        return res.status(401).json({
+          ok: false,
+          error: "admin_not_found",
+          message: "No admin account found for this login.",
+        });
+      }
+
+      admin = rows[0];
     }
-
-    const adminResult = await pool.query(adminSql, adminParams);
-
-    if (!adminResult.rowCount) {
-      return res.status(401).json({
-        ok: false,
-        error: "admin_not_found",
-        message: "No admin account found for this login.",
-      });
-    }
-
-    const admin = adminResult.rows[0];
 
     if (admin.is_active === false) {
       return res.status(403).json({
@@ -2688,7 +2775,6 @@ app.get("/api/admin/my-schools", async (req, res) => {
     let schools = [];
 
     if (isSuper) {
-      // Superadmins can see *all* schools
       const { rows } = await pool.query(
         `
           SELECT
@@ -2702,7 +2788,6 @@ app.get("/api/admin/my-schools", async (req, res) => {
       );
       schools = rows;
     } else if (admin.school_id != null) {
-      // Normal admin – just their own school
       const { rows } = await pool.query(
         `
           SELECT
@@ -2717,8 +2802,6 @@ app.get("/api/admin/my-schools", async (req, res) => {
         [admin.school_id]
       );
       schools = rows;
-    } else {
-      schools = [];
     }
 
     return res.json({
@@ -2726,9 +2809,9 @@ app.get("/api/admin/my-schools", async (req, res) => {
       admin: {
         adminId: admin.id,
         email: admin.email,
-        fullName: admin.full_name,
+        fullName: admin.full_name || "",
         isSuperAdmin: isSuper,
-        schoolId: admin.school_id,
+        schoolId: admin.school_id ?? null,
       },
       schools,
     });
@@ -2741,22 +2824,17 @@ app.get("/api/admin/my-schools", async (req, res) => {
     });
   }
 });
-// ---------- ADMIN LOGIN API (multi-school, hash-aware) Dec 4 ---------- //
-// NOTE: requires pgcrypto extension in Postgres:
-//   CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 // ---------------------------------------------------------------------
-// Shared admin login handler for:
-//   POST /api/admin/login
-//   POST /api/login   (legacy)
-// Body: { slug, email, password }  Dec 9
+// ADMIN LOGIN API (single-school admin model, bcrypt-aware)
+// POST /api/admin/login
+// POST /api/login (legacy)
+// Body: { email, password }
 // ---------------------------------------------------------------------
-
 
 async function handleAdminLogin(req, res) {
   const body = req.body || {};
-  const email = (body.email || "").trim().toLowerCase();
-  const password = (body.password || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const password = String(body.password || "").trim();
 
   if (!email || !password) {
     return res.status(400).json({
@@ -2767,6 +2845,8 @@ async function handleAdminLogin(req, res) {
   }
 
   try {
+    // NOTE: match *real* schema: school_id, is_superadmin, is_active
+    // Also: avoid ambiguous duplicates by enforcing ORDER BY id ASC (oldest first)
     const { rows, rowCount } = await pool.query(
       `
       SELECT
@@ -2775,11 +2855,12 @@ async function handleAdminLogin(req, res) {
         email,
         full_name,
         password_hash,
-        is_owner,
         is_active,
-        is_superadmin
+        is_superadmin,
+        is_owner
       FROM admins
       WHERE lower(email) = $1
+      ORDER BY id ASC
       LIMIT 1
       `,
       [email]
@@ -2795,8 +2876,16 @@ async function handleAdminLogin(req, res) {
 
     const admin = rows[0];
 
-    // Still plain-text passwords in this system
-    if (admin.password_hash !== password) {
+    if (admin.is_active === false) {
+      return res.status(403).json({
+        ok: false,
+        error: "admin_inactive",
+        message: "This admin account is not active.",
+      });
+    }
+
+    const okPassword = await bcrypt.compare(password, admin.password_hash || "");
+    if (!okPassword) {
       return res.status(401).json({
         ok: false,
         error: "invalid_credentials",
@@ -2804,28 +2893,19 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    if (admin.is_active === false) {
-      return res.status(403).json({
-        ok: false,
-        error: "inactive_admin",
-        message: "This admin account is not active.",
-      });
-    }
-
-    // Shape the admin object exactly as AdminLogin.js expects
-    const sessionAdmin = {
-      adminId: admin.id,
-      email: admin.email,
-      fullName: admin.full_name || "",
-      isSuperAdmin: !!admin.is_superadmin,
-      schoolId: admin.school_id,   // may be null; that’s fine
-    };
-
+    // Return fields in a way that AdminLogin.js normalization understands
+    // (it looks for admin.adminId / admin.id, admin.email, and isSuperAdmin variants)
     return res.json({
       ok: true,
-      admin: sessionAdmin,
-      // optional token in future; for now null is fine
-      token: null,
+      admin: {
+        adminId: admin.id,
+        email: admin.email,
+        fullName: admin.full_name || "",
+        isSuperAdmin: !!admin.is_superadmin,
+        schoolId: admin.school_id ?? null,
+        isOwner: !!admin.is_owner,
+      },
+      adminKey: null, // reserved
     });
   } catch (err) {
     console.error("handleAdminLogin error:", err);
@@ -2837,10 +2917,178 @@ async function handleAdminLogin(req, res) {
   }
 }
 
-// Make sure these lines exist AFTER the function:
 app.post("/api/admin/login", handleAdminLogin);
-app.post("/api/login", handleAdminLogin);   // legacy path
+app.post("/api/login", handleAdminLogin); // legacy
 
+// =====================================================================
+// SCHOOL SIGNUP v2 (SP-ONLY) — no INSERT/UPDATE in Node
+// =====================================================================
+// POST /api/school-signup/v2
+// Body: all SchoolSignUp fields + adminPassword + (optional) verifiedEmail
+// Writes: ONLY via SP public.mss_provision_school_with_admin(...)
+// =====================================================================
+
+import crypto from "crypto";
+
+// ---------------------------------------------------------------------
+// SCHOOL SIGN-UP (V2 / SP-ONLY)
+// POST /api/school-signup/v2
+// Writes rule: ONLY execute the SP for writes.
+// ---------------------------------------------------------------------
+app.post("/api/school-signup/v2", async (req, res) => {
+  const body = req.body || {};
+
+  const schoolName = String(body.schoolName || "").trim();
+  const websiteUrl = String(body.websiteUrl || "").trim();
+  const country = String(body.country || "").trim();
+  const timeZone = String(body.timeZone || "").trim() || null;
+
+  const contactName = String(body.contactName || "").trim();
+  const contactEmail = String(body.contactEmail || "").trim().toLowerCase();
+
+  const roleTitle = String(body.roleTitle || "").trim() || null;
+
+  // Safe numeric parsing
+  const teacherCount =
+    body.teacherCount === "" || body.teacherCount == null
+      ? null
+      : Number.isFinite(Number(body.teacherCount))
+      ? Number(body.teacherCount)
+      : null;
+
+  const heard = String(body.heard || "").trim() || null;
+  const programDescription = String(body.programDescription || "").trim() || null;
+
+  const exams = Array.isArray(body.exams)
+    ? body.exams
+    : body.exams
+    ? [body.exams]
+    : [];
+
+  const testsPerMonth =
+    body.testsPerMonth === "" || body.testsPerMonth == null
+      ? null
+      : Number.isFinite(Number(body.testsPerMonth))
+      ? Number(body.testsPerMonth)
+      : null;
+
+  const anonymousFunnel = String(body.anonymousFunnel || "yes").trim();
+  const funnelUrl = String(body.funnelUrl || "").trim() || null;
+
+  const notes = String(body.notes || "").trim();
+  const adminPassword = String(body.adminPassword || "").trim();
+
+  // Required for SP-only finalize path
+  const verifiedEmail = body.verifiedEmail === true;
+
+  // ---- Basic validation ----
+  const missing = [];
+  if (!schoolName) missing.push("schoolName");
+  if (!websiteUrl) missing.push("websiteUrl");
+  if (!country) missing.push("country");
+  if (!contactName) missing.push("contactName");
+  if (!contactEmail) missing.push("contactEmail");
+  if (!adminPassword) missing.push("adminPassword");
+  if (!notes) missing.push("notes");
+  if (!verifiedEmail) missing.push("verifiedEmail");
+
+  if (missing.length) {
+    return res.status(400).json({
+      ok: false,
+      error: "validation_error",
+      message: `Missing/invalid fields: ${missing.join(", ")}`,
+      missing,
+    });
+  }
+
+  // ---- Build collision-proof slug ----
+  const baseSlug =
+    slugify(schoolName, { lower: true, strict: true, trim: true }) || "new-school";
+  const rand = crypto.randomBytes(3).toString("hex"); // 6 chars
+  const slug = `${baseSlug}-${Date.now()}-${rand}`;
+
+  const sourceSlug = String(body.sourceSlug || "mss-demo").trim() || "mss-demo";
+  const adminFullName = contactName;
+  const adminEmail = contactEmail;
+
+  // ---- Hash password ----
+  let passwordHash;
+  try {
+    passwordHash = await bcrypt.hash(adminPassword, 10);
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: "hash_failed",
+      message: "Unable to secure password.",
+    });
+  }
+
+  // ---- Execute SP (ONLY write) ----
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const sp = await client.query(
+      `
+      SELECT *
+      FROM public.mss_provision_school_with_admin($1,$2,$3,$4,$5,$6)
+      `,
+      [slug, schoolName, adminEmail, adminFullName, passwordHash, sourceSlug]
+    );
+
+    if (!sp.rows || sp.rows.length === 0) {
+      throw new Error("SP returned no rows (unexpected for RETURNS TABLE).");
+    }
+
+    const out = sp.rows[0] || {};
+    const schoolId = out.school_id;
+    const adminId = out.admin_id;
+
+    if (!schoolId || !adminId) {
+      throw new Error(`Unexpected SP output: ${JSON.stringify(out)}`);
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      schoolId,
+      adminId,
+      slug,
+      adminEmail,
+      message: "School created successfully (SP-only path). You can now log in.",
+      schoolName,
+      contactName,
+
+      // FYI: keeping these for future audit use (not sensitive)
+      meta: {
+        websiteUrl,
+        country,
+        timeZone,
+        roleTitle,
+        teacherCount,
+        heard,
+        programDescription,
+        exams,
+        testsPerMonth,
+        anonymousFunnel,
+        funnelUrl,
+      },
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[school-signup/v2] failed:", err);
+
+    return res.status(500).json({
+      ok: false,
+      error: "signup_failed",
+      message: err.message || "Internal error creating school.",
+      code: err.code || null,
+    });
+  } finally {
+    client.release();
+  }
+});
 /* ------------------------------------------------------------------
    STUDENT ENROLLMENT
    POST /api/student/enroll

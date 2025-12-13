@@ -115,12 +115,13 @@ console.log("✅ AdminLogin.js loaded");
       emailFromForm ||
       null;
 
-    const isSuperadmin = !!(
+   const isSuperadmin = !!(
       admin.isSuperadmin ??
+      admin.isSuperAdmin ??      // ✅ add this
       admin.is_superadmin ??
       admin.superadmin ??
       admin.isSuper
-    );
+   );
 
     return { adminKey, adminId, email, isSuperadmin };
   }
@@ -210,69 +211,80 @@ console.log("✅ AdminLogin.js loaded");
       const normPreview = normalizeLoginResponse(data || {}, email) || {};
       console.log("[AdminLogin] Normalized preview:", normPreview);
 
-      // ----------------------------------------------------
-      // INVALID LOGIN (email wrong OR password wrong)
-      // ----------------------------------------------------
-      if (res.status === 401 || !res.ok || (data && data.ok === false)) {
-        const msg =
-          (data && (data.message || data.error)) ||
-          "Login failed. Please check your email and password.";
+ // ----------------------------------------------------
+// INVALID LOGIN (email wrong OR password wrong)
+// ----------------------------------------------------
+if (res.status === 401 || !res.ok || (data && data.ok === false)) {
+  const msg =
+    (data && (data.message || data.error)) ||
+    "Login failed. Please check your email and password.";
 
-        setStatus(msg, true);
+  setStatus(msg, true);
 
-        console.warn("[AdminLogin] Server rejected credentials:", {
-          status: res.status,
-          msg,
-          normPreview,
-        });
+  console.warn("[AdminLogin] Server rejected credentials:", {
+    status: res.status,
+    msg,
+    normPreview,
+  });
 
-        // 🔧 DEV BYPASS: still let them in so we can QA the portal
-        if (DEV_BYPASS_ON_401) {
-          console.warn(
-            "[AdminLogin] DEV_BYPASS_ON_401 is TRUE – creating local session despite 401."
-          );
+  // 🔧 DEV BYPASS: still let them in so we can QA the portal
+  if (DEV_BYPASS_ON_401) {
+    console.warn(
+      "[AdminLogin] DEV_BYPASS_ON_401 is TRUE – attempting DEV session despite 401."
+    );
 
-          // DEV: map known admin emails → real admin IDs from the DB
-          const DEV_KNOWN_ADMIN_IDS = {
-            "chrish@mss.com": 24,
-            "andrew@mss.com": 25,
-            "tickittaskit@gmail.com": 29,
-            "tickittaskit+ott-esl@gmail.com": 30,
-            // add others here as needed
-          };
+    // DEV: map known admin emails → real admin IDs from the DB
+    const DEV_KNOWN_ADMIN_IDS = {
+      "chrish@mss.com": 24,
+      "andrew@mss.com": 25,
+      "tickittaskit@gmail.com": 29,
+      "tickittaskit+ott-esl@gmail.com": 30,
+      // add others here as needed
+    };
 
-          const normalizedEmail =
-            (normPreview.email || email || "").toLowerCase();
+    const normalizedEmail = String(normPreview.email || email || "").trim().toLowerCase();
 
-          const fallbackId =
-            normPreview.adminId ??
-            DEV_KNOWN_ADMIN_IDS[normalizedEmail] ??
-            -1;
+    const fallbackId =
+      normPreview.adminId ??
+      DEV_KNOWN_ADMIN_IDS[normalizedEmail] ??
+      null;
 
-          const fallbackSession = {
-            adminId: fallbackId,
-            email: normalizedEmail,
-            isSuperadmin:
-              typeof normPreview.isSuperadmin === "boolean"
-                ? normPreview.isSuperadmin
-                : false,
-          };
+    // ✅ Critical: never create a session with an invalid adminId
+    if (!fallbackId || Number(fallbackId) <= 0) {
+      setStatus(
+        "Login failed (DEV bypass). This email is not mapped to a DEV adminId. Add it to DEV_KNOWN_ADMIN_IDS or fix server auth.",
+        true
+      );
+      console.warn("[AdminLogin] DEV bypass blocked: unknown email", {
+        normalizedEmail,
+        fallbackId,
+        normPreview,
+      });
+      return; // stop here; do NOT fall through
+    }
 
-          console.log("[AdminLogin] Fallback session (dev):", fallbackSession);
+    const fallbackSession = {
+      adminId: Number(fallbackId),
+      email: normalizedEmail,
+      isSuperadmin:
+        typeof normPreview.isSuperadmin === "boolean"
+          ? normPreview.isSuperadmin
+          : false,
+    };
 
-          saveAdminSession(fallbackSession);
-          if (normPreview.adminKey) {
-            saveAdminKey(normPreview.adminKey);
-          }
+    console.log("[AdminLogin] Fallback session (dev):", fallbackSession);
 
-          setStatus("Signed in (DEV bypass – server rejected creds).", false);
-          window.location.href = ADMIN_HOME_URL;
-        }
+    saveAdminSession(fallbackSession);
+    if (normPreview.adminKey) saveAdminKey(normPreview.adminKey);
 
-        // If we’re not bypassing, just stop here
-        return;
-      }
+    setStatus("Signed in (DEV bypass – server rejected creds).", false);
+    window.location.href = ADMIN_HOME_URL;
+    return;
+  }
 
+  // If we’re not bypassing, stop here.
+  return;
+}
    // ----------------------------------------------------
    // SUCCESS – normalize and save session
    // ----------------------------------------------------
@@ -287,16 +299,18 @@ console.log("✅ AdminLogin.js loaded");
         return;
     }
 
-     // NEW: derive isSuperadmin from email domain
-      const sessionEmail = norm.email;
-      const isSuperadmin = deriveIsSuperadminFromEmail(sessionEmail);
+     const sessionEmail = String(norm.email || "").trim().toLowerCase();
 
-      saveAdminSession({
-      adminId: norm.adminId,
-      email: sessionEmail,
-      isSuperadmin,         // <<--- canonical flag we will use everywhere
-     });
+   const isSuperadmin =
+     typeof norm.isSuperadmin === "boolean"
+       ? norm.isSuperadmin
+       : deriveIsSuperadminFromEmail(sessionEmail);
 
+   saveAdminSession({
+     adminId: Number(norm.adminId),
+     email: sessionEmail,
+     isSuperadmin,
+    });
      saveAdminKey(norm.adminKey);
 
      setStatus("");
