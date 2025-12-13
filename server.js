@@ -2920,15 +2920,7 @@ async function handleAdminLogin(req, res) {
 app.post("/api/admin/login", handleAdminLogin);
 app.post("/api/login", handleAdminLogin); // legacy
 
-// =====================================================================
-// SCHOOL SIGNUP v2 (SP-ONLY) — no INSERT/UPDATE in Node
-// =====================================================================
-// POST /api/school-signup/v2
-// Body: all SchoolSignUp fields + adminPassword + (optional) verifiedEmail
-// Writes: ONLY via SP public.mss_provision_school_with_admin(...)
-// =====================================================================
-
-import crypto from "crypto";
+//Dec 13
 
 // ---------------------------------------------------------------------
 // SCHOOL SIGN-UP (V2 / SP-ONLY)
