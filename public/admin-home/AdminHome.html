@@ -5,7 +5,14 @@
   <meta charset="UTF-8" />
   <title>MSS – Admin Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Shared MSS design system -->
   <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <!-- MSS Viewer (modal shell) -->
+  <link rel="stylesheet" href="/components/MSSViewer.css" />
+  
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -38,13 +45,11 @@
       font-size: 14px;
       color: #475569;
     }
-    .admin-meta span.label {
-      font-weight: 600;
-    }
+    .admin-meta span.label { font-weight: 600; }
     .admin-buttons {
       margin-top: 24px;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 12px;
     }
     .admin-btn {
@@ -58,12 +63,8 @@
       color: #fff;
       transition: transform 0.05s ease-out, box-shadow 0.05s ease-out, background 0.1s ease-out;
     }
-    .admin-btn.secondary {
-      background: #0f172a;
-    }
-    .admin-btn.danger {
-      background: #b91c1c;
-    }
+    .admin-btn.secondary { background: #0f172a; }
+    .admin-btn.danger { background: #b91c1c; }
     .admin-btn:disabled {
       opacity: 0.6;
       cursor: default;
@@ -102,20 +103,16 @@
       background: #e2e8f0;
       color: #0f172a;
     }
-    .badge.super {
-      background: #f97316;
-      color: #0f172a;
-    }
+    .badge.super { background: #f97316; color: #0f172a; }
     .status {
       margin-top: 12px;
       font-size: 13px;
       color: #64748b;
     }
-    .status.error {
-      color: #b91c1c;
-    }
+    .status.error { color: #b91c1c; }
   </style>
 </head>
+
 <body>
   <div class="admin-shell">
     <header class="admin-header">
@@ -131,29 +128,32 @@
 
     <div class="status" id="admin-status"></div>
 
-   <section class="admin-buttons">
-  <button class="admin-btn" id="btn-portal">School Portal</button>
+    <section class="admin-buttons">
+      <button class="admin-btn" id="btn-portal">School Portal</button>
 
-  <!-- ✅ Super admin only (shown via AdminHome.js) -->
-  <button
-    class="admin-btn secondary"
-    id="btn-school-signup"
-    style="display:none;"
-  >
-    School Sign Up
-  </button>
+      <!-- Super admin only (shown via AdminHome.js) -->
+      <button class="admin-btn secondary" id="btn-school-signup" style="display:none;">
+        School Sign Up
+      </button>
 
-  <button class="admin-btn secondary" id="btn-config">Configuration Admin</button>
-  <button class="admin-btn secondary" id="btn-questions">Questions Admin</button>
-  <button class="admin-btn danger" id="btn-logout">Log out</button>
-</section>
+      <!-- Super admin only (shown via AdminHome.js) -->
+      <button class="admin-btn secondary" id="btn-invite-school-signup" style="display:none;">
+        Invite School Sign-up
+      </button>
+
+      <button class="admin-btn secondary" id="btn-config">Configuration Admin</button>
+      <button class="admin-btn secondary" id="btn-questions">Questions Admin</button>
+      <button class="admin-btn danger" id="btn-logout">Log out</button>
+    </section>
 
     <footer class="admin-footer">
-      <span id="admin-key-badge" class="badge">key: none</span>
+      <span id="admin-key-badge" class="badge">token: none</span>
       <span class="badge super" id="admin-super-badge" style="display:none;">SUPER ADMIN</span>
     </footer>
   </div>
 
+  <!-- Viewer must load BEFORE AdminHome.js -->
+  <script src="/components/MSSViewer.js"></script>
   <script src="/admin-home/AdminHome.js"></script>
 </body>
 </html>

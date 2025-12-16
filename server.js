@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 
 
 //Dec 10 using SPs
@@ -17,6 +18,11 @@ import bcrypt from "bcryptjs";
 import slugify from "slugify"; // or your own slug helper
 
 dotenv.config();
+// just to be sure
+console.log("[env] DATABASE_URL present:", !!process.env.DATABASE_URL);
+console.log("[env] MSS_ADMIN_JWT_SECRET present:", !!process.env.MSS_ADMIN_JWT_SECRET);
+console.log("[env] MSS_ADMIN_JWT_TTL:", process.env.MSS_ADMIN_JWT_TTL || "(default)");
+
 
 // ---------------------------------------------------------------------
 // Public base URL for email links - Nov 29
@@ -42,51 +48,94 @@ const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ---------------------------------------------------------------------
+// ADMIN JWT AUTH (Dec 15)
+// ---------------------------------------------------------------------
 
-// ----------------------
-// Slug helpers
-// ----------------------
-function normalizeSlug(nameOrSlug) {
-  if (!nameOrSlug) return "";
-  return slugify(nameOrSlug, {
-    lower: true,
-    strict: true, // letters, numbers, dashes only
-    trim: true,
-  });
-}
+const ADMIN_JWT_SECRET = process.env.MSS_ADMIN_JWT_SECRET || "";
+const ADMIN_JWT_TTL = process.env.MSS_ADMIN_JWT_TTL || "12h";
 
-async function ensureUniqueSlug(baseSlug, pool) {
-  let candidate = baseSlug || "school";
-  let suffix = 1;
-
-  // Check both schools.slug and school_signups_pending.slug
-  // until we find a free one.
-  /* eslint-disable no-constant-condition */
-  while (true) {
-    const { rows } = await pool.query(
-      `
-        SELECT 1
-        FROM schools
-        WHERE slug = $1
-
-        UNION ALL
-
-        SELECT 1
-        FROM school_signups_pending
-        WHERE slug = $1
-        LIMIT 1
-      `,
-      [candidate]
-    );
-
-    if (!rows.length) {
-      return candidate;
-    }
-
-    suffix += 1;
-    candidate = `${baseSlug}-${suffix}`;
+function requireAdminJwtSecret() {
+  if (!ADMIN_JWT_SECRET) {
+    throw new Error("Missing MSS_ADMIN_JWT_SECRET");
   }
 }
+
+function signAdminToken(admin) {
+  requireAdminJwtSecret();
+
+  // IMPORTANT: keep claim names consistent with your middleware
+  return jwt.sign(
+    {
+      aid: Number(admin.adminId),
+      email: String(admin.email || "").toLowerCase(),
+      isSuperAdmin: !!admin.isSuperAdmin,
+      schoolId: admin.schoolId ?? null,
+    },
+    ADMIN_JWT_SECRET,
+    {
+      expiresIn: ADMIN_JWT_TTL,
+      issuer: "mss-widget-mt",
+      audience: "mss-admin",
+    }
+  );
+}
+
+
+function readAdminTokenFromRequest(req) {
+  // Preferred: Authorization: Bearer <token>
+  const auth = String(req.headers.authorization || "");
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (m) return m[1].trim();
+
+  // Backward-compatible (avoid these long-term)
+  return String(
+    req.headers["x-admin-key"] ||
+    req.headers["x-mss-admin-key"] ||
+    ""
+  ).trim();
+}
+
+function requireAdminAuth(req, res, next) {
+  try {
+    requireAdminJwtSecret();
+
+    const token = readAdminTokenFromRequest(req);
+    if (!token) {
+      return res.status(401).json({
+        ok: false,
+        error: "missing_admin_token",
+        message: "Missing admin token.",
+      });
+    }
+
+    const decoded = jwt.verify(token, ADMIN_JWT_SECRET, {
+      issuer: "mss-widget-mt",
+      audience: "mss-admin",
+    });
+
+    req.adminAuth = decoded; // attach to request
+    return next();
+  } catch (err) {
+    return res.status(401).json({
+      ok: false,
+      error: "invalid_admin_token",
+      message: "Invalid or expired admin token.",
+    });
+  }
+}
+
+function requireSuperAdmin(req, res, next) {
+  if (!req.adminAuth?.isSuperAdmin) {
+    return res.status(403).json({
+      ok: false,
+      error: "forbidden",
+      message: "Super admin required.",
+    });
+  }
+  return next();
+}
+// ---------------------------------------------------------------------
 
 // --- Widget image uploads ---
 const uploadDir = path.join(__dirname, "uploads", "widget-images");
@@ -124,6 +173,8 @@ const ROOT = __dirname;
 const SRC_DIR = path.join(ROOT, "src");
 const PUBLIC_DIR = path.join(ROOT, "public");
 const THEMES_DIR = path.join(ROOT, "themes");
+
+
 
 // ---------- CORS MIDDLEWARE (Render ↔ Vercel) ----------
 const allowedOrigins = [
@@ -221,6 +272,7 @@ function handleWidgetImageUpload(req, res) {
     });
   }
 }
+
 
 // ======================================================
 // Image upload routes — support both `/image-upload` and legacy `/image` Nov 28
@@ -1199,11 +1251,11 @@ app.post("/api/school-signup", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
-// VERIFY SCHOOL SIGN-UP
+// VERIFY SCHOOL SIGN-UP (SP-only finalize)
 // POST /api/school-signup/verify { token }
 // ---------------------------------------------------------------------
 app.post("/api/school-signup/verify", async (req, res) => {
-  const { token } = req.body || {};
+  const token = String(req.body?.token || "").trim();
 
   if (!token) {
     return res.status(400).json({
@@ -1214,21 +1266,20 @@ app.post("/api/school-signup/verify", async (req, res) => {
   }
 
   const client = await pool.connect();
-
   try {
     await client.query("BEGIN");
 
     const { rows } = await client.query(
       `
-        SELECT *
-        FROM pending_signups
-        WHERE token = $1
-        FOR UPDATE
+      SELECT *
+      FROM pending_signups
+      WHERE token = $1
+      FOR UPDATE
       `,
       [token]
     );
 
-    if (rows.length === 0) {
+    if (!rows.length) {
       await client.query("ROLLBACK");
       return res.status(400).json({
         ok: false,
@@ -1237,16 +1288,107 @@ app.post("/api/school-signup/verify", async (req, res) => {
       });
     }
 
-    const out = await finalizePendingSignup(client, rows[0]);
+    const p = rows[0];
+
+    // Basic lifecycle checks
+    if (p.used_at) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        ok: false,
+        error: "token_used",
+        message: "This verification link has already been used.",
+      });
+    }
+
+    if (p.expires_at && new Date(p.expires_at).getTime() < Date.now()) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        ok: false,
+        error: "token_expired",
+        message: "This verification link has expired. Please sign up again.",
+      });
+    }
+
+    // Core fields from columns
+    const schoolName = String(p.school_name || "").trim();
+    const adminEmail = String(p.admin_email || "").trim().toLowerCase();
+    const adminFullName = String(p.admin_name || "").trim();
+
+    // payload is JSONB; pg returns as object already (usually),
+    // but we defensively parse if it arrives as a string.
+    let payload = p.payload || {};
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        payload = {};
+      }
+    }
+
+    // Pull required SP inputs from payload
+    // We accept a few key variants so you don’t get brittle failures.
+    const passwordHash =
+      String(payload.passwordHash || payload.password_hash || "").trim();
+
+    const sourceSlug =
+      String(payload.sourceSlug || payload.source_slug || "mss-demo").trim() || "mss-demo";
+
+    // Optional: a preferred slug stored in payload (else we generate)
+    const preferredSlug =
+      String(payload.slug || payload.schoolSlug || "").trim();
+
+    if (!schoolName || !adminEmail || !adminFullName || !passwordHash) {
+      throw new Error(
+        `Pending signup missing required fields. ` +
+        `schoolName=${!!schoolName}, adminEmail=${!!adminEmail}, adminFullName=${!!adminFullName}, passwordHash=${!!passwordHash}`
+      );
+    }
+
+    // Slug strategy: prefer payload.slug if present, else derive from schoolName.
+    const baseSlug =
+      normalizeSlug(preferredSlug || schoolName) || "new-school";
+
+    // IMPORTANT: ensureUniqueSlug currently takes (baseSlug, pool).
+    // For transactional safety, it’s better to use client. If your helper only accepts pool,
+    // either update it to accept client OR use a collision-proof slug here.
+    //
+    // Option A (recommended): update ensureUniqueSlug to accept a queryable client
+    const slug = await ensureUniqueSlug(baseSlug, client);
+
+    // SP-only write
+    const sp = await client.query(
+      `SELECT * FROM public.mss_provision_school_with_admin($1,$2,$3,$4,$5,$6)`,
+      [slug, schoolName, adminEmail, adminFullName, passwordHash, sourceSlug]
+    );
+
+    const out = sp.rows?.[0] || {};
+    const schoolId = out.school_id;
+    const adminId = out.admin_id;
+
+    if (!schoolId || !adminId) {
+      throw new Error(`Unexpected SP output: ${JSON.stringify(out)}`);
+    }
+
+    // Mark token as used (do NOT delete unless you want zero audit trail)
+    await client.query(
+      `
+      UPDATE pending_signups
+      SET used_at = NOW(),
+          verified_at = COALESCE(verified_at, NOW()),
+          status = 'provisioned'
+      WHERE id = $1
+      `,
+      [p.id]
+    );
 
     await client.query("COMMIT");
 
     return res.json({
       ok: true,
-      schoolId: out.schoolId,
-      adminId: out.adminId,
-      slug: out.slug,
-      adminEmail: out.adminEmail,
+      schoolId,
+      adminId,
+      slug,
+      adminEmail,
       message:
         "Your MySpeakingScore school has been created. You can now sign in to your admin portal with your email and password.",
     });
@@ -1264,7 +1406,6 @@ app.post("/api/school-signup/verify", async (req, res) => {
     client.release();
   }
 });
-
 // ---------------------------------------------------------------------
 // List admins for a given school (by slug)
 // GET /api/admin/school/:slug/admins
@@ -1508,6 +1649,41 @@ async function writeJson(rel, obj) {
   await ensureSrcDir();
   const full = path.join(SRC_DIR, rel);
   await fs.writeFile(full, JSON.stringify(obj ?? {}, null, 2), "utf8");
+}
+
+// ----------------------
+// Slug helpers
+// ----------------------
+function normalizeSlug(nameOrSlug) {
+  if (!nameOrSlug) return "";
+  return slugify(nameOrSlug, {
+    lower: true,
+    strict: true,
+    trim: true,
+  });
+}
+
+async function ensureUniqueSlug(baseSlug, db) {
+  let candidate = baseSlug || "school";
+  let suffix = 1;
+
+  while (true) {
+    const { rows } = await db.query(
+      `
+      SELECT 1 FROM schools WHERE slug = $1
+      UNION ALL
+      SELECT 1 FROM pending_signups
+      WHERE payload->>'slug' = $1
+      LIMIT 1
+      `,
+      [candidate]
+    );
+
+    if (!rows.length) return candidate;
+
+    suffix += 1;
+    candidate = `${baseSlug}-${suffix}`;
+  }
 }
 
 // ---------- Helper: derive Vox score from row ----------
@@ -2825,12 +3001,11 @@ app.get("/api/admin/my-schools", async (req, res) => {
   }
 });
 // ---------------------------------------------------------------------
-// ADMIN LOGIN API (single-school admin model, bcrypt-aware)
+// ADMIN LOGIN API (JWT session, bcrypt-aware)
 // POST /api/admin/login
 // POST /api/login (legacy)
 // Body: { email, password }
 // ---------------------------------------------------------------------
-
 async function handleAdminLogin(req, res) {
   const body = req.body || {};
   const email = String(body.email || "").trim().toLowerCase();
@@ -2845,8 +3020,6 @@ async function handleAdminLogin(req, res) {
   }
 
   try {
-    // NOTE: match *real* schema: school_id, is_superadmin, is_active
-    // Also: avoid ambiguous duplicates by enforcing ORDER BY id ASC (oldest first)
     const { rows, rowCount } = await pool.query(
       `
       SELECT
@@ -2874,9 +3047,9 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    const admin = rows[0];
+    const a = rows[0];
 
-    if (admin.is_active === false) {
+    if (a.is_active === false) {
       return res.status(403).json({
         ok: false,
         error: "admin_inactive",
@@ -2884,7 +3057,7 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    const okPassword = await bcrypt.compare(password, admin.password_hash || "");
+    const okPassword = await bcrypt.compare(password, a.password_hash || "");
     if (!okPassword) {
       return res.status(401).json({
         ok: false,
@@ -2893,19 +3066,23 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    // Return fields in a way that AdminLogin.js normalization understands
-    // (it looks for admin.adminId / admin.id, admin.email, and isSuperAdmin variants)
+    // Normalize admin object for token signing + client
+    const admin = {
+      adminId: a.id,
+      email: a.email,
+      fullName: a.full_name || "",
+      isSuperAdmin: !!a.is_superadmin,
+      schoolId: a.school_id ?? null,
+      isOwner: !!a.is_owner,
+    };
+
+    // IMPORTANT: this will throw if MSS_ADMIN_JWT_SECRET is missing
+    const token = signAdminToken(admin);
+
     return res.json({
       ok: true,
-      admin: {
-        adminId: admin.id,
-        email: admin.email,
-        fullName: admin.full_name || "",
-        isSuperAdmin: !!admin.is_superadmin,
-        schoolId: admin.school_id ?? null,
-        isOwner: !!admin.is_owner,
-      },
-      adminKey: null, // reserved
+      admin,
+      token,
     });
   } catch (err) {
     console.error("handleAdminLogin error:", err);
@@ -2919,7 +3096,59 @@ async function handleAdminLogin(req, res) {
 
 app.post("/api/admin/login", handleAdminLogin);
 app.post("/api/login", handleAdminLogin); // legacy
+//Dec 14
 
+// ---------------------------------------------------------------------
+// Invite School Sign-up (Super Admin only) — JWT
+// POST /api/admin/invite-school-signup
+// Authorization: Bearer <token>
+// Body: { to, firstName, subject, message, bcc }
+// ---------------------------------------------------------------------
+app.post(
+  "/api/admin/invite-school-signup",
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    const body = req.body || {};
+
+    const toEmail = String(body.to || "").trim().toLowerCase();
+    const firstName = String(body.firstName || "").trim();
+    const subject = String(body.subject || "").trim();
+    const messageHtml = String(body.message || "").trim(); // HTML allowed
+    const bcc = String(body.bcc || "").trim();
+
+    // available if you want it
+    const senderEmail = req.adminAuth?.email || null;
+    const senderAdminId = req.adminAuth?.aid || null;
+
+    if (!toEmail || !subject || !messageHtml) {
+      return res.status(400).json({
+        ok: false,
+        error: "validation_error",
+        message: "to, subject, and message are required.",
+      });
+    }
+
+    try {
+      await mailTransporter.sendMail({
+        from: `"MySpeakingScore" <${smtpUser}>`,
+        to: toEmail,
+        subject,
+        html: messageHtml,
+        bcc: bcc || undefined,
+      });
+
+      return res.json({ ok: true, message: "Invite sent." });
+    } catch (err) {
+      console.error("[invite-school-signup] sendMail failed:", err);
+      return res.status(500).json({
+        ok: false,
+        error: "email_failed",
+        message: "Unable to send invite email.",
+      });
+    }
+  }
+);
 //Dec 13
 
 // ---------------------------------------------------------------------
@@ -2967,7 +3196,7 @@ app.post("/api/school-signup/v2", async (req, res) => {
   const anonymousFunnel = String(body.anonymousFunnel || "yes").trim();
   const funnelUrl = String(body.funnelUrl || "").trim() || null;
 
-  const notes = String(body.notes || "").trim();
+  const notes = String(body.notes || "").trim() || null; // optional
   const adminPassword = String(body.adminPassword || "").trim();
 
   // Required for SP-only finalize path
@@ -2981,7 +3210,6 @@ app.post("/api/school-signup/v2", async (req, res) => {
   if (!contactName) missing.push("contactName");
   if (!contactEmail) missing.push("contactEmail");
   if (!adminPassword) missing.push("adminPassword");
-  if (!notes) missing.push("notes");
   if (!verifiedEmail) missing.push("verifiedEmail");
 
   if (missing.length) {
@@ -3376,6 +3604,32 @@ app.put("/log/submission", async (req, res) => {
     res.status(500).json({ ok: false, error: "failed to update log" });
   }
 });
+
+//Dec 14
+
+async function notifyNewSchoolCreated({ adminEmail, schoolName, slug, schoolId }) {
+  try {
+    const when = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
+
+    await mailTransporter.sendMail({
+      from: `"MySpeakingScore" <${smtpUser}>`,
+      to: "chris@myspeakingscore.com",
+      subject: `New School Created: ${schoolName}`,
+      html: `
+        <p><b>New School created</b></p>
+        <ul>
+          <li><b>School</b>: ${schoolName}</li>
+          <li><b>Slug</b>: ${slug}</li>
+          <li><b>school_id</b>: ${schoolId}</li>
+          <li><b>Admin email</b>: ${adminEmail}</li>
+          <li><b>When</b>: ${when} (ET)</li>
+        </ul>
+      `.trim(),
+    });
+  } catch (e) {
+    console.warn("[notifyNewSchoolCreated] email failed:", e.message);
+  }
+}
 
 // --- Get unique slug helper --- Nov 30 //
 

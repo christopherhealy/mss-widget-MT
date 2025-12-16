@@ -1,24 +1,25 @@
 // /public/admin-login/AdminLogin.js
-// v2.3 – DEV debug version
-// - Saves mssAdminSession + mss_admin_key
-// - Logs raw password (DEV ONLY)
-// - DEV_BYPASS_ON_401 lets us in even if /api/admin/login returns 401
+// v2.6 — JWT session (prod-ready)
+// - Stores mssAdminSession + mss_admin_token
+// - Expects server to return { ok:true, admin:{...}, token:"<jwt>" }
+// - DEV bypass (optional) never mints a token (protected endpoints remain protected)
 
 console.log("✅ AdminLogin.js loaded");
 
 (function () {
   "use strict";
 
-  // ⚠️ DEV ONLY: when server-side auth is fixed, set this back to false
-  const DEV_BYPASS_ON_401 = true;
+  // ⚠️ DEV ONLY: if true, allows UI navigation even when server rejects login.
+  // This is helpful for QA, but note: no token is issued, so protected APIs will reject.
+  const DEV_BYPASS_ON_401 = false;
 
-  const LS_SESSION_KEY = "mssAdminSession"; // used by AdminHome + SchoolPortal
-  const LS_ADMIN_KEY = "mss_admin_key";     // used by Config Admin / Questions admin
+  const LS_SESSION_KEY = "mssAdminSession";
+  const LS_TOKEN_KEY = "mss_admin_token";
   const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
 
-  // ---------------------------------------------------------------------------
-  // Tiny helpers
-  // ---------------------------------------------------------------------------
+  // -----------------------------
+  // Helpers
+  // -----------------------------
   function $(sel, root = document) {
     return root.querySelector(sel);
   }
@@ -34,74 +35,57 @@ console.log("✅ AdminLogin.js loaded");
       return;
     }
     statusEl.textContent = msg || "";
-    statusEl.style.color = isError ? "#d00" : "";
+    statusEl.style.color = isError ? "#b91c1c" : "";
+  }
+
+  function safeSetLS(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn("[AdminLogin] localStorage set failed:", key, e);
+    }
+  }
+
+  function safeRemoveLS(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.warn("[AdminLogin] localStorage remove failed:", key, e);
+    }
+  }
+
+  function clearAuthStorage() {
+    safeRemoveLS(LS_TOKEN_KEY);
+    // Keep session until success? We clear session on each attempt to avoid stale state.
+    safeRemoveLS(LS_SESSION_KEY);
   }
 
   function saveAdminSession(session) {
-    try {
-      console.log("[AdminLogin] Saving mssAdminSession:", session);
-      localStorage.setItem(LS_SESSION_KEY, JSON.stringify(session));
-    } catch (e) {
-      console.error("[AdminLogin] Error saving session:", e);
-    }
+    safeSetLS(LS_SESSION_KEY, JSON.stringify(session));
   }
 
-  function saveAdminKey(adminKey) {
-    if (!adminKey) return;
-    try {
-      console.log("[AdminLogin] Saving mss_admin_key:", adminKey);
-      localStorage.setItem(LS_ADMIN_KEY, String(adminKey));
-    } catch (e) {
-      console.error("[AdminLogin] Error saving admin key:", e);
-    }
+  function saveAdminToken(token) {
+    if (!token) return;
+    safeSetLS(LS_TOKEN_KEY, String(token));
   }
 
-  // For debug: log any existing values
-  try {
-    const rawSession = localStorage.getItem(LS_SESSION_KEY);
-    const rawKey = localStorage.getItem(LS_ADMIN_KEY);
-    console.log("[AdminLogin] Existing mssAdminSession:", rawSession);
-    console.log("[AdminLogin] Existing mss_admin_key:", rawKey);
-  } catch (e) {
-    console.warn("[AdminLogin] localStorage not accessible:", e);
-  }
-   function deriveIsSuperadminFromEmail(email) {
-     if (!email) return false;
-     return /@mss\.com$/i.test(email.trim());
+  function deriveIsSuperadminFromEmail(email) {
+    const e = String(email || "").trim().toLowerCase();
+    return /@mss\.com$/i.test(e);
   }
 
-  // ---------------------------------------------------------------------------
-  // Normalize whatever /api/admin/login returns
-  // ---------------------------------------------------------------------------
+  // -----------------------------
+  // Normalize server response
+  // Expected (preferred):
+  //   { ok:true, admin:{ adminId, email, isSuperAdmin, ... }, token:"<jwt>" }
+  //
+  // Tolerated token aliases:
+  //   jwt, accessToken, access_token
+  // -----------------------------
   function normalizeLoginResponse(data, emailFromForm) {
-    if (!data || typeof data !== "object") {
-      console.warn(
-        "[AdminLogin] normalizeLoginResponse: data is not an object:",
-        data
-      );
-      return null;
-    }
+    if (!data || typeof data !== "object") return null;
 
-    const adminKey =
-      data.adminKey ||
-      data.admin_key ||
-      data.token ||
-      (data.session &&
-        (data.session.adminKey || data.session.admin_key)) ||
-      null;
-
-    let admin =
-      data.admin ||
-      (data.session && (data.session.admin || data.session)) ||
-      data;
-
-    if (!admin || typeof admin !== "object") {
-      console.warn(
-        "[AdminLogin] normalizeLoginResponse: no admin object in data:",
-        data
-      );
-      return { adminKey, adminId: null, email: null, isSuperadmin: null };
-    }
+    const admin = data.admin || data.session || data;
 
     const adminId =
       admin.adminId ??
@@ -110,84 +94,55 @@ console.log("✅ AdminLogin.js loaded");
       null;
 
     const email =
-      admin.email ||
-      data.email ||
-      emailFromForm ||
-      null;
+      String(admin.email || emailFromForm || "")
+        .trim()
+        .toLowerCase() || null;
 
-   const isSuperadmin = !!(
+    const isSuperadmin = !!(
       admin.isSuperadmin ??
-      admin.isSuperAdmin ??      // ✅ add this
+      admin.isSuperAdmin ??
       admin.is_superadmin ??
       admin.superadmin ??
-      admin.isSuper
-   );
+      admin.isSuper ??
+      false
+    );
 
-    return { adminKey, adminId, email, isSuperadmin };
+    const token =
+      data.token ||
+      data.jwt ||
+      data.accessToken ||
+      data.access_token ||
+      (data.session && (data.session.token || data.session.jwt)) ||
+      null;
+
+    return { adminId, email, isSuperadmin, token };
   }
 
-  // ---------------------------------------------------------------------------
-  // Wire up the form + inputs
-  // ---------------------------------------------------------------------------
-  const form =
-    document.getElementById("adminLoginForm") ||
-    $("form");
-
-  const emailInput =
-    $("#email.mss-input") ||
-    $("#admin-email") ||
-    $("input[type=email]") ||
-    $("input[name=email]");
-
-  const passwordInput =
-    $("#password.mss-input") ||
-    $("#admin-password") ||
-    $("input[type=password]") ||
-    $("input[name=password]");
+  // -----------------------------
+  // Wire form
+  // -----------------------------
+  const form = document.getElementById("adminLoginForm") || $("form");
+  const emailInput = $("input[type=email]") || $("#admin-email");
+  const passwordInput = $("input[type=password]") || $("#admin-password");
 
   if (!form || !emailInput || !passwordInput) {
-    console.error(
-      "[AdminLogin] Could not find form or inputs – login disabled."
-    );
+    console.error("[AdminLogin] Form or inputs not found; login disabled.");
     return;
   }
 
-  console.log("[AdminLogin] Wiring login form", {
-    form,
-    emailInput,
-    passwordInput,
-  });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  // Show-password toggle (hooked to <input id="show-password"> in the HTML)
-  const showPwCheckbox = document.getElementById("show-password");
-  if (showPwCheckbox && passwordInput) {
-    showPwCheckbox.addEventListener("change", () => {
-      const type = showPwCheckbox.checked ? "text" : "password";
-      console.log("[AdminLogin] Show password:", showPwCheckbox.checked);
-      passwordInput.type = type;
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Submit handler
-  // ---------------------------------------------------------------------------
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    setStatus("Signing you in…", false);
-
-    const email = (emailInput.value || "").trim();
-    const password = (passwordInput.value || "").trim();
+    const email = String(emailInput.value || "").trim().toLowerCase();
+    const password = String(passwordInput.value || "").trim();
 
     if (!email || !password) {
       setStatus("Please enter your email and password.", true);
       return;
     }
 
-    // 🔍 DEV: log raw email + password so we can see exactly what was typed
-    console.log("[AdminLogin] SUBMIT attempt:", {
-      email,
-      rawPassword: password, // ⚠️ DEV ONLY – do NOT keep this in production
-    });
+    setStatus("Signing you in…");
+    clearAuthStorage(); // prevent stale tokens/sessions
 
     try {
       const res = await fetch("/api/admin/login", {
@@ -196,131 +151,91 @@ console.log("✅ AdminLogin.js loaded");
         body: JSON.stringify({ email, password }),
       });
 
-      let data = null;
+      let data = {};
       try {
         data = await res.json();
-      } catch (e) {
-        console.warn("[AdminLogin] Non-JSON response:", e);
+      } catch {
+        data = {};
       }
 
-      console.log("[AdminLogin] Login response (raw):", {
-        status: res.status,
-        data,
-      });
+      // -----------------------------
+      // FAILURE
+      // -----------------------------
+      if (!res.ok || data.ok === false) {
+        const msg =
+          data.message ||
+          "Login failed. Please check your email and password.";
 
-      const normPreview = normalizeLoginResponse(data || {}, email) || {};
-      console.log("[AdminLogin] Normalized preview:", normPreview);
+        if (!DEV_BYPASS_ON_401) {
+          setStatus(msg, true);
+          return;
+        }
 
- // ----------------------------------------------------
-// INVALID LOGIN (email wrong OR password wrong)
-// ----------------------------------------------------
-if (res.status === 401 || !res.ok || (data && data.ok === false)) {
-  const msg =
-    (data && (data.message || data.error)) ||
-    "Login failed. Please check your email and password.";
+        console.warn("[AdminLogin] DEV BYPASS active (server rejected login)", {
+          status: res.status,
+          msg,
+        });
 
-  setStatus(msg, true);
+        // DEV-only mapping; does NOT grant API access (no token).
+        const DEV_KNOWN_ADMIN_IDS = {
+          "chrish@mss.com": 24,
+          "andrew@mss.com": 25,
+          "tickittaskit@gmail.com": 29,
+        };
 
-  console.warn("[AdminLogin] Server rejected credentials:", {
-    status: res.status,
-    msg,
-    normPreview,
-  });
+        const fallbackId = DEV_KNOWN_ADMIN_IDS[email];
+        if (!fallbackId) {
+          setStatus("DEV bypass failed: unknown admin email.", true);
+          return;
+        }
 
-  // 🔧 DEV BYPASS: still let them in so we can QA the portal
-  if (DEV_BYPASS_ON_401) {
-    console.warn(
-      "[AdminLogin] DEV_BYPASS_ON_401 is TRUE – attempting DEV session despite 401."
-    );
+        saveAdminSession({
+          adminId: Number(fallbackId),
+          email,
+          isSuperadmin: deriveIsSuperadminFromEmail(email),
+        });
 
-    // DEV: map known admin emails → real admin IDs from the DB
-    const DEV_KNOWN_ADMIN_IDS = {
-      "chrish@mss.com": 24,
-      "andrew@mss.com": 25,
-      "tickittaskit@gmail.com": 29,
-      "tickittaskit+ott-esl@gmail.com": 30,
-      // add others here as needed
-    };
-
-    const normalizedEmail = String(normPreview.email || email || "").trim().toLowerCase();
-
-    const fallbackId =
-      normPreview.adminId ??
-      DEV_KNOWN_ADMIN_IDS[normalizedEmail] ??
-      null;
-
-    // ✅ Critical: never create a session with an invalid adminId
-    if (!fallbackId || Number(fallbackId) <= 0) {
-      setStatus(
-        "Login failed (DEV bypass). This email is not mapped to a DEV adminId. Add it to DEV_KNOWN_ADMIN_IDS or fix server auth.",
-        true
-      );
-      console.warn("[AdminLogin] DEV bypass blocked: unknown email", {
-        normalizedEmail,
-        fallbackId,
-        normPreview,
-      });
-      return; // stop here; do NOT fall through
-    }
-
-    const fallbackSession = {
-      adminId: Number(fallbackId),
-      email: normalizedEmail,
-      isSuperadmin:
-        typeof normPreview.isSuperadmin === "boolean"
-          ? normPreview.isSuperadmin
-          : false,
-    };
-
-    console.log("[AdminLogin] Fallback session (dev):", fallbackSession);
-
-    saveAdminSession(fallbackSession);
-    if (normPreview.adminKey) saveAdminKey(normPreview.adminKey);
-
-    setStatus("Signed in (DEV bypass – server rejected creds).", false);
-    window.location.href = ADMIN_HOME_URL;
-    return;
-  }
-
-  // If we’re not bypassing, stop here.
-  return;
-}
-   // ----------------------------------------------------
-   // SUCCESS – normalize and save session
-   // ----------------------------------------------------
-     const norm = normalizeLoginResponse(data, email);
-     console.log("[AdminLogin] Normalized SUCCESS:", norm);
-
-     if (!norm || !norm.adminId || !norm.email) {
-       setStatus(
-        "Login succeeded but session data is incomplete. Please contact support.",
-        true
-       );
+        setStatus("Signed in (DEV bypass). No token issued.", false);
+        window.location.href = ADMIN_HOME_URL;
         return;
-    }
+      }
 
-     const sessionEmail = String(norm.email || "").trim().toLowerCase();
+      // -----------------------------
+      // SUCCESS
+      // -----------------------------
+      const norm = normalizeLoginResponse(data, email);
 
-   const isSuperadmin =
-     typeof norm.isSuperadmin === "boolean"
-       ? norm.isSuperadmin
-       : deriveIsSuperadminFromEmail(sessionEmail);
+      if (!norm || !norm.adminId || !norm.email) {
+        setStatus("Login succeeded but session data is incomplete.", true);
+        return;
+      }
 
-   saveAdminSession({
-     adminId: Number(norm.adminId),
-     email: sessionEmail,
-     isSuperadmin,
-    });
-     saveAdminKey(norm.adminKey);
-
-     setStatus("");
-     window.location.href = ADMIN_HOME_URL;
-       } catch (err) {
-        console.error("[AdminLogin] Network error:", err);
+      if (!norm.token) {
+        // This is the root cause of your “token missing” situations
         setStatus(
-        "We couldn't sign you in due to a technical problem. Please try again.",
-        true
-      );
+          "Login succeeded but server did not return a JWT token. Fix /api/admin/login to return { token }. Check MSS_ADMIN_JWT_SECRET.",
+          true
+        );
+        return;
+      }
+
+      const session = {
+        adminId: Number(norm.adminId),
+        email: norm.email,
+        isSuperadmin:
+          typeof norm.isSuperadmin === "boolean"
+            ? norm.isSuperadmin
+            : deriveIsSuperadminFromEmail(norm.email),
+      };
+
+      saveAdminSession(session);
+      saveAdminToken(norm.token);
+
+      setStatus("");
+      window.location.href = ADMIN_HOME_URL;
+    } catch (err) {
+      console.error("[AdminLogin] Network error:", err);
+      setStatus("Network error. Please try again.", true);
     }
   });
 })();

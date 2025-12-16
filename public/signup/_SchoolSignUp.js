@@ -225,6 +225,7 @@ console.log("✅ SchoolSignUp.js loaded");
     if (!payload.country) requiredMissing.push("Country");
     if (!payload.contactName) requiredMissing.push("Contact name");
     if (!payload.contactEmail) requiredMissing.push("Contact email");
+    //if (!payload.notes) requiredMissing.push("Notes");
 
     if (requiredMissing.length) {
       setStatus(`Missing required fields: ${requiredMissing.join(", ")}`, true);

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS – Invite School Sign-up</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+</head>
+<body>
+  <div class="portal-shell">
+    <header class="portal-header">
+      <div class="portal-header-main">
+        <h1>Invite School Sign-up</h1>
+        <p>Send a sign-up invitation email (Super Admin only).</p>
+      </div>
+    </header>
+
+    <main class="portal-main">
+      <form id="inviteForm" class="mss-form">
+        <div class="mss-field">
+          <label>Recipient Email *</label>
+          <input id="toEmail" class="mss-input" type="email" required />
+        </div>
+
+        <div class="mss-field">
+          <label>First Name</label>
+          <input id="firstName" class="mss-input" type="text" />
+        </div>
+
+        <div class="mss-field">
+          <label>Subject *</label>
+          <input id="subject" class="mss-input" type="text" required />
+        </div>
+
+        <div class="mss-field">
+          <label>Message (rich text; links allowed) *</label>
+
+          <div class="rte-toolbar">
+           <button type="button" data-cmd="bold"><b>B</b></button>
+           <button type="button" data-cmd="italic"><i>I</i></button>
+           <button type="button" data-cmd="insertUnorderedList">• List</button>
+           <button type="button" data-link="1">Link</button>
+         </div>
+
+           <div id="messageEditor" class="rte-editor" contenteditable="true"></div>
+
+            <!-- hidden field that actually gets posted -->
+         <textarea id="messageHtml" name="messageHtml" style="display:none;"></textarea>
+        </div>
+
+        <div class="mss-field">
+          <label>BCC</label>
+          <input id="bcc" class="mss-input" type="text" placeholder="comma-separated" />
+        </div>
+
+        <div class="mss-row" style="display:flex; gap:10px; align-items:center;">
+          <button class="btn btn-primary" type="submit">Send</button>
+          <span id="status" class="muted"></span>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script src="/admin-invite/InviteSchoolSignup.js"></script>
+</body>
+</html>
