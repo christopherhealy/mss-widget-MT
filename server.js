@@ -3651,59 +3651,53 @@ async function getUniqueSlugGlobal(baseSlug) {
 // Rename school + slug (for ConfigAdmin) Nov 30 --- //
 // PUT /api/admin/school/:slug/rename
 // Body: { newName }
-app.put("/api/admin/school/:slug/rename", async (req, res) => {
-  if (!checkAdminKey(req, res)) return; // same guard as other admin writes
+app.put(
+  "/api/admin/school/:slug/rename",
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    const currentSlug = String(req.params.slug || "").trim().toLowerCase();
+    const newName = String(req.body?.name || "").trim();
 
-  const currentSlug = req.params.slug;
-  const newName = (req.body.newName || "").trim();
-
-  if (!newName) {
-    return res.status(400).json({
-      ok: false,
-      error: "missing_new_name",
-      message: "New school name is required.",
-    });
-  }
-
-  try {
-    const baseSlug = slugifySchoolName(newName);
-    const newSlug = await getUniqueSlugGlobal(baseSlug);
-
-    const { rows, rowCount } = await pool.query(
-      `
-      UPDATE schools
-      SET name = $1,
-          slug = $2
-      WHERE slug = $3
-      RETURNING id, name, slug
-      `,
-      [newName, newSlug, currentSlug]
-    );
-
-    if (!rowCount) {
-      return res.status(404).json({
+    if (!currentSlug || !newName) {
+      return res.status(400).json({
         ok: false,
-        error: "school_not_found",
+        error: "validation_error",
+        message: "Missing school slug or new name.",
       });
     }
 
-    const s = rows[0];
+    try {
+      const baseSlug = normalizeSlug(newName);
+      const newSlug = await ensureUniqueSlug(baseSlug, pool);
 
-    return res.json({
-      ok: true,
-      schoolId: s.id,
-      name: s.name,
-      slug: s.slug,
-    });
-  } catch (err) {
-    console.error("PUT /api/admin/school/:slug/rename error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "server_error",
-    });
+      await pool.query(
+        `
+        UPDATE schools
+        SET name = $1,
+            slug = $2
+        WHERE slug = $3
+        `,
+        [newName, newSlug, currentSlug]
+      );
+
+      return res.json({
+        ok: true,
+        message: "School renamed successfully.",
+        oldSlug: currentSlug,
+        newSlug,
+        name: newName,
+      });
+    } catch (err) {
+      console.error("[rename school] error:", err);
+      return res.status(500).json({
+        ok: false,
+        error: "rename_failed",
+        message: "Server error while renaming school.",
+      });
+    }
   }
-});
-
+);
 
 // --- Super admin: list all schools (dual auth: ADMIN_WRITE_KEY or is_superadmin) Nov 30 --- //
 
@@ -3786,13 +3780,14 @@ app.get("/api/admin/all-schools", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
-// ADMIN PASSWORD RESET – REQUEST Nov 30
+// ADMIN PASSWORD RESET – REQUEST (bcrypt+JWT era) Dec 2025
 // POST /api/admin/password-reset/request  { email }
-//  - We do NOT reveal whether the email exists
+//  - Do NOT reveal whether the email exists
+//  - Creates reset token + emails reset link (best-effort)
 // ---------------------------------------------------------------------
 app.post("/api/admin/password-reset/request", async (req, res) => {
   const body = req.body || {};
-  const email = (body.email || "").trim().toLowerCase();
+  const email = String(body.email || "").trim().toLowerCase();
 
   if (!email) {
     return res.status(400).json({
@@ -3806,70 +3801,63 @@ app.post("/api/admin/password-reset/request", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // Find an active admin with this email
-   const { rows, rowCount } = await client.query(
-  `
-    SELECT
-      id,
-      school_name,
-      school_website,
-      website_url,
-      contact_name,
-      contact_email,
-      admin_password,
-      payload,
-      created_at,
-      expires_at,
-      used_at
-    FROM pending_signups
-    WHERE token = $1
-    LIMIT 1
-  `,
-  [token]
-);
+    // Find admin by email (NO enumeration)
+    const { rows, rowCount } = await client.query(
+      `
+      SELECT id, email, full_name
+      FROM admins
+      WHERE lower(email) = lower($1)
+        AND is_active IS NOT FALSE
+      LIMIT 1
+      `,
+      [email]
+    );
 
     if (!rowCount) {
-      // Still behave as if we succeeded (no account enumeration)
       await client.query("COMMIT");
       return res.json({
         ok: true,
-        message:
-          "If this email is registered, a reset link has been sent.",
+        message: "If this email is registered, a reset link has been sent.",
       });
     }
 
     const admin = rows[0];
-    const token = generateSignupToken();
+    const token = generateSignupToken(); // ok to reuse your existing helper
+    const ttlMinutes = 120;
 
     await client.query(
       `
       INSERT INTO admin_password_resets (
-        admin_id, email, token, status
+        admin_id, email, token, status, created_at, expires_at
       )
-      VALUES ($1, $2, $3, 'pending')
+      VALUES (
+        $1, $2, $3, 'pending', NOW(),
+        NOW() + ($4 || ' minutes')::interval
+      )
       `,
-      [admin.id, admin.email.toLowerCase(), token]
+      [admin.id, admin.email.toLowerCase(), token, String(ttlMinutes)]
     );
 
     await client.query("COMMIT");
 
     const baseUrl = getPublicBaseUrl();
-    const resetUrl = `${baseUrl}/admin-login/PasswordReset.html?token=${encodeURIComponent(
-      token
-    )}`;
+    const resetUrl =
+      `${baseUrl}/admin-login/PasswordReset.html?token=` +
+      encodeURIComponent(token);
 
+    // Email (best-effort)
     if (!smtpHost || !smtpUser || !smtpPass) {
-      console.warn(
-        "⚠️ SMTP not configured; skipping password reset email."
-      );
+      console.warn("⚠️ SMTP not configured; skipping password reset email.");
     } else {
       try {
+        const friendlyName = (admin.full_name || "").trim() || "there";
+
         await mailTransporter.sendMail({
-          from: '"MySpeakingScore" <chris@myspeakingscore.com>',
+          from: `"MySpeakingScore" <${smtpUser}>`,
           to: admin.email,
           subject: "Reset your MySpeakingScore admin password",
           text: `
-Hi ${admin.full_name || "there"},
+Hi ${friendlyName},
 
 We received a request to reset the password for your MySpeakingScore admin account.
 
@@ -3882,14 +3870,12 @@ If you did not request this, you can safely ignore this email.
 — MySpeakingScore
           `.trim(),
           html: `
-            <p>Hi ${admin.full_name || "there"},</p>
+            <p>Hi ${friendlyName},</p>
             <p>
               We received a request to reset the password for your
               <strong>MySpeakingScore admin account</strong>.
             </p>
-            <p>
-              To choose a new password, click the button below:
-            </p>
+            <p>To choose a new password, click the button below:</p>
             <p>
               <a href="${resetUrl}"
                  style="display:inline-block;padding:10px 18px;border-radius:999px;
@@ -3910,14 +3896,12 @@ If you did not request this, you can safely ignore this email.
         });
       } catch (err) {
         console.error("❌ Failed to send password reset email:", err);
-        // Still return ok:true so UX is consistent
       }
     }
 
     return res.json({
       ok: true,
-      message:
-        "If this email is registered, a reset link has been sent.",
+      message: "If this email is registered, a reset link has been sent.",
     });
   } catch (err) {
     console.error("POST /api/admin/password-reset/request error:", err);
@@ -3935,16 +3919,13 @@ If you did not request this, you can safely ignore this email.
 });
 
 // ---------------------------------------------------------------------
-// ADMIN PASSWORD RESET – COMPLETE
+// ADMIN PASSWORD RESET – APPLY (JWT-era) Dec 2025
 // POST /api/admin/password-reset  { token, password }
-//  - verifies token
-//  - updates admins.password_hash (plain text for now)
-//  - marks reset as used
 // ---------------------------------------------------------------------
 app.post("/api/admin/password-reset", async (req, res) => {
   const body = req.body || {};
-  const token = (body.token || "").trim();
-  const password = (body.password || "").trim();
+  const token = String(body.token || "").trim();
+  const password = String(body.password || "").trim();
 
   if (!token) {
     return res.status(400).json({
@@ -3958,7 +3939,7 @@ app.post("/api/admin/password-reset", async (req, res) => {
     return res.status(400).json({
       ok: false,
       error: "weak_password",
-      message: "Password must be at least 8 characters long.",
+      message: "Password must be at least 8 characters.",
     });
   }
 
@@ -3968,9 +3949,11 @@ app.post("/api/admin/password-reset", async (req, res) => {
 
     const { rows, rowCount } = await client.query(
       `
-      SELECT id, admin_id, email, status, created_at, expires_at, used_at
+      SELECT id, admin_id, email, expires_at, used_at, status
       FROM admin_password_resets
       WHERE token = $1
+        AND status = 'pending'
+        AND used_at IS NULL
       LIMIT 1
       `,
       [token]
@@ -3980,78 +3963,57 @@ app.post("/api/admin/password-reset", async (req, res) => {
       await client.query("ROLLBACK");
       return res.status(400).json({
         ok: false,
-        error: "invalid_token",
-        message: "This verification code is not valid.",
+        error: "invalid_or_used",
+        message: "Invalid or expired reset link.",
       });
     }
 
     const reset = rows[0];
 
-    if (reset.status !== "pending" || reset.used_at) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({
-        ok: false,
-        error: "already_used",
-        message: "This verification code has already been used.",
-      });
-    }
+    // Expiry check (if expires_at is present)
+    if (reset.expires_at && new Date(reset.expires_at) < new Date()) {
+      await client.query(
+        `
+        UPDATE admin_password_resets
+        SET status = 'expired'
+        WHERE id = $1
+        `,
+        [reset.id]
+      );
 
-    if (new Date(reset.expires_at) < new Date()) {
-      await client.query("ROLLBACK");
+      await client.query("COMMIT");
       return res.status(400).json({
         ok: false,
-        error: "expired",
+        error: "expired_token",
         message: "This verification code has expired.",
       });
     }
 
-//Nov 30
+    const passwordHash = await bcrypt.hash(password, 10);
 
-const adminEmail = (reset.email || "").trim().toLowerCase();
-if (!adminEmail) {
-  await client.query("ROLLBACK");
-  return res.status(400).json({
-    ok: false,
-    error: "missing_admin_email",
-    message: "Reset record is missing admin email.",
-  });
-}
-
-// For now, keep password_hash as plain text to match existing login
-const passwordHash = password;
-
-await client.query(
-  `
-    UPDATE admins
-    SET password_hash = $2,
-        updated_at    = NOW()
-    WHERE LOWER(email) = LOWER($1)
-      AND is_active IS NOT FALSE
-  `,
-  [adminEmail, passwordHash]
-);
+    await client.query(
+      `
+      UPDATE admins
+      SET password_hash = $1
+      WHERE id = $2
+      `,
+      [passwordHash, reset.admin_id]
+    );
 
     await client.query(
       `
       UPDATE admin_password_resets
-      SET status  = 'used',
-          used_at = NOW()
+      SET status = 'used', used_at = NOW()
       WHERE id = $1
       `,
       [reset.id]
     );
 
     await client.query("COMMIT");
-
-    return res.json({
-      ok: true,
-      message: "Password reset successful. You can now sign in.",
-    });
+    return res.json({ ok: true });
   } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
     console.error("POST /api/admin/password-reset error:", err);
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
     return res.status(500).json({
       ok: false,
       error: "reset_failed",
@@ -4061,7 +4023,6 @@ await client.query(
     client.release();
   }
 });
-
 // Helper: hard-delete a school and its children
 async function hardDeleteSchoolById(client, schoolId) {
   const id = Number(schoolId);

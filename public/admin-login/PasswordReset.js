@@ -6,47 +6,36 @@ console.log("✅ PasswordReset.js loaded");
 
   const form = document.getElementById("password-reset-form");
   const tokenInput = document.getElementById("reset-token");
-  const newPassInput = document.getElementById("new-password");
-  const confirmInput = document.getElementById("confirm-password");
+  const pw1 = document.getElementById("new-password");
+  const pw2 = document.getElementById("confirm-password");
   const statusEl = document.getElementById("password-reset-status");
 
-  if (!form) return;
+  if (!form || !tokenInput || !pw1 || !pw2) {
+    console.warn("[PasswordReset] Missing form fields.");
+    return;
+  }
 
   function setStatus(msg, isError = false) {
     if (!statusEl) return;
-    statusEl.textContent = msg || "";
     statusEl.style.display = msg ? "block" : "none";
+    statusEl.textContent = msg || "";
     statusEl.style.color = isError ? "#b91c1c" : "#111827";
   }
 
-  // Pre-fill token from URL if present (?token=XYZ)
-  (function prefillTokenFromURL() {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    if (token && tokenInput) {
-      tokenInput.value = token;
-    }
-  })();
+  // Prefill token from URL
+  const urlToken = new URLSearchParams(window.location.search).get("token");
+  if (urlToken && !tokenInput.value) tokenInput.value = urlToken;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const token = (tokenInput?.value || "").trim();
-    const pw = (newPassInput?.value || "").trim();
-    const pw2 = (confirmInput?.value || "").trim();
+    const token = String(tokenInput.value || "").trim();
+    const p1 = String(pw1.value || "");
+    const p2 = String(pw2.value || "");
 
-    if (!token) {
-      setStatus("Verification code is required.", true);
-      return;
-    }
-    if (!pw || pw.length < 8) {
-      setStatus("Password must be at least 8 characters long.", true);
-      return;
-    }
-    if (pw !== pw2) {
-      setStatus("Passwords do not match.", true);
-      return;
-    }
+    if (!token) return setStatus("Please enter the verification code.", true);
+    if (!p1 || p1.length < 8) return setStatus("Password must be at least 8 characters.", true);
+    if (p1 !== p2) return setStatus("Passwords do not match.", true);
 
     setStatus("Resetting password…");
 
@@ -54,27 +43,20 @@ console.log("✅ PasswordReset.js loaded");
       const res = await fetch("/api/admin/password-reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password: pw }),
+        body: JSON.stringify({ token, password: p1 }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.ok) {
-        setStatus(
-          data.message || "Reset failed. The link may be invalid or expired.",
-          true
-        );
-        return;
+        return setStatus(data.message || "Server error while resetting password.", true);
       }
 
-      // Success: send them back to login with reset=ok flag
-      window.location.href = "/admin-login/AdminLogin.html?reset=ok";
+      setStatus("Password updated. You can now sign in.", false);
+      setTimeout(() => (window.location.href = "/admin-login/AdminLogin.html"), 900);
     } catch (err) {
-      console.error("PasswordReset error:", err);
-      setStatus(
-        "Unexpected error while resetting password. Please try again.",
-        true
-      );
+      console.error("[PasswordReset] error:", err);
+      setStatus("Unexpected error. Please try again.", true);
     }
   });
 })();

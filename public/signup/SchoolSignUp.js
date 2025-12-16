@@ -163,6 +163,28 @@ console.log("✅ SchoolSignUp.js loaded");
       document.addEventListener("keydown", onKey);
     });
   }
+(function wireCloseX(){
+  const btn = document.getElementById("btn-close-signup");
+  if (!btn) return;
+
+  btn.addEventListener("click", () => {
+    // Prefer returning to AdminHome if the admin is logged in
+    try {
+      const sess = JSON.parse(localStorage.getItem("mssAdminSession") || "null");
+      if (sess && sess.email) {
+        window.location.href = "/admin-home/AdminHome.html";
+        return;
+      }
+    } catch {}
+
+    // Otherwise: standard close behavior
+    if (document.referrer && document.referrer.startsWith(window.location.origin)) {
+      window.history.back();
+      return;
+    }
+    window.location.href = "/";
+  });
+})();
 
   // -------------------------------------------------------------------
   // Submit handler

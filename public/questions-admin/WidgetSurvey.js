@@ -77,6 +77,14 @@ function requireAdminSession(reason) {
   throw new Error("Admin session missing – redirected to login.");
 }
 
+//Dec 16
+function confirmSchoolChange(nextLabel) {
+  // Replace this with MSSViewer.confirm(...) later if you want a branded modal.
+  return window.confirm(
+    `You are changing schools${nextLabel ? " to:\n\n" + nextLabel : ""}\n\nPress OK to continue, or Cancel to stay on the current school.`
+  );
+}
+
 /* -----------------------------------------------------------------------
    STATE
    ----------------------------------------------------------------------- */
@@ -236,31 +244,37 @@ function wsWireSchoolSelectEvents() {
   if (!wsSchoolSelectEl) return;
 
   wsSchoolSelectEl.addEventListener("change", async function () {
+    var prevSlug = WS_CURRENT_SLUG;
     var newSlug = wsSchoolSelectEl.value;
-    if (!newSlug || newSlug === WS_CURRENT_SLUG) {
-      wsSyncSchoolSelectUi();
+
+    // No-op
+    if (!newSlug || newSlug === prevSlug) {
+      wsSchoolSelectEl.value = prevSlug || "";
       return;
     }
 
+    // Find the school label
     var school =
       WS_SCHOOLS.find(function (s) {
         return String(s.slug) === String(newSlug);
       }) || null;
 
-    var schoolName = school && school.name ? school.name : newSlug;
+    var schoolName = (school && school.name) ? school.name : newSlug;
 
+    // Confirm: "Stay" means cancel, revert select
     var title =
-      'Change schools to "' +
-      schoolName +
-      '"? Don\'t forget to save your changes.';
+      'Change schools to "' + schoolName + '"?\n\n' +
+      "Important: Don't forget to save your changes before switching.";
 
     var ok = await twoBtnConfirm(title, "Stay", "Switch");
+
     if (!ok) {
-      wsSyncSchoolSelectUi();
+      // Cancel: revert to previous selection and stop
+      wsSchoolSelectEl.value = prevSlug || "";
       return;
     }
 
-    // Switch slug
+    // Proceed with switch
     WS_CURRENT_SLUG = newSlug;
     WS_CURRENT_SCHOOL = school || null;
     SLUG = newSlug;
@@ -290,10 +304,17 @@ function wsWireSchoolSelectEvents() {
     } catch (err2) {
       console.error("[WidgetSurvey] reload failed after school switch", err2);
       setStatus("Failed to load questions for " + schoolName, false);
+
+      // Optional hardening: if load fails, revert slug + dropdown back
+      // (uncomment if you want strict safety)
+      /*
+      WS_CURRENT_SLUG = prevSlug;
+      SLUG = prevSlug;
+      wsSchoolSelectEl.value = prevSlug || "";
+      */
     }
   });
 }
-
 /* -----------------------------------------------------------------------
    QUESTIONS LIST RENDERING + DnD
    ----------------------------------------------------------------------- */

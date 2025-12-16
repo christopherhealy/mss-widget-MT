@@ -107,18 +107,17 @@ console.log("✅ InviteSchoolSignup.js loaded");
     }
 
     const payload = {
-      toEmail: (toEmailEl?.value || "").trim().toLowerCase(),
+       toEmail: (toEmailEl?.value || "").trim(),
+       subject: (subjectEl?.value || "").trim(),
+       messageHtml: (messageEl?.value || "").trim(), // HTML allowed
+       bcc: (bccEl?.value || "").trim(),
       firstName: (firstNameEl?.value || "").trim(),
-      subject: (subjectEl?.value || "").trim(),
-      messageHtml: (messageEl?.value || "").trim(), // HTML allowed
-      bcc: (bccEl?.value || "").trim(),
     };
 
-    if (!payload.toEmail || !payload.subject || !payload.messageHtml) {
-      setStatus("Recipient Email, Subject, and Message are required.", true);
-      return;
-    }
-
+if (!payload.toEmail || !payload.subject || !payload.messageHtml) {
+  setStatus("Recipient Email, Subject, and Message are required.", true);
+  return;
+}
     setStatus("Sending…");
 
     try {

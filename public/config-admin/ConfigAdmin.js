@@ -248,6 +248,141 @@ console.log("✅ ConfigAdmin.js loaded");
     }
   }
 
+//Dec 16
+// Dec 16 — upgraded to allow Cancel (superadmin can change mind)
+function confirmSchoolChange(nextLabel) {
+  return new Promise((resolve) => {
+    // If your existing portal modal exists, we can re-use it; otherwise build our own.
+    let overlay = document.getElementById("mss-school-switch-overlay");
+
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "mss-school-switch-overlay";
+      overlay.style.position = "fixed";
+      overlay.style.inset = "0";
+      overlay.style.background = "rgba(15,23,42,0.55)";
+      overlay.style.display = "none";
+      overlay.style.alignItems = "center";
+      overlay.style.justifyContent = "center";
+      overlay.style.zIndex = "9999";
+      overlay.style.padding = "16px";
+
+      overlay.innerHTML = `
+        <div style="
+          width: min(560px, 100%);
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+          overflow: hidden;
+          font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+        ">
+          <div style="padding:16px 18px; border-bottom: 1px solid #e2e8f0;">
+            <div style="font-size:16px; font-weight:700; color:#0f172a;">
+              Change schools?
+            </div>
+            <div id="mss-school-switch-body" style="margin-top:6px; font-size:13px; color:#64748b; line-height:1.35;">
+              You are about to change schools.
+            </div>
+          </div>
+
+          <div style="padding:16px 18px; display:flex; gap:10px; justify-content:flex-end;">
+            <button id="mss-school-switch-cancel" style="
+              padding:10px 14px;
+              border-radius: 10px;
+              border: 1px solid #cbd5e1;
+              background: #fff;
+              color: #0f172a;
+              font-weight: 600;
+              cursor: pointer;
+            ">Cancel</button>
+
+            <button id="mss-school-switch-ok" style="
+              padding:10px 14px;
+              border-radius: 10px;
+              border: none;
+              background: #1d4ed8;
+              color: #fff;
+              font-weight: 700;
+              cursor: pointer;
+            ">Continue</button>
+          </div>
+        </div>
+      `;
+
+      // Backdrop click = cancel (safest)
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) {
+          overlay.dataset.choice = "cancel";
+          overlay.dispatchEvent(new Event("mssChoice"));
+        }
+      });
+
+      document.body.appendChild(overlay);
+    }
+
+    const body = overlay.querySelector("#mss-school-switch-body");
+    const btnOk = overlay.querySelector("#mss-school-switch-ok");
+    const btnCancel = overlay.querySelector("#mss-school-switch-cancel");
+
+    if (!body || !btnOk || !btnCancel) {
+      // absolute fallback
+      const ok = window.confirm(
+        `You are changing schools${nextLabel ? " to:\n\n" + nextLabel : ""}\n\nPress OK to continue, or Cancel to stay on the current school.`
+      );
+      resolve(!!ok);
+      return;
+    }
+
+    body.innerHTML = `
+      <p style="margin:0;">You are changing schools${nextLabel ? " to:" : "."}</p>
+      ${nextLabel ? `<p style="margin:8px 0 0; font-weight:700; color:#0f172a;">${String(nextLabel)}</p>` : ""}
+      <p style="margin:10px 0 0;">
+        Press <b>Continue</b> to proceed, or <b>Cancel</b> to stay on the current school.
+      </p>
+    `;
+
+    const cleanup = () => {
+      overlay.style.display = "none";
+      btnOk.removeEventListener("click", onOk);
+      btnCancel.removeEventListener("click", onCancel);
+      overlay.removeEventListener("mssChoice", onChoice);
+      document.removeEventListener("keydown", onKey);
+    };
+
+    const onOk = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const onChoice = () => {
+      const choice = overlay.dataset.choice === "cancel" ? false : true;
+      cleanup();
+      resolve(choice);
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        cleanup();
+        resolve(false);
+      }
+      if (e.key === "Enter") {
+        cleanup();
+        resolve(true);
+      }
+    };
+
+    overlay.style.display = "flex";
+    btnOk.addEventListener("click", onOk);
+    btnCancel.addEventListener("click", onCancel);
+    overlay.addEventListener("mssChoice", onChoice);
+    document.addEventListener("keydown", onKey);
+  });
+}
   async function fetchConfigSchoolsForAdmin() {
     if (!schoolSelectEl) {
       // layout without dropdown = pure single-school mode
@@ -344,27 +479,56 @@ console.log("✅ ConfigAdmin.js loaded");
     }
   }
 
-  async function onConfigSchoolChanged() {
-    if (!schoolSelectEl) return;
-    const newSlug = schoolSelectEl.value;
-    if (!newSlug || newSlug === SLUG) return;
+ async function onConfigSchoolChanged() {
+  if (!schoolSelectEl) return;
 
-    await showConfigSchoolChangeWarning();
+  const newSlug = schoolSelectEl.value;
+  const prevSlug = SLUG;
 
-    SLUG = newSlug;
-    CURRENT_SCHOOL =
-      CONFIG_SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
+  if (!newSlug || newSlug === prevSlug) return;
 
-    syncSlugUi();
+  // Human-friendly label for the confirmation modal
+  const nextLabel =
+    (schoolSelectEl.selectedOptions && schoolSelectEl.selectedOptions[0] && schoolSelectEl.selectedOptions[0].textContent) ||
+    newSlug;
 
-    STATE.config = { ...DEFAULTS.config };
-    STATE.form   = { ...DEFAULTS.form };
-    STATE.image  = { ...DEFAULTS.image };
-    hydrateFormFromState();
-    setPristine();
-
-    await loadFromServer();
+  // If there are unsaved changes, ask first
+  if (dirty) {
+    const discard = await confirmSchoolChange(
+      `${nextLabel}\n\nYou have unsaved changes in Config Admin. Continuing will discard them.`
+    );
+    if (!discard) {
+      // revert selection and abort
+      schoolSelectEl.value = prevSlug;
+      return;
+    }
+  } else {
+    const ok = await confirmSchoolChange(nextLabel);
+    if (!ok) {
+      // revert selection and abort
+      schoolSelectEl.value = prevSlug;
+      return;
+    }
   }
+
+  // Informational warning (OK-only) after user has confirmed
+  await showConfigSchoolChangeWarning();
+
+  // Proceed with switch
+  SLUG = newSlug;
+  CURRENT_SCHOOL =
+    CONFIG_SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
+
+  syncSlugUi();
+
+  STATE.config = { ...DEFAULTS.config };
+  STATE.form   = { ...DEFAULTS.form };
+  STATE.image  = { ...DEFAULTS.image };
+  hydrateFormFromState();
+  setPristine();
+
+  await loadFromServer();
+}
   /* ------------------------------------------------------------------ */
   /* ADMIN HOME (return)                                                */
   /* ------------------------------------------------------------------ */

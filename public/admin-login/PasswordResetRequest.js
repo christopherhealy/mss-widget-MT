@@ -1,16 +1,18 @@
 // /admin-login/PasswordResetRequest.js
+// v1.1 — hardened UX + safe fetch parsing
+
 console.log("✅ PasswordResetRequest.js loaded");
 
 (function () {
   "use strict";
 
-  // IDs must match PasswordResetRequest.html
   const form = document.getElementById("password-reset-request-form");
   const emailInput = document.getElementById("email");
   const statusEl = document.getElementById("reset-request-status");
+  const btn = document.getElementById("btn-send-reset") || form?.querySelector('button[type="submit"]');
 
-  if (!form) {
-    console.warn("PasswordResetRequest: form not found");
+  if (!form || !emailInput) {
+    console.warn("[PasswordResetRequest] form/email input not found");
     return;
   }
 
@@ -21,16 +23,42 @@ console.log("✅ PasswordResetRequest.js loaded");
     statusEl.style.color = isError ? "#b91c1c" : "#111827";
   }
 
+  function setBusy(isBusy) {
+    if (!btn) return;
+    btn.disabled = !!isBusy;
+    btn.style.opacity = isBusy ? "0.7" : "";
+    btn.style.cursor = isBusy ? "default" : "";
+  }
+
+  async function safeReadJson(res) {
+    try {
+      return await res.json();
+    } catch {
+      return {};
+    }
+  }
+
+  function looksLikeEmail(s) {
+    // light validation; server remains source of truth
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || ""));
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const email = (emailInput?.value || "").trim();
+    const email = String(emailInput.value || "").trim().toLowerCase();
+
     if (!email) {
       setStatus("Please enter your admin email.", true);
       return;
     }
+    if (!looksLikeEmail(email)) {
+      setStatus("Please enter a valid email address.", true);
+      return;
+    }
 
     setStatus("Sending reset email…");
+    setBusy(true);
 
     try {
       const res = await fetch("/api/admin/password-reset/request", {
@@ -39,27 +67,24 @@ console.log("✅ PasswordResetRequest.js loaded");
         body: JSON.stringify({ email }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await safeReadJson(res);
 
-      // Backend should return ok:true even if the email isn't registered
-      if (!res.ok || !data.ok) {
+      if (!res.ok || data.ok === false) {
         setStatus(
           data.message || "Could not send reset email. Please try again.",
           true
         );
+        setBusy(false);
         return;
       }
 
-      setStatus(
-        "If this email is registered, a reset link has been sent.",
-        false
-      );
+      // Do NOT reveal whether email exists
+      setStatus("If this email is registered, a reset link has been sent.", false);
+      setBusy(false);
     } catch (err) {
-      console.error("PasswordResetRequest error:", err);
-      setStatus(
-        "Unexpected error while sending reset email. Please try again.",
-        true
-      );
+      console.error("[PasswordResetRequest] error:", err);
+      setStatus("Unexpected error while sending reset email. Please try again.", true);
+      setBusy(false);
     }
   });
 })();

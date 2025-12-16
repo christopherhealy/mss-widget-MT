@@ -1,0 +1,9 @@
+But time to clean up a few items.
+
+
+4. On the ConfigAdmin the ability to change the school name does not work
+5. On the InviteSchoolSignup email form, the Send fails "required subject and message" even though those are already filled (and modified).
+6. Dash 3 is not working
+7. Let's mimic the pink widget and get that working	
+
+So that's some housekeeping for us.

@@ -15,31 +15,167 @@ console.log("✅ SchoolPortal.js loaded");
   // Auth + config
   // -----------------------------------------------------------------------
 
-  const ADMIN_API_BASE = ""; // same origin
-  const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
-  const ADMIN_KEY_STORAGE = "mss_admin_key"; 
-  const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
+ const ADMIN_API_BASE = ""; // same origin
+const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
+const ADMIN_KEY_STORAGE = "mss_admin_key";
+const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
 
-  // Simple ID helper
-  const $ = (id) => document.getElementById(id);
+// Simple ID helper
+const $ = (id) => document.getElementById(id);
 
-  // These get filled after we load the session
-  let ADMIN_SESSION = null;
-  let ADMIN_EMAIL = null;
-  let ADMIN_ID = null;
-  let ADMIN_KEY = null;
+// These get filled after we load the session
+let ADMIN_SESSION = null;
+let ADMIN_EMAIL = null;
+let ADMIN_ID = null;
+let ADMIN_KEY = null;
 
-  function getAdminKey() {
-    try {
-      const key = window.localStorage.getItem(ADMIN_KEY_STORAGE);
-      console.log("[SchoolPortal] getAdminKey →", key);
-      return key;
-    } catch (e) {
-      console.warn("[SchoolPortal] getAdminKey error:", e);
-      return null;
-    }
+function maskKey(key) {
+  if (!key) return "—";
+  const s = String(key);
+  if (s.length <= 8) return "****";
+  return s.slice(0, 4) + "…" + s.slice(-4);
+}
+
+function getAdminKey() {
+  try {
+    const key = window.localStorage.getItem(ADMIN_KEY_STORAGE);
+    // Avoid logging full key
+    console.log("[SchoolPortal] getAdminKey →", maskKey(key));
+    return key;
+  } catch (e) {
+    console.warn("[SchoolPortal] getAdminKey error:", e);
+    return null;
   }
+}
 
+// Dec 16 — upgraded to allow Cancel + revert school selector cleanly
+function confirmSchoolChange(nextLabel) {
+  return new Promise((resolve) => {
+    let overlay = document.getElementById("mss-school-switch-overlay");
+
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "mss-school-switch-overlay";
+      overlay.style.position = "fixed";
+      overlay.style.inset = "0";
+      overlay.style.background = "rgba(15,23,42,0.55)";
+      overlay.style.display = "none";
+      overlay.style.alignItems = "center";
+      overlay.style.justifyContent = "center";
+      overlay.style.zIndex = "9999";
+      overlay.style.padding = "16px";
+
+      overlay.innerHTML = `
+        <div style="
+          width: min(560px, 100%);
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+          overflow: hidden;
+          font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+        ">
+          <div style="padding:16px 18px; border-bottom: 1px solid #e2e8f0;">
+            <div style="font-size:16px; font-weight:700; color:#0f172a;">
+              Change schools?
+            </div>
+            <div id="mss-school-switch-body" style="margin-top:6px; font-size:13px; color:#64748b; line-height:1.35;">
+              You are about to change schools.
+            </div>
+          </div>
+
+          <div style="padding:16px 18px; display:flex; gap:10px; justify-content:flex-end;">
+            <button id="mss-school-switch-cancel" style="
+              padding:10px 14px;
+              border-radius: 10px;
+              border: 1px solid #cbd5e1;
+              background: #fff;
+              color: #0f172a;
+              font-weight: 600;
+              cursor: pointer;
+            ">Cancel</button>
+
+            <button id="mss-school-switch-ok" style="
+              padding:10px 14px;
+              border-radius: 10px;
+              border: none;
+              background: #1d4ed8;
+              color: #fff;
+              font-weight: 700;
+              cursor: pointer;
+            ">Continue</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+    }
+
+    // Prevent re-entrancy (double-open)
+    if (overlay.dataset.busy === "1") {
+      console.warn("[SchoolPortal] confirmSchoolChange: overlay already open");
+      return;
+    }
+    overlay.dataset.busy = "1";
+    overlay.dataset.choice = ""; // clear stale value
+
+    const body = overlay.querySelector("#mss-school-switch-body");
+    const btnOk = overlay.querySelector("#mss-school-switch-ok");
+    const btnCancel = overlay.querySelector("#mss-school-switch-cancel");
+
+    if (!body || !btnOk || !btnCancel) {
+      overlay.dataset.busy = "0";
+      const ok = window.confirm(
+        `You are changing schools${nextLabel ? " to:\n\n" + nextLabel : ""}\n\nPress OK to continue, or Cancel to stay on the current school.`
+      );
+      resolve(!!ok);
+      return;
+    }
+
+    body.innerHTML = `
+      <p style="margin:0;">You are changing schools${nextLabel ? " to:" : "."}</p>
+      ${nextLabel ? `<p style="margin:8px 0 0; font-weight:700; color:#0f172a;">${String(nextLabel)}</p>` : ""}
+      <p style="margin:10px 0 0;">
+        Press <b>Continue</b> to proceed, or <b>Cancel</b> to stay on the current school.
+      </p>
+    `;
+
+    const cleanup = () => {
+      overlay.style.display = "none";
+      overlay.dataset.busy = "0";
+      btnOk.removeEventListener("click", onOk);
+      btnCancel.removeEventListener("click", onCancel);
+      overlay.removeEventListener("click", onBackdrop);
+      document.removeEventListener("keydown", onKey);
+    };
+
+    const onOk = () => {
+      overlay.dataset.choice = "ok";
+      cleanup();
+      resolve(true);
+    };
+
+    const onCancel = () => {
+      overlay.dataset.choice = "cancel";
+      cleanup();
+      resolve(false);
+    };
+
+    const onBackdrop = (e) => {
+      if (e.target === overlay) onCancel();
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Escape") return onCancel();
+      if (e.key === "Enter") return onOk();
+    };
+
+    overlay.style.display = "flex";
+    btnOk.addEventListener("click", onOk);
+    btnCancel.addEventListener("click", onCancel);
+    overlay.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onKey);
+  });
+}
 async function adminFetch(url, options = {}) {
   const key = getAdminKey();
   const headers = new Headers(options.headers || {});
@@ -264,6 +400,7 @@ async function loadAdminSession() {
   const btnConfigAdmin = $("btn-configAdmin");
   const btnCopyEmbed = $("btn-copy-embed");
   const embedSnippetEl = $("embed-snippet");
+  const btnAdminHome = $("btn-admin-home");
 
   const statsLoadingEl = $("stats-loading");
   const statsContentEl = $("stats-content");
@@ -1821,51 +1958,60 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
   // -----------------------------------------------------------------------
   // School selector change handler
   // -----------------------------------------------------------------------
-  async function onSchoolChanged(event) {
-    const select = event?.target || schoolSelectEl;
-    if (!select) return;
+ // Dec 16 — school switch with Cancel support (reverts selector)
+async function onSchoolChanged(event) {
+  const select = event?.target || schoolSelectEl;
+  if (!select) return;
 
-    const newSlug = select.value;
-    if (!newSlug || newSlug === CURRENT_SLUG) {
-      return;
-    }
+  const newSlug = select.value;
+  const prevSlug = CURRENT_SLUG;
 
-    const newSchool = SCHOOLS.find(
-      (s) => String(s.slug) === String(newSlug)
-    );
+  if (!newSlug || newSlug === prevSlug) return;
 
-    if (!newSchool) {
-      console.warn("[SchoolPortal] onSchoolChanged: slug not in SCHOOLS:", newSlug);
-      return;
-    }
-
-    console.log("[SchoolPortal] School changed:", {
-      from: CURRENT_SLUG,
-      to: newSlug,
-    });
-
-    // Optional warning modal about closing other tabs
-    await showSchoolChangeWarning();
-
-    CURRENT_SLUG = newSlug;
-    CURRENT_SCHOOL = newSchool;
-
-    updateSlugUi();
-    applySlugToQuickLinks();
-
-    // Reload widget/dashboard + stats + reports for new school
-    await fetchWidgetMeta();
-    await fetchAssessmentMeta();
-    await fetchStats("today");
-    await fetchTests();
+  const newSchool = SCHOOLS.find((s) => String(s.slug) === String(newSlug));
+  if (!newSchool) {
+    console.warn("[SchoolPortal] onSchoolChanged: slug not in SCHOOLS:", newSlug);
+    // safest: revert
+    if (prevSlug) select.value = prevSlug;
+    return;
   }
 
-    const btnAdminHome = $("btn-admin-home");
-  if (btnAdminHome && !btnAdminHome._mssBound) {
-    btnAdminHome.addEventListener("click", returnToAdminHome);
-    btnAdminHome._mssBound = true;
+  const nextLabel =
+    (select.selectedOptions && select.selectedOptions[0] && select.selectedOptions[0].textContent) ||
+    (newSchool.name || newSchool.slug || newSlug);
+
+  // Confirm first (Cancel means revert + abort)
+  const ok = await confirmSchoolChange(nextLabel);
+  if (!ok) {
+    select.value = prevSlug;
+    return;
   }
 
+  console.log("[SchoolPortal] School changed:", { from: prevSlug, to: newSlug });
+
+  // Optional warning modal about closing other tabs (OK-only)
+  await showSchoolChangeWarning();
+
+  // Proceed with switch
+  CURRENT_SLUG = newSlug;
+  CURRENT_SCHOOL = newSchool;
+
+  // Keep URL in sync (helps refresh / deep links)
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("slug", newSlug);
+    window.history.replaceState({}, "", u.toString());
+  } catch (_) {}
+
+  updateSlugUi();
+  applySlugToQuickLinks();
+
+  // Reload widget/dashboard + stats + reports for new school
+  await fetchWidgetMeta();
+  await fetchAssessmentMeta();
+  await fetchStats("today");
+  await fetchTests();
+}
   // -----------------------------------------------------------------------
   // Event wiring
   // -----------------------------------------------------------------------
@@ -1882,6 +2028,16 @@ Tone: warm, encouraging, and professional. Be honest about the work needed, but 
       });
       btnCopyEmbed._mssBound = true;
     }
+
+// Admin Home
+if (btnAdminHome && !btnAdminHome._mssBound) {
+  btnAdminHome.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    console.log("🏠 Admin Home clicked");
+    returnToAdminHome();
+  });
+  btnAdminHome._mssBound = true;
+}
 
     // Widget/Dashboard tabs
     if (tabWidgetEl) {

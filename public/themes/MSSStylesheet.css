@@ -2506,3 +2506,23 @@ body.portal-modal-open {
 .rte-toolbar button { padding:6px 10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; }
 .rte-editor { min-height:160px; border:1px solid #e5e7eb; border-radius:10px; padding:12px; background:#fff; }
 .rte-editor:focus { outline: none; border-color:#94a3b8; box-shadow:0 0 0 3px rgba(148,163,184,0.25); }
+
+/* Close X (top-right) */
+.mss-close-x{
+  position:absolute;
+  top:14px;
+  right:14px;
+  width:36px;
+  height:36px;
+  border-radius:999px;
+  border:1px solid rgba(15,23,42,.12);
+  background:#fff;
+  color:#0f172a;
+  font-size:24px;
+  line-height:32px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.mss-close-x:hover{ background:#f1f5f9; }
