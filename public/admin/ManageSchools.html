@@ -5,7 +5,6 @@
   <title>Manage Schools</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Prefer your shared stylesheet if you have it -->
   <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
 
   <style>
@@ -27,7 +26,6 @@
       border-radius:10px; border:1px solid #cbd5e1; font-size:14px;
       background:#fff;
     }
-    /* Dropdown overflow fix */
     select { max-width:100%; }
     option { max-width: 100%; }
     .row { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }
@@ -108,6 +106,75 @@
 (function () {
   "use strict";
 
+  /* -------------------------------------------------- */
+  /* ADMIN API BASE + AUTH HEADERS                       */
+  /* -------------------------------------------------- */
+
+  function getAdminApiBase() {
+    const origin = window.location.origin || "";
+
+    // Local + Render-hosted pages hit same origin paths
+    if (
+      origin.includes("localhost") ||
+      origin.includes("127.0.0.1") ||
+      origin.includes("mss-widget-mt.onrender.com")
+    ) return "";
+
+    // Vercel pages must call Render API
+    if (origin.includes("mss-widget-mt.vercel.app")) {
+      return "https://mss-widget-mt.onrender.com";
+    }
+
+    return "";
+  }
+
+  const ADMIN_API_BASE = getAdminApiBase();
+
+  // ✅ Correct key for JWT (as per your screenshot)
+  const LS_ADMIN_TOKEN = "mss_admin_token";
+
+  // Optional backwards-compat keys (in case older pages wrote these)
+  const LS_ADMIN_KEY_FALLBACK = "mss_admin_key";
+  const LS_ADMIN_SESSION = "mssAdminSession";
+
+  function getAdminToken() {
+    try {
+      const t1 = (localStorage.getItem(LS_ADMIN_TOKEN) || "").trim();
+      if (t1) return t1;
+
+      const t2 = (localStorage.getItem(LS_ADMIN_KEY_FALLBACK) || "").trim();
+      if (t2) return t2;
+
+      // optional: session object fallback
+      const raw = localStorage.getItem(LS_ADMIN_SESSION);
+      if (raw) {
+        const sess = JSON.parse(raw);
+        const t3 = String(sess?.token || sess?.adminToken || "").trim();
+        if (t3) return t3;
+      }
+    } catch (_) {}
+
+    return "";
+  }
+
+  function adminHeaders(extra) {
+    const h = { ...(extra || {}) };
+    const token = getAdminToken();
+    if (token) h["Authorization"] = `Bearer ${token}`;
+    return h;
+  }
+
+  function api(path) {
+    return `${ADMIN_API_BASE}${path}`;
+  }
+
+  /* -------------------------------------------------- */
+  /* rest of ManageSchools code continues...             */
+  /* -------------------------------------------------- */
+  /* -------------------------------------------------- */
+  /* ELEMENTS                                            */
+  /* -------------------------------------------------- */
+
   const schoolSelect = document.getElementById("schoolSelect");
   const newNameInput = document.getElementById("newNameInput");
   const renameBtn    = document.getElementById("renameBtn");
@@ -115,7 +182,6 @@
   const statusEl     = document.getElementById("status");
   const closeBtn     = document.getElementById("btn-close");
 
-  // Modal elements
   const overlay = document.getElementById("mss-modal-overlay");
   const mTitle  = document.getElementById("mss-modal-title");
   const mBody   = document.getElementById("mss-modal-body");
@@ -145,13 +211,21 @@
     return { ok:false, message: text ? text.slice(0, 500) : "Non-JSON response" };
   }
 
+  function friendlyAuthError(res, data) {
+    if (res.status === 401) {
+      return "Not logged in (missing/expired admin token). Please sign in again.";
+    }
+    if (res.status === 403) {
+      return "Forbidden. This tool requires Super Admin privileges.";
+    }
+    return (data && data.message) ? data.message : `Request failed (HTTP ${res.status})`;
+  }
+
   function confirmModal({ title, bodyHtml, okText, okClass }) {
     return new Promise((resolve) => {
       mTitle.textContent = title || "Confirm";
       mBody.innerHTML = bodyHtml || "";
       mOk.textContent = okText || "Continue";
-
-      // button tone
       mOk.className = "btn " + (okClass || "btn-primary");
 
       const cleanup = (choice) => {
@@ -165,7 +239,6 @@
 
       mOk.onclick = () => cleanup(true);
       mCancel.onclick = () => cleanup(false);
-
       overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
 
       document.onkeydown = (e) => {
@@ -178,17 +251,27 @@
     });
   }
 
+  /* -------------------------------------------------- */
+  /* API CALLS                                           */
+  /* -------------------------------------------------- */
+
   async function loadSchools() {
     setStatus("Loading schools…");
     schoolSelect.innerHTML = "";
     schoolSelect.disabled = true;
 
     try {
-      const res  = await fetch("/api/dev/schools", { cache: "no-store" });
+      const res  = await fetch(api("/api/admin/manage-schools/schools"), {
+        method: "GET",
+        headers: adminHeaders(),
+        cache: "no-store",
+        credentials: "include", // harmless; helps if you later add cookies
+      });
+
       const data = await readJsonSafe(res);
 
       if (!res.ok || data.ok === false) {
-        throw new Error(data.message || `Failed to load schools (HTTP ${res.status})`);
+        throw new Error(friendlyAuthError(res, data));
       }
 
       const schools = Array.isArray(data.schools) ? data.schools : [];
@@ -204,7 +287,6 @@
       for (const s of schools) {
         const opt = document.createElement("option");
         opt.value = String(s.id);
-        // keep this short so it doesn’t visually blow out the select
         const slug = s.slug ? ` (slug: ${s.slug})` : "";
         opt.textContent = `${s.name}${slug}`;
         schoolSelect.appendChild(opt);
@@ -244,15 +326,17 @@
     setStatus("Renaming…");
 
     try {
-      const res = await fetch("/api/dev/school/rename", {
+      const res = await fetch(api("/api/admin/manage-schools/rename"), {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        credentials: "include",
         body: JSON.stringify({ schoolId, newName }),
       });
 
       const data = await readJsonSafe(res);
+
       if (!res.ok || data.ok === false) {
-        throw new Error(data.message || `Rename failed (HTTP ${res.status})`);
+        throw new Error(friendlyAuthError(res, data));
       }
 
       setStatus(`Renamed to "${data.school?.name || newName}".`);
@@ -280,9 +364,7 @@
           This will run <b>admin_purge_school</b> and remove all related data for:
         </p>
         <p style="margin:8px 0 0; font-weight:900; color:#b91c1c;">${label}</p>
-        <p style="margin:10px 0 0;">
-          This cannot be undone.
-        </p>
+        <p style="margin:10px 0 0;">This cannot be undone.</p>
       `,
       okText: "Purge",
       okClass: "btn-danger",
@@ -292,15 +374,17 @@
     setStatus("Purging…");
 
     try {
-      const res = await fetch("/api/dev/school/purge", {
+      const res = await fetch(api("/api/admin/manage-schools/purge"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        credentials: "include",
         body: JSON.stringify({ schoolId, mode: "PURGE", dryRun: false }),
       });
 
       const data = await readJsonSafe(res);
+
       if (!res.ok || data.ok === false) {
-        throw new Error(data.message || `Purge failed (HTTP ${res.status})`);
+        throw new Error(friendlyAuthError(res, data));
       }
 
       setStatus("Purge complete.");

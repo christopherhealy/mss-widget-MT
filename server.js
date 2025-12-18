@@ -99,6 +99,18 @@ function readAdminTokenFromRequest(req) {
   ).trim();
 }
 
+
+function requireSuperAdmin(req, res, next) {
+  if (!req.adminAuth?.isSuperAdmin) {
+    return res.status(403).json({
+      ok: false,
+      error: "forbidden",
+      message: "Super admin required.",
+    });
+  }
+  return next();
+}
+
 function requireAdminAuth(req, res, next) {
   try {
     requireAdminJwtSecret();
@@ -117,26 +129,16 @@ function requireAdminAuth(req, res, next) {
       audience: "mss-admin",
     });
 
-    req.adminAuth = decoded; // attach to request
+    req.adminAuth = decoded;
     return next();
   } catch (err) {
+    console.warn("[Auth] requireAdminAuth failed:", err?.name, err?.message);
     return res.status(401).json({
       ok: false,
       error: "invalid_admin_token",
       message: "Invalid or expired admin token.",
     });
   }
-}
-
-function requireSuperAdmin(req, res, next) {
-  if (!req.adminAuth?.isSuperAdmin) {
-    return res.status(403).json({
-      ok: false,
-      error: "forbidden",
-      message: "Super admin required.",
-    });
-  }
-  return next();
 }
 // ---------------------------------------------------------------------
 
@@ -3317,248 +3319,142 @@ app.post("/api/school-signup/v2", async (req, res) => {
   }
 });
 
-// test rename
-// SUPER SIMPLE — TEMP TEST ROUTE
-// DEV: list all school names
-// DEV endpoints (local-only safety gate recommended)
-function requireDev(req, res, next) {
-  // Option A (recommended): only allow on localhost
-  const host = (req.headers.host || "").toLowerCase();
-  if (host.includes("localhost") || host.includes("127.0.0.1")) return next();
+// ---------------------------------------------------------------------
+// Manage Schools (Super Admin)
+// ---------------------------------------------------------------------
+// Prereqs elsewhere in server:
+//   app.use(express.json());
+//   app.use(cors(corsOptions));
+//   requireAdminAuth, requireSuperAdmin defined and in scope
+//   const pool = new Pool(...)
 
-  return res.status(403).json({ ok: false, message: "DEV endpoints disabled." });
-}
+// Helpful for preflight debugging; safe to keep.
+// If you already have app.use(cors(...)) this will still work fine.
+app.options("/api/admin/manage-schools/*", (req, res) => res.sendStatus(204));
 
-// List schools for dropdown
-app.get("/api/dev/schools", requireDev, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "SELECT id, name, slug FROM schools ORDER BY name ASC"
-    );
-    return res.json({ ok: true, schools: rows });
-  } catch (err) {
-    console.error("[DEV] /api/dev/schools error:", err);
-    return res.status(500).json({ ok: false, message: err.message || "Server error." });
-  }
-});
-
-// Rename school by oldName -> newName
-app.put("/api/dev/school/rename", requireDev, async (req, res) => {
-  const schoolId = Number(req.body?.schoolId);
-  const newName  = (req.body?.newName || "").trim();
-
-  if (!Number.isFinite(schoolId) || schoolId <= 0 || !newName) {
-    return res.status(400).json({
-      ok: false,
-      message: "schoolId (number) and newName are required.",
-    });
-  }
-
-  try {
-    const { rows } = await pool.query(
-      `UPDATE schools
-         SET name = $1
-       WHERE id = $2
-       RETURNING id, name, slug`,
-      [newName, schoolId]
-    );
-
-    if (!rows.length) {
-      return res.status(404).json({ ok: false, message: "School not found (id)." });
+/**
+ * GET /api/admin/manage-schools/schools
+ * Returns: { ok:true, schools:[{id,name,slug}, ...] }
+ */
+app.get(
+  "/api/admin/manage-schools/schools",
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { rows } = await pool.query(
+        "SELECT id, name, slug FROM schools ORDER BY name ASC"
+      );
+      return res.json({ ok: true, schools: rows });
+    } catch (err) {
+      console.error("[ManageSchools] list error:", err);
+      return res.status(500).json({
+        ok: false,
+        message: err.message || "Server error.",
+      });
     }
-
-    res.json({ ok: true, school: rows[0] });
-  } catch (err) {
-    console.error("[DEV] /api/dev/school/rename error:", err);
-    // Unique constraint error will show here (fine for DEV)
-    res.status(500).json({ ok: false, message: err.message || "Rename failed." });
   }
-});
-// Delete school by name (dangerous; keep DEV-only)
-app.delete("/api/dev/school", requireDev, async (req, res) => {
-  const schoolId = Number(req.body?.schoolId);
+);
 
-  if (!Number.isFinite(schoolId) || schoolId <= 0) {
-    return res.status(400).json({ ok: false, message: "schoolId (number) is required." });
-  }
+/**
+ * PUT /api/admin/manage-schools/school/rename
+ * Body: { schoolId:number, newName:string }
+ * Returns: { ok:true, school:{id,name,slug} }
+ */
+app.put(
+  "/api/admin/manage-schools/school/rename",
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    const schoolId = Number(req.body?.schoolId);
+    const newNameRaw = String(req.body?.newName || "");
+    const newName = newNameRaw.trim();
 
-  try {
-    const { rows } = await pool.query(
-      "DELETE FROM schools WHERE id = $1 RETURNING id, name, slug",
-      [schoolId]
-    );
-
-    if (!rows.length) {
-      return res.status(404).json({ ok: false, message: "School not found (id)." });
-    }
-
-    res.json({ ok: true, deleted: rows[0] });
-  } catch (err) {
-    console.error("[DEV] /api/dev/school DELETE error:", err);
-    // If FK constraints exist (submissions, settings, admins, etc.), you'll see it here
-    res.status(500).json({ ok: false, message: err.message || "Delete failed." });
-  }
-});
-
-// PURGE school by id via admin_purge_school(id, 'PURGE', false)
-app.post("/api/dev/school/purge", requireDev, async (req, res) => {
-  const schoolId = Number(req.body?.schoolId);
-  const mode     = (req.body?.mode || "PURGE").toString().trim().toUpperCase();
-  const dryRun   = !!req.body?.dryRun;
-
-  if (!Number.isFinite(schoolId) || schoolId <= 0) {
-    return res.status(400).json({ ok: false, message: "schoolId (number) is required." });
-  }
-  if (!["PURGE", "DELETE", "SOFT"].includes(mode)) {
-    return res.status(400).json({ ok: false, message: "mode must be PURGE | DELETE | SOFT." });
-  }
-
-  try {
-    // NOTE: adjust signature if your function differs.
-    const { rows } = await pool.query(
-      "SELECT * FROM admin_purge_school($1, $2, $3);",
-      [schoolId, mode, dryRun]
-    );
-
-    res.json({ ok: true, result: rows });
-  } catch (err) {
-    console.error("[DEV] /api/dev/school/purge error:", err);
-    res.status(500).json({ ok: false, message: err.message || "Purge failed." });
-  }
-});
-//=======================================//
-// Rename a School - Dec 17              //
-//=======================================//
-
-app.put("/api/admin/school/:slug/name", async (req, res) => {
-  const { slug } = req.params;
-  const { adminId, email, newName } = req.body || {};
-
-  if (!slug) return res.status(400).json({ ok:false, message:"Missing slug" });
-  if (!newName || !String(newName).trim()) {
-    return res.status(400).json({ ok:false, message:"Missing newName" });
-  }
-  if (!adminId && !email) {
-    return res.status(401).json({ ok:false, message:"Missing admin session" });
-  }
-
-  // 1) Verify admin exists (by id or email)
-  // 2) Verify admin is allowed to manage this school (same rule as my-schools)
-  // 3) Update schools.name
-
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    const admin = await client.query(
-      `
-      SELECT id, email
-      FROM admins
-      WHERE ($1::int IS NOT NULL AND id = $1::int)
-         OR ($2::text IS NOT NULL AND email = $2::text)
-      LIMIT 1
-      `,
-      [adminId || null, email || null]
-    );
-
-    if (!admin.rowCount) {
-      await client.query("ROLLBACK");
-      return res.status(401).json({ ok:false, message:"Admin not found" });
-    }
-
-    const admin_id = admin.rows[0].id;
-
-    // Replace admin_schools with your actual mapping table
-    const allowed = await client.query(
-      `
-      SELECT s.id
-      FROM schools s
-      JOIN admin_schools a ON a.school_id = s.id
-      WHERE s.slug = $1
-        AND a.admin_id = $2
-      LIMIT 1
-      `,
-      [slug, admin_id]
-    );
-
-    if (!allowed.rowCount) {
-      await client.query("ROLLBACK");
-      return res.status(403).json({ ok:false, message:"Not authorized for this school" });
-    }
-
-    const updated = await client.query(
-      `
-      UPDATE schools
-      SET name = $1
-      WHERE slug = $2
-      RETURNING id, slug, name
-      `,
-      [String(newName).trim(), slug]
-    );
-
-    await client.query("COMMIT");
-    return res.json({ ok:true, school: updated.rows[0] });
-  } catch (e) {
-    await client.query("ROLLBACK");
-    return res.status(500).json({ ok:false, message:"Server error" });
-  } finally {
-    client.release();
-  }
-});
-
-// Rename school (name only — slug is immutable)
-// Rename school name (slug immutable). Any authenticated admin may do this.
-router.put("/school/:id/name", requireAdminAuth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const newName = String(req.body?.newName || "").trim();
-
-    if (!id || !Number.isFinite(id)) {
-      return res.status(400).json({ ok: false, message: "Invalid school id." });
+    if (!Number.isFinite(schoolId) || schoolId <= 0) {
+      return res.status(400).json({ ok: false, message: "schoolId (number) is required." });
     }
     if (!newName) {
-      return res.status(400).json({ ok: false, message: "Missing newName." });
+      return res.status(400).json({ ok: false, message: "newName (string) is required." });
     }
 
-    // Optional: pre-check for nicer UX (DB constraint still authoritative)
-    const dup = await pool.query(
-      `SELECT id FROM schools
-       WHERE id <> $1 AND lower(trim(name)) = lower(trim($2))
-       LIMIT 1`,
-      [id, newName]
-    );
-    if (dup.rows.length) {
-      return res.status(409).json({
+    try {
+      // Optional: prevent no-op rename (nice UX)
+      const { rows: currentRows } = await pool.query(
+        "SELECT id, name, slug FROM schools WHERE id = $1",
+        [schoolId]
+      );
+      if (!currentRows.length) {
+        return res.status(404).json({ ok: false, message: "School not found (id)." });
+      }
+      const current = currentRows[0];
+      if (String(current.name).trim() === newName) {
+        return res.json({ ok: true, school: current, message: "No change (name already set)." });
+      }
+
+      const { rows } = await pool.query(
+        `UPDATE schools
+           SET name = $1
+         WHERE id = $2
+         RETURNING id, name, slug`,
+        [newName, schoolId]
+      );
+
+      return res.json({ ok: true, school: rows[0] });
+    } catch (err) {
+      console.error("[ManageSchools] rename error:", err);
+
+      // Friendlier message for unique constraint violations
+      if (err && err.code === "23505") {
+        return res.status(409).json({
+          ok: false,
+          message: "That school name already exists (unique constraint). Choose a different name.",
+        });
+      }
+
+      return res.status(500).json({
         ok: false,
-        message: `A school named "${newName}" already exists.`,
+        message: err.message || "Rename failed.",
       });
     }
-
-    const r = await pool.query(
-      `UPDATE schools
-         SET name = $2
-       WHERE id = $1
-       RETURNING id, slug, name`,
-      [id, newName]
-    );
-
-    if (!r.rows.length) {
-      return res.status(404).json({ ok: false, message: "School not found." });
-    }
-
-    return res.json({ ok: true, school: r.rows[0] });
-  } catch (err) {
-    // If your unique index catches something (race condition), translate to 409
-    if (String(err?.code) === "23505") {
-      return res.status(409).json({
-        ok: false,
-        message: "That school name is already in use.",
-      });
-    }
-    console.error("[PUT /school/:id/name] error:", err);
-    return res.status(500).json({ ok: false, message: "Server error." });
   }
-});
+);
+
+/**
+ * POST /api/admin/manage-schools/school/purge
+ * Body: { schoolId:number, mode:"PURGE"|"DELETE"|"SOFT", dryRun:boolean }
+ * Returns: { ok:true, result:[...] }
+ */
+app.post(
+  "/api/admin/manage-schools/school/purge",
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    const schoolId = Number(req.body?.schoolId);
+    const mode = String(req.body?.mode || "PURGE").trim().toUpperCase();
+    const dryRun = !!req.body?.dryRun;
+
+    if (!Number.isFinite(schoolId) || schoolId <= 0) {
+      return res.status(400).json({ ok: false, message: "schoolId (number) is required." });
+    }
+    if (!["PURGE", "DELETE", "SOFT"].includes(mode)) {
+      return res.status(400).json({ ok: false, message: "mode must be PURGE | DELETE | SOFT." });
+    }
+
+    try {
+      const { rows } = await pool.query(
+        "SELECT * FROM admin_purge_school($1, $2, $3);",
+        [schoolId, mode, dryRun]
+      );
+      return res.json({ ok: true, result: rows });
+    } catch (err) {
+      console.error("[ManageSchools] purge error:", err);
+      return res.status(500).json({
+        ok: false,
+        message: err.message || "Purge failed.",
+      });
+    }
+  }
+);
 /* ------------------------------------------------------------------
    STUDENT ENROLLMENT
    POST /api/student/enroll
@@ -3779,6 +3675,7 @@ app.post("/log/submission", async (req, res) => {
     res.status(500).json({ ok: false, error: "log failed" });
   }
 });
+
 app.put("/log/submission", async (req, res) => {
   try {
     const body = req.body || {};
