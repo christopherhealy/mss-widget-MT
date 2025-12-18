@@ -1,9 +1,5 @@
 // /public/admin-home/AdminHome.js
-// v1.2 — JWT token version + MSSViewer modal
-// - Uses mssAdminSession + mss_admin_token
-// - No ES module import
-// - Opens Invite School Sign-up in MSSViewer modal
-
+// v1.3 — JWT token version + MSSViewer modal
 console.log("✅ AdminHome.js loaded");
 
 (function () {
@@ -12,6 +8,10 @@ console.log("✅ AdminHome.js loaded");
   const LS_SESSION_KEY = "mssAdminSession";
   const LS_TOKEN_KEY = "mss_admin_token";
   const LOGIN_URL = "/admin-login/AdminLogin.html";
+  const SCHOOL_SIGNUP_URL = "/signup/SchoolSignUp.html"; 
+
+  // ✅ adjust if your file lives elsewhere
+  const MANAGE_SCHOOLS_URL = "/admin/ManageSchools.html";
 
   function $(id) {
     return document.getElementById(id);
@@ -29,7 +29,7 @@ console.log("✅ AdminHome.js loaded");
 
   function readToken() {
     try {
-      return localStorage.getItem(LS_TOKEN_KEY) || "";
+      return (localStorage.getItem(LS_TOKEN_KEY) || "").trim();
     } catch (e) {
       console.warn("[AdminHome] Failed to read token:", e);
       return "";
@@ -45,8 +45,19 @@ console.log("✅ AdminHome.js loaded");
 
   function isSuperAdmin(session) {
     if (!session) return false;
-    const email = session.email || "";
-    return !!session.isSuperadmin || /@mss\.com$/i.test(email);
+
+    // tolerate a few variants
+    const flag =
+      session.isSuperAdmin ??
+      session.isSuperadmin ??
+      session.is_super_admin ??
+      false;
+
+    if (flag === true) return true;
+
+    // optional fallback heuristic (keep or remove)
+    const email = String(session.email || "");
+    return /@mss\.com$/i.test(email);
   }
 
   function populateMeta(session, token) {
@@ -54,14 +65,14 @@ console.log("✅ AdminHome.js loaded");
     $("admin-id").textContent =
       session.adminId != null ? String(session.adminId) : "—";
 
-    const isSuper = isSuperAdmin(session);
-    $("admin-role").textContent = isSuper ? "Super admin" : "Admin";
+    const superAdmin = isSuperAdmin(session);
+    $("admin-role").textContent = superAdmin ? "Super admin" : "Admin";
 
     const badge = $("admin-key-badge");
     if (badge) badge.textContent = token ? "token: present" : "token: missing";
 
     const superBadge = $("admin-super-badge");
-    if (superBadge) superBadge.style.display = isSuper ? "inline-flex" : "none";
+    if (superBadge) superBadge.style.display = superAdmin ? "inline-flex" : "none";
   }
 
   function logout() {
@@ -76,7 +87,7 @@ console.log("✅ AdminHome.js loaded");
 
   function openInViewer(title, src) {
     if (!window.MSSViewer || typeof window.MSSViewer.open !== "function") {
-      console.warn("[AdminHome] MSSViewer not available; falling back to navigation:", src);
+      console.warn("[AdminHome] MSSViewer not available; navigating:", src);
       window.location.href = src;
       return;
     }
@@ -92,8 +103,7 @@ console.log("✅ AdminHome.js loaded");
       return;
     }
 
-    const isSuper = isSuperAdmin(session);
-
+    const superAdmin = isSuperAdmin(session);
     populateMeta(session, token);
 
     setStatus(
@@ -106,8 +116,9 @@ console.log("✅ AdminHome.js loaded");
     const btnPortal = $("btn-portal");
     const btnConfig = $("btn-config");
     const btnQuestions = $("btn-questions");
-    const btnSchoolSignup = $("btn-school-signup");
     const btnInviteSchoolSignup = $("btn-invite-school-signup");
+    const btnManageSchools = $("btn-manage-schools");
+    const btnSchoolSignup = $("btn-school-signup");
     const btnLogout = $("btn-logout");
 
     if (btnPortal) btnPortal.addEventListener("click", () => {
@@ -122,26 +133,34 @@ console.log("✅ AdminHome.js loaded");
       window.location.href = "/questions-admin/WidgetSurvey.html";
     });
 
-    // Super admin only
-    if (btnSchoolSignup) {
-      btnSchoolSignup.style.display = isSuper ? "inline-flex" : "none";
-      if (isSuper) {
-        btnSchoolSignup.addEventListener("click", () => {
-          window.location.href = "/signup/SchoolSignUp.html";
-        });
-      }
-    }
-
-    // Super admin only — OPEN IN MODAL VIEWER
+    // Super admin only — Invite School Signup
     if (btnInviteSchoolSignup) {
-      btnInviteSchoolSignup.style.display = isSuper ? "inline-flex" : "none";
-      if (isSuper) {
+      btnInviteSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
+      if (superAdmin) {
         btnInviteSchoolSignup.addEventListener("click", () => {
           openInViewer("Invite School Sign-up", "/admin-invite/InviteSchoolSignup.html");
         });
       }
     }
 
+    // Super admin only — Manage Schools
+    if (btnManageSchools) {
+      btnManageSchools.style.display = superAdmin ? "inline-flex" : "none";
+      if (superAdmin) {
+        btnManageSchools.addEventListener("click", () => {
+          openInViewer("Manage Schools", MANAGE_SCHOOLS_URL);
+        });
+      }
+    }
+   // Super admin only — School Sign Up
+    if (btnSchoolSignup) {
+      btnSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
+       if (superAdmin) {
+         btnSchoolSignup.addEventListener("click", () => {
+         openInViewer("School Sign Up", SCHOOL_SIGNUP_URL);
+       });
+   }
+}
     if (btnLogout) {
       btnLogout.addEventListener("click", (e) => {
         e.preventDefault();

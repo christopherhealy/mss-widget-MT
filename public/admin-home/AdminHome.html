@@ -131,18 +131,21 @@
     <section class="admin-buttons">
       <button class="admin-btn" id="btn-portal">School Portal</button>
 
-      <!-- Super admin only (shown via AdminHome.js) -->
+      
+       <!-- Super admin only (shown via AdminHome.js) -->
       <button class="admin-btn secondary" id="btn-school-signup" style="display:none;">
         School Sign Up
       </button>
-
-      <!-- Super admin only (shown via AdminHome.js) -->
       <button class="admin-btn secondary" id="btn-invite-school-signup" style="display:none;">
         Invite School Sign-up
+      </button>
+      <button class="admin-btn secondary" id="btn-manage-schools" style="display:none;">
+         Manage Schools
       </button>
 
       <button class="admin-btn secondary" id="btn-config">Configuration Admin</button>
       <button class="admin-btn secondary" id="btn-questions">Questions Admin</button>
+      
       <button class="admin-btn danger" id="btn-logout">Log out</button>
     </section>
 
@@ -154,6 +157,6 @@
 
   <!-- Viewer must load BEFORE AdminHome.js -->
   <script src="/components/MSSViewer.js"></script>
-  <script src="/admin-home/AdminHome.js"></script>
+  <script src="/admin-home/AdminHome.js?v=2025-12-18a"></script>
 </body>
 </html>
