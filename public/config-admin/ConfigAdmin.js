@@ -3,6 +3,7 @@
 // Uses settings.{config,form,image} in Postgres
 // Canonical keys: config.widgetPath, config.dashboardPath, config.afterDashboard.*
 // Dec 5 – adds admin-session guard + shared multi-school dropdown (my-schools)
+// Dec 17 – "perfect" regen: stronger school-switch modal, URL sync, image absolutize, safer message handling
 
 console.log("✅ ConfigAdmin.js loaded");
 
@@ -33,13 +34,7 @@ console.log("✅ ConfigAdmin.js loaded");
   // Dashboard + widget selectors
   const dashboardTemplateSelect = $("dashboardTemplate");
   const dashboardPreviewFrame   = $("dashboardPreview");
-  const widgetTemplateSelect = $("widgetTemplate");
-
-
-  
-
-// Use the HTML id "widgetTemplate"
-
+  const widgetTemplateSelect    = $("widgetTemplate");
 
   // Image / branding elements
   const imgFileInput          = $("img-file");           // hidden input (not used directly now)
@@ -100,6 +95,36 @@ console.log("✅ ConfigAdmin.js loaded");
   };
 
   /* ------------------------------------------------------------------ */
+  /* STATUS HELPER                                                      */
+  /* ------------------------------------------------------------------ */
+
+  function setStatus(msg, isError) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.classList.toggle("error", !!isError);
+  }
+
+const ADMIN_TOKEN_LS_KEY = "mss_admin_key"; // AdminHome already uses this
+
+function getAdminToken() {
+  try {
+    return (window.localStorage.getItem(ADMIN_TOKEN_LS_KEY) || "").trim();
+  } catch (_) {
+    return "";
+  }
+}
+
+function adminHeaders(extra) {
+  const h = { ...(extra || {}) };
+
+  const token = getAdminToken();
+  if (token) {
+    // server supports Authorization: Bearer <token>
+    h["Authorization"] = `Bearer ${token}`;
+  }
+  return h;
+}
+  /* ------------------------------------------------------------------ */
   /* ADMIN SESSION GUARD                                                */
   /* ------------------------------------------------------------------ */
 
@@ -127,11 +152,7 @@ console.log("✅ ConfigAdmin.js loaded");
       "Your admin session has ended. Please sign in again to manage school settings.";
 
     try {
-      if (typeof setStatus === "function") {
-        setStatus(msg, true);
-      } else {
-        console.warn("[ConfigAdmin] " + msg);
-      }
+      setStatus(msg, true);
     } catch (e) {
       console.warn("[ConfigAdmin] Unable to show status for ended session", e);
     }
@@ -148,13 +169,59 @@ console.log("✅ ConfigAdmin.js loaded");
   }
 
   /* ------------------------------------------------------------------ */
+  /* ADMIN API BASE + URL HELPERS                                       */
+  /* ------------------------------------------------------------------ */
+
+  function getAdminApiBase() {
+    const origin = window.location.origin || "";
+
+    if (
+      origin.includes("localhost") ||
+      origin.includes("127.0.0.1") ||
+      origin.includes("mss-widget-mt.onrender.com")
+    ) {
+      return "";
+    }
+
+    if (origin.includes("mss-widget-mt.vercel.app")) {
+      return "https://mss-widget-mt.onrender.com";
+    }
+
+    return "";
+  }
+
+  const ADMIN_API_BASE = getAdminApiBase();
+
+  function absolutizeImageUrl(path) {
+    if (!path) return "";
+    if (/^https?:\/\//i.test(path)) return path;
+
+    // If stored as "/uploads/xyz.png" keep it; if stored as "xyz.png" treat it as uploads.
+    let p = String(path).trim();
+    if (!p.startsWith("/")) p = `/uploads/${p}`;
+
+    return `${ADMIN_API_BASE}${p}`;
+  }
+
+  function updateSlugInUrl(slug) {
+    if (!slug) return;
+    try {
+      const url    = new URL(window.location.href);
+      const params = url.searchParams;
+      params.set("slug", slug);
+      url.search = params.toString();
+      window.history.replaceState({}, "", url.toString());
+    } catch (e) {
+      console.warn("[ConfigAdmin] Could not update URL slug", e);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
   /* SLUG + SCHOOL STATE                                                */
   /* ------------------------------------------------------------------ */
 
   const urlParams = new URLSearchParams(window.location.search);
-  if (!SLUG) {
-    SLUG = urlParams.get("slug") || null;
-  }
+  SLUG = urlParams.get("slug") || null;
 
   let CONFIG_SCHOOLS = [];   // [{id, slug, name, ...}]
   let CURRENT_SCHOOL = null;
@@ -235,154 +302,153 @@ console.log("✅ ConfigAdmin.js loaded");
     syncSlugUi();
   }
 
-  function updateSlugInUrl(slug) {
-    if (!slug) return;
-    try {
-      const url    = new URL(window.location.href);
-      const params = url.searchParams;
-      params.set("slug", slug);
-      url.search = params.toString();
-      window.history.replaceState({}, "", url.toString());
-    } catch (e) {
-      console.warn("[ConfigAdmin] Could not update URL slug", e);
-    }
+  /* ------------------------------------------------------------------ */
+  /* SCHOOL SWITCH CONFIRM (Cancel supported)                            */
+  /* ------------------------------------------------------------------ */
+
+  // Dec 16+ — upgraded to allow Cancel (superadmin can change mind)
+  // Accepts either:
+  //   confirmSchoolChange("Next School Label")
+  // OR
+  //   confirmSchoolChange({ title, bodyHtml })
+  function confirmSchoolChange(arg) {
+    const title =
+      (arg && typeof arg === "object" && arg.title) ? String(arg.title) : "Change schools?";
+    const bodyHtml =
+      (arg && typeof arg === "object" && arg.bodyHtml)
+        ? String(arg.bodyHtml)
+        : (
+            typeof arg === "string"
+              ? `
+                <p style="margin:0;">You are changing schools to:</p>
+                <p style="margin:8px 0 0; font-weight:700; color:#0f172a;">${String(arg)}</p>
+                <p style="margin:10px 0 0;">
+                  Press <b>Continue</b> to proceed, or <b>Cancel</b> to stay on the current school.
+                </p>
+              `
+              : `
+                <p style="margin:0;">You are about to change schools.</p>
+                <p style="margin:10px 0 0;">
+                  Press <b>Continue</b> to proceed, or <b>Cancel</b> to stay on the current school.
+                </p>
+              `
+          );
+
+    return new Promise((resolve) => {
+      let overlay = document.getElementById("mss-school-switch-overlay");
+
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "mss-school-switch-overlay";
+        overlay.style.position = "fixed";
+        overlay.style.inset = "0";
+        overlay.style.background = "rgba(15,23,42,0.55)";
+        overlay.style.display = "none";
+        overlay.style.alignItems = "center";
+        overlay.style.justifyContent = "center";
+        overlay.style.zIndex = "9999";
+        overlay.style.padding = "16px";
+
+        overlay.innerHTML = `
+          <div style="
+            width: min(560px, 100%);
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+            overflow: hidden;
+            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+          ">
+            <div style="padding:16px 18px; border-bottom: 1px solid #e2e8f0;">
+              <div id="mss-school-switch-title" style="font-size:16px; font-weight:700; color:#0f172a;">
+                Change schools?
+              </div>
+              <div id="mss-school-switch-body" style="margin-top:6px; font-size:13px; color:#64748b; line-height:1.35;">
+                You are about to change schools.
+              </div>
+            </div>
+
+            <div style="padding:16px 18px; display:flex; gap:10px; justify-content:flex-end;">
+              <button id="mss-school-switch-cancel" style="
+                padding:10px 14px;
+                border-radius: 10px;
+                border: 1px solid #cbd5e1;
+                background: #fff;
+                color: #0f172a;
+                font-weight: 600;
+                cursor: pointer;
+              ">Cancel</button>
+
+              <button id="mss-school-switch-ok" style="
+                padding:10px 14px;
+                border-radius: 10px;
+                border: none;
+                background: #1d4ed8;
+                color: #fff;
+                font-weight: 700;
+                cursor: pointer;
+              ">Continue</button>
+            </div>
+          </div>
+        `;
+
+        // Backdrop click = cancel (safest)
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) {
+            overlay.dataset.choice = "cancel";
+            overlay.dispatchEvent(new Event("mssChoice"));
+          }
+        });
+
+        document.body.appendChild(overlay);
+      }
+
+      const titleEl = overlay.querySelector("#mss-school-switch-title");
+      const body    = overlay.querySelector("#mss-school-switch-body");
+      const btnOk   = overlay.querySelector("#mss-school-switch-ok");
+      const btnCancel = overlay.querySelector("#mss-school-switch-cancel");
+
+      if (!titleEl || !body || !btnOk || !btnCancel) {
+        const ok = window.confirm("You are changing schools.\n\nPress OK to continue, or Cancel to stay.");
+        resolve(!!ok);
+        return;
+      }
+
+      titleEl.textContent = title;
+      body.innerHTML = bodyHtml;
+
+      const cleanup = () => {
+        overlay.style.display = "none";
+        btnOk.removeEventListener("click", onOk);
+        btnCancel.removeEventListener("click", onCancel);
+        overlay.removeEventListener("mssChoice", onChoice);
+        document.removeEventListener("keydown", onKey);
+      };
+
+      const onOk = () => { cleanup(); resolve(true); };
+      const onCancel = () => { cleanup(); resolve(false); };
+      const onChoice = () => {
+        const choice = overlay.dataset.choice === "cancel" ? false : true;
+        cleanup();
+        resolve(choice);
+      };
+
+      const onKey = (e) => {
+        if (e.key === "Escape") { cleanup(); resolve(false); }
+        if (e.key === "Enter")  { cleanup(); resolve(true);  }
+      };
+
+      overlay.style.display = "flex";
+      btnOk.addEventListener("click", onOk);
+      btnCancel.addEventListener("click", onCancel);
+      overlay.addEventListener("mssChoice", onChoice);
+      document.addEventListener("keydown", onKey);
+    });
   }
 
-//Dec 16
-// Dec 16 — upgraded to allow Cancel (superadmin can change mind)
-function confirmSchoolChange(nextLabel) {
-  return new Promise((resolve) => {
-    // If your existing portal modal exists, we can re-use it; otherwise build our own.
-    let overlay = document.getElementById("mss-school-switch-overlay");
+  /* ------------------------------------------------------------------ */
+  /* FETCH SCHOOLS FOR ADMIN (my-schools)                               */
+  /* ------------------------------------------------------------------ */
 
-    if (!overlay) {
-      overlay = document.createElement("div");
-      overlay.id = "mss-school-switch-overlay";
-      overlay.style.position = "fixed";
-      overlay.style.inset = "0";
-      overlay.style.background = "rgba(15,23,42,0.55)";
-      overlay.style.display = "none";
-      overlay.style.alignItems = "center";
-      overlay.style.justifyContent = "center";
-      overlay.style.zIndex = "9999";
-      overlay.style.padding = "16px";
-
-      overlay.innerHTML = `
-        <div style="
-          width: min(560px, 100%);
-          background: #fff;
-          border-radius: 12px;
-          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
-          overflow: hidden;
-          font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-        ">
-          <div style="padding:16px 18px; border-bottom: 1px solid #e2e8f0;">
-            <div style="font-size:16px; font-weight:700; color:#0f172a;">
-              Change schools?
-            </div>
-            <div id="mss-school-switch-body" style="margin-top:6px; font-size:13px; color:#64748b; line-height:1.35;">
-              You are about to change schools.
-            </div>
-          </div>
-
-          <div style="padding:16px 18px; display:flex; gap:10px; justify-content:flex-end;">
-            <button id="mss-school-switch-cancel" style="
-              padding:10px 14px;
-              border-radius: 10px;
-              border: 1px solid #cbd5e1;
-              background: #fff;
-              color: #0f172a;
-              font-weight: 600;
-              cursor: pointer;
-            ">Cancel</button>
-
-            <button id="mss-school-switch-ok" style="
-              padding:10px 14px;
-              border-radius: 10px;
-              border: none;
-              background: #1d4ed8;
-              color: #fff;
-              font-weight: 700;
-              cursor: pointer;
-            ">Continue</button>
-          </div>
-        </div>
-      `;
-
-      // Backdrop click = cancel (safest)
-      overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) {
-          overlay.dataset.choice = "cancel";
-          overlay.dispatchEvent(new Event("mssChoice"));
-        }
-      });
-
-      document.body.appendChild(overlay);
-    }
-
-    const body = overlay.querySelector("#mss-school-switch-body");
-    const btnOk = overlay.querySelector("#mss-school-switch-ok");
-    const btnCancel = overlay.querySelector("#mss-school-switch-cancel");
-
-    if (!body || !btnOk || !btnCancel) {
-      // absolute fallback
-      const ok = window.confirm(
-        `You are changing schools${nextLabel ? " to:\n\n" + nextLabel : ""}\n\nPress OK to continue, or Cancel to stay on the current school.`
-      );
-      resolve(!!ok);
-      return;
-    }
-
-    body.innerHTML = `
-      <p style="margin:0;">You are changing schools${nextLabel ? " to:" : "."}</p>
-      ${nextLabel ? `<p style="margin:8px 0 0; font-weight:700; color:#0f172a;">${String(nextLabel)}</p>` : ""}
-      <p style="margin:10px 0 0;">
-        Press <b>Continue</b> to proceed, or <b>Cancel</b> to stay on the current school.
-      </p>
-    `;
-
-    const cleanup = () => {
-      overlay.style.display = "none";
-      btnOk.removeEventListener("click", onOk);
-      btnCancel.removeEventListener("click", onCancel);
-      overlay.removeEventListener("mssChoice", onChoice);
-      document.removeEventListener("keydown", onKey);
-    };
-
-    const onOk = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const onCancel = () => {
-      cleanup();
-      resolve(false);
-    };
-
-    const onChoice = () => {
-      const choice = overlay.dataset.choice === "cancel" ? false : true;
-      cleanup();
-      resolve(choice);
-    };
-
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        cleanup();
-        resolve(false);
-      }
-      if (e.key === "Enter") {
-        cleanup();
-        resolve(true);
-      }
-    };
-
-    overlay.style.display = "flex";
-    btnOk.addEventListener("click", onOk);
-    btnCancel.addEventListener("click", onCancel);
-    overlay.addEventListener("mssChoice", onChoice);
-    document.addEventListener("keydown", onKey);
-  });
-}
   async function fetchConfigSchoolsForAdmin() {
     if (!schoolSelectEl) {
       // layout without dropdown = pure single-school mode
@@ -401,11 +467,11 @@ function confirmSchoolChange(nextLabel) {
       if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
       if (ADMIN_ID)    qs.set("adminId", String(ADMIN_ID));
 
-      let url = "/api/admin/my-schools";
+      let url = `${ADMIN_API_BASE}/api/admin/my-schools`;
       const query = qs.toString();
       if (query) url += `?${query}`;
 
-      const res  = await fetch(url);
+      const res = await fetch(url, { headers: adminHeaders() });
       const data = await res.json();
 
       if (!res.ok || data.ok === false) {
@@ -432,12 +498,7 @@ function confirmSchoolChange(nextLabel) {
       }
 
       // Decide which slug we’re on:
-      // 1) If SLUG matches one of the schools, use that.
-      // 2) Otherwise default to the first school.
-      if (
-        !SLUG ||
-        !CONFIG_SCHOOLS.some((s) => String(s.slug) === String(SLUG))
-      ) {
+      if (!SLUG || !CONFIG_SCHOOLS.some((s) => String(s.slug) === String(SLUG))) {
         CURRENT_SCHOOL = CONFIG_SCHOOLS[0];
         SLUG = CURRENT_SCHOOL.slug;
       } else {
@@ -448,7 +509,6 @@ function confirmSchoolChange(nextLabel) {
       }
 
       if (CONFIG_SCHOOLS.length === 1) {
-        // Mary sees her single school, not "No school selected"
         const s = CONFIG_SCHOOLS[0];
         const opt = document.createElement("option");
         opt.value = s.slug;
@@ -467,6 +527,7 @@ function confirmSchoolChange(nextLabel) {
         schoolSelectEl.value = SLUG;
       }
 
+      updateSlugInUrl(SLUG);
       syncSlugUi();
     } catch (err) {
       console.error("[ConfigAdmin] fetchConfigSchoolsForAdmin failed", err);
@@ -479,56 +540,61 @@ function confirmSchoolChange(nextLabel) {
     }
   }
 
- async function onConfigSchoolChanged() {
-  if (!schoolSelectEl) return;
+  async function onConfigSchoolChanged() {
+    if (!schoolSelectEl) return;
 
-  const newSlug = schoolSelectEl.value;
-  const prevSlug = SLUG;
+    const newSlug  = schoolSelectEl.value;
+    const prevSlug = SLUG;
 
-  if (!newSlug || newSlug === prevSlug) return;
+    if (!newSlug || newSlug === prevSlug) return;
 
-  // Human-friendly label for the confirmation modal
-  const nextLabel =
-    (schoolSelectEl.selectedOptions && schoolSelectEl.selectedOptions[0] && schoolSelectEl.selectedOptions[0].textContent) ||
-    newSlug;
+    const nextLabel =
+      (schoolSelectEl.selectedOptions &&
+        schoolSelectEl.selectedOptions[0] &&
+        schoolSelectEl.selectedOptions[0].textContent) ||
+      newSlug;
 
-  // If there are unsaved changes, ask first
-  if (dirty) {
-    const discard = await confirmSchoolChange(
-      `${nextLabel}\n\nYou have unsaved changes in Config Admin. Continuing will discard them.`
-    );
-    if (!discard) {
-      // revert selection and abort
-      schoolSelectEl.value = prevSlug;
-      return;
+    // If there are unsaved changes, ask first
+   if (dirty) {
+  const ok = await confirmSchoolChange({
+    title: "Discard unsaved changes?",
+    bodyHtml: `
+      <p style="margin:0;">You have unsaved changes in Config Admin.</p>
+      <p style="margin:10px 0 0;">Continuing will discard them.</p>
+      <p style="margin:10px 0 0;"><b>Continue</b> to switch schools, or ... <b>Cancel</b> to stay.</p>
+    `,
+  });
+
+   if (!ok) {
+    schoolSelectEl.value = prevSlug;
+    return;
+     }
+     } else {
+        const ok = await confirmSchoolChange(nextLabel);
+      if (!ok) {
+        schoolSelectEl.value = prevSlug;
+        return;
+      }
     }
-  } else {
-    const ok = await confirmSchoolChange(nextLabel);
-    if (!ok) {
-      // revert selection and abort
-      schoolSelectEl.value = prevSlug;
-      return;
-    }
+    await showConfigSchoolChangeWarning();
+
+    // Proceed with switch
+    SLUG = newSlug;
+    CURRENT_SCHOOL =
+      CONFIG_SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
+
+    updateSlugInUrl(newSlug);
+    syncSlugUi();
+
+    STATE.config = { ...DEFAULTS.config };
+    STATE.form   = { ...DEFAULTS.form };
+    STATE.image  = { ...DEFAULTS.image };
+    hydrateFormFromState();
+    setPristine();
+
+    await loadFromServer();
   }
 
-  // Informational warning (OK-only) after user has confirmed
-  await showConfigSchoolChangeWarning();
-
-  // Proceed with switch
-  SLUG = newSlug;
-  CURRENT_SCHOOL =
-    CONFIG_SCHOOLS.find((s) => String(s.slug) === String(newSlug)) || null;
-
-  syncSlugUi();
-
-  STATE.config = { ...DEFAULTS.config };
-  STATE.form   = { ...DEFAULTS.form };
-  STATE.image  = { ...DEFAULTS.image };
-  hydrateFormFromState();
-  setPristine();
-
-  await loadFromServer();
-}
   /* ------------------------------------------------------------------ */
   /* ADMIN HOME (return)                                                */
   /* ------------------------------------------------------------------ */
@@ -540,7 +606,6 @@ function confirmSchoolChange(nextLabel) {
       ? ADMIN_HOME_URL.trim()
       : "/admin-home/AdminHome.html";
 
-    // Preserve adminKey if present
     try {
       const u = new URL(window.location.href);
       const adminKey = u.searchParams.get("adminKey");
@@ -556,15 +621,13 @@ function confirmSchoolChange(nextLabel) {
 
   function returnToAdminHome() {
     try {
-      // If opened via window.open from AdminHome/Portal, close & refocus
       if (window.opener && !window.opener.closed) {
         window.opener.focus();
-        window.close(); // only works if script-opened
+        window.close();
         return;
       }
     } catch (_) {}
 
-    // Fallback: navigate this tab
     window.location.href = buildAdminHomeUrl();
   }
 
@@ -575,205 +638,224 @@ function confirmSchoolChange(nextLabel) {
       btn._mssBound = true;
     }
   }
-  /* ------------------------------------------------------------------ */
-  /* STATUS HELPER                                                      */
-  /* ------------------------------------------------------------------ */
-
-  function setStatus(msg, isError) {
-    if (!statusEl) return;
-    statusEl.textContent = msg;
-    statusEl.classList.toggle("error", !!isError);
-  }
 
   /* ------------------------------------------------------------------ */
-  /* ADMIN API BASE + URL HELPERS                                       */
+  /* SCHOOL RENAME   & Confirm Dec 17                                   */
   /* ------------------------------------------------------------------ */
+function confirmSchoolRenameModal(oldName, newName) {
+  return new Promise((resolve) => {
+    let overlay = document.getElementById("mss-rename-overlay");
 
-  function getAdminApiBase() {
-    const origin = window.location.origin || "";
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "mss-rename-overlay";
+      overlay.style.cssText = `
+        position:fixed; inset:0; background:rgba(15,23,42,.55);
+        display:none; align-items:center; justify-content:center;
+        z-index:10000;
+      `;
 
-    if (
-      origin.includes("localhost") ||
-      origin.includes("127.0.0.1") ||
-      origin.includes("mss-widget-mt.onrender.com")
-    ) {
-      return "";
+      overlay.innerHTML = `
+        <div style="
+          width:420px; background:#fff; border-radius:12px;
+          box-shadow:0 20px 50px rgba(15,23,42,.25);
+          font-family:system-ui;
+        ">
+          <div style="padding:16px 18px; border-bottom:1px solid #e2e8f0;">
+            <div style="font-size:16px; font-weight:700;">Rename school?</div>
+          </div>
+
+          <div style="padding:16px 18px; font-size:14px;">
+            <div><b>From:</b> <span id="rename-old"></span></div>
+            <div style="margin-top:6px;"><b>To:</b> <span id="rename-new"></span></div>
+          </div>
+
+          <div style="padding:16px 18px; display:flex; justify-content:flex-end; gap:10px;">
+            <button id="rename-cancel" class="btn">Cancel</button>
+            <button id="rename-ok" class="btn primary">Rename</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
     }
 
-    if (origin.includes("mss-widget-mt.vercel.app")) {
-      return "https://mss-widget-mt.onrender.com";
-    }
+    overlay.querySelector("#rename-old").textContent = oldName || "—";
+    overlay.querySelector("#rename-new").textContent = newName || "—";
 
-    return "";
+    overlay.style.display = "flex";
+
+    const okBtn = overlay.querySelector("#rename-ok");
+    const cancelBtn = overlay.querySelector("#rename-cancel");
+
+    const cleanup = (result) => {
+      overlay.style.display = "none";
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(result);
+    };
+
+    okBtn.onclick = () => cleanup(true);
+    cancelBtn.onclick = () => cleanup(false);
+  });
+}
+
+async function onSchoolRenameClick() {
+  if (!SLUG) return;
+  if (!schoolNameInput) return;
+
+  // IMPORTANT: Option A = no extra security gate.
+  // We still need the session values to satisfy the server route contract.
+  const session = getAdminSession();
+  if (!session) {
+    setStatus("Your admin session has ended. Please sign in again.", true);
+    window.location.href = "/admin-login/AdminLogin.html";
+    return;
   }
 
-  const ADMIN_API_BASE = getAdminApiBase();
-
-  function absolutizeImageUrl(path) {
-    if (!path) return "";
-    if (/^https?:\/\//i.test(path)) return path;
-
-    let p = path;
-    if (!p.startsWith("/")) {
-      p = `/uploads/${p}`;
-    }
-
-    return `${ADMIN_API_BASE}${p}`;
+  const newName = (schoolNameInput.value || "").trim();
+  if (!newName) {
+    setStatus("Please enter a school name.", true);
+    return;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* SCHOOL RENAME                                                      */
-  /* ------------------------------------------------------------------ */
+  const oldName =
+    (CURRENT_SCHOOL && CURRENT_SCHOOL.name) ||
+    (schoolSelectEl && schoolSelectEl.selectedOptions && schoolSelectEl.selectedOptions[0]
+      ? schoolSelectEl.selectedOptions[0].textContent
+      : "") ||
+    "";
 
-  async function onSchoolRenameClick() {
-    if (!SLUG) return;
-    if (!schoolNameInput) return;
+  // Lovely modal (not browser confirm)
+  const ok = await confirmSchoolRenameModal(oldName || "(unnamed)", newName);
+  if (!ok) {
+    setStatus("Rename cancelled.");
+    return;
+  }
 
-    requireAdminSession(
-      "Your admin session has ended. Please sign in again to rename schools."
+  try {
+    setStatus("Renaming school…");
+
+    const res = await fetch(
+      `${ADMIN_API_BASE}/api/admin/school/${encodeURIComponent(SLUG)}/name`,
+      {
+        method: "PUT",
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          adminId: session.adminId || session.id || null,
+          email: session.email || null,
+          newName,
+        }),
+      }
     );
 
-    const newName = (schoolNameInput.value || "").trim();
-    if (!newName) {
-      alert("Please enter a new school name.");
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data.ok === false) {
+      console.warn("[ConfigAdmin] Rename failed:", data);
+      setStatus(data.message || "Rename failed.", true);
       return;
     }
 
-    const oldSlug = SLUG;
+    // Server returns { ok:true, school:{ id, slug, name } }
+    const savedName =
+      (data.school && data.school.name) || data.name || newName;
 
-    try {
-      setStatus("Renaming school…");
+    // Update in-memory school + input
+    if (CURRENT_SCHOOL) CURRENT_SCHOOL.name = savedName;
+    schoolNameInput.value = savedName;
 
-      const res = await fetch(
-        `${ADMIN_API_BASE}/api/admin/school/${encodeURIComponent(SLUG)}/rename`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ newName }),
-        }
-      );
+    // Update dropdown label (do NOT change slug)
+    if (schoolSelectEl) {
+      const opt =
+        schoolSelectEl.querySelector(`option[value="${SLUG}"]`) ||
+        schoolSelectEl.selectedOptions[0];
+      if (opt) opt.textContent = savedName || SLUG;
+    }
 
-      const data = await res.json();
-      if (!data.ok) {
-        console.error("Rename failed:", data);
-        setStatus("Rename failed.");
+    setStatus("School name updated.");
+  } catch (err) {
+    console.error("[ConfigAdmin] onSchoolRenameClick error:", err);
+    setStatus("Error renaming school.", true);
+  }
+}
+async function loadFromServer() {
+  requireAdminSession(
+    "Your admin session has ended. Please sign in again to load settings."
+  );
+
+  if (!SLUG) {
+    console.warn("[ConfigAdmin] loadFromServer called with no SLUG");
+    return;
+  }
+
+  setStatus("Loading settings from server…");
+
+  try {
+    const res = await fetch(
+      `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
+      { headers: adminHeaders() } // ✅ ADD THIS
+    );
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        console.warn("No settings found for slug, using defaults only.");
+        STATE.config = { ...DEFAULTS.config };
+        STATE.form   = { ...DEFAULTS.form };
+        STATE.image  = { ...DEFAULTS.image };
+        hydrateFormFromState();
+        setPristine();
+        setStatus("No DB record found; using defaults. Save to create.");
         return;
       }
-
-      const newSlug =
-        data.slug || (data.school && data.school.slug) || SLUG;
-      const name =
-        data.name || (data.school && data.school.name) || newName;
-
-      updateSlugUi(newSlug, name);
-      updateSlugInUrl(newSlug);
-
-      if (schoolSelectEl) {
-        const opt =
-          schoolSelectEl.querySelector(`option[value="${oldSlug}"]`) ||
-          schoolSelectEl.selectedOptions[0];
-
-        if (opt) {
-          opt.value = newSlug;
-          opt.textContent = name || newSlug;
-          schoolSelectEl.value = newSlug;
-        }
-      }
-
-      setStatus("School name & slug updated.");
-    } catch (err) {
-      console.error("onSchoolRenameClick error:", err);
-      setStatus("Error renaming school.");
+      throw new Error(`HTTP ${res.status}`);
     }
+
+    const data     = await res.json();
+    const settings = data.settings || {};
+
+    const rawConfig = settings.config || {};
+    const rawForm   = settings.form || {};
+    const rawImage  = settings.image || {};
+
+    const migratedConfig = { ...rawConfig };
+
+    if (!migratedConfig.widgetPath && migratedConfig.widgetUrl) {
+      migratedConfig.widgetPath = migratedConfig.widgetUrl;
+    }
+    if (!migratedConfig.dashboardPath && migratedConfig.dashboardUrl) {
+      migratedConfig.dashboardPath = migratedConfig.dashboardUrl;
+    }
+
+    STATE.config = {
+      ...DEFAULTS.config,
+      ...migratedConfig,
+      afterDashboard: {
+        ...(DEFAULTS.config.afterDashboard || {}),
+        ...(migratedConfig.afterDashboard || {}),
+      },
+    };
+    STATE.form = { ...DEFAULTS.form, ...rawForm };
+    STATE.image = { ...DEFAULTS.image, ...rawImage };
+
+    if (data.school && data.school.slug) {
+      updateSlugUi(data.school.slug, data.school.name || null);
+      updateSlugInUrl(data.school.slug);
+    } else {
+      syncSlugUi();
+      updateSlugInUrl(SLUG);
+    }
+
+    hydrateFormFromState();
+    setPristine();
+    setStatus("Loaded from Postgres.");
+    console.log("[ConfigAdmin] Loaded settings from DB:", STATE);
+  } catch (err) {
+    console.error("Error loading settings", err);
+    setStatus("Error loading settings from server. Check console / network.", true);
+    throw err;
   }
-
-  /* ------------------------------------------------------------------ */
-  /* LOAD FROM SERVER                                                   */
-  /* ------------------------------------------------------------------ */
-
-  async function loadFromServer() {
-    requireAdminSession(
-      "Your admin session has ended. Please sign in again to load settings."
-    );
-
-    if (!SLUG) {
-      console.warn("[ConfigAdmin] loadFromServer called with no SLUG");
-      return;
-    }
-
-    setStatus("Loading settings from server…");
-
-    try {
-      const res = await fetch(
-        `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`
-      );
-      if (!res.ok) {
-        if (res.status === 404) {
-          console.warn("No settings found for slug, using defaults only.");
-          STATE.config = { ...DEFAULTS.config };
-          STATE.form   = { ...DEFAULTS.form };
-          STATE.image  = { ...DEFAULTS.image };
-          hydrateFormFromState();
-          setPristine();
-          setStatus("No DB record found; using defaults. Save to create.");
-          return;
-        }
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const data     = await res.json();
-      const settings = data.settings || {};
-
-      const rawConfig = settings.config || {};
-      const rawForm   = settings.form || {};
-      const rawImage  = settings.image || {};
-
-      const migratedConfig = { ...rawConfig };
-
-      if (!migratedConfig.widgetPath && migratedConfig.widgetUrl) {
-        migratedConfig.widgetPath = migratedConfig.widgetUrl;
-      }
-      if (!migratedConfig.dashboardPath && migratedConfig.dashboardUrl) {
-        migratedConfig.dashboardPath = migratedConfig.dashboardUrl;
-      }
-
-      STATE.config = {
-        ...DEFAULTS.config,
-        ...migratedConfig,
-        afterDashboard: {
-          ...(DEFAULTS.config.afterDashboard || {}),
-          ...(migratedConfig.afterDashboard || {}),
-        },
-      };
-      STATE.form = {
-        ...DEFAULTS.form,
-        ...rawForm,
-      };
-      STATE.image = {
-        ...DEFAULTS.image,
-        ...rawImage,
-      };
-
-      if (data.school && data.school.slug) {
-        updateSlugUi(data.school.slug, data.school.name || null);
-      } else {
-        syncSlugUi();
-      }
-
-      hydrateFormFromState();
-      setPristine();
-      setStatus("Loaded from Postgres.");
-      console.log("[ConfigAdmin] Loaded settings from DB:", STATE);
-    } catch (err) {
-      console.error("Error loading settings", err);
-      setStatus(
-        "Error loading settings from server. Check console / network.",
-        true
-      );
-      throw err;
-    }
-  }
-
+}
   /* ------------------------------------------------------------------ */
   /* HYDRATE FORM                                                       */
   /* ------------------------------------------------------------------ */
@@ -818,12 +900,8 @@ function confirmSchoolChange(nextLabel) {
     }
 
     const after = STATE.config.afterDashboard || {};
-    if (afterSignupUrlInput) {
-      afterSignupUrlInput.value = after.signupUrl || "";
-    }
-    if (afterCtaMessageInput) {
-      afterCtaMessageInput.value = after.ctaMessage || "";
-    }
+    if (afterSignupUrlInput)  afterSignupUrlInput.value  = after.signupUrl || "";
+    if (afterCtaMessageInput) afterCtaMessageInput.value = after.ctaMessage || "";
 
     syncUploadFieldVisibility();
     refreshImagePreview();
@@ -884,7 +962,7 @@ function confirmSchoolChange(nextLabel) {
   function wireFormFields() {
     const allFields = document.querySelectorAll("[data-section][data-key]");
     allFields.forEach((el) => {
-      const eventType = el.type === "checkbox" ? "change" : "input";
+      const eventType = (el.type === "checkbox") ? "change" : "input";
       el.addEventListener(eventType, () => applyFieldToState(el));
     });
   }
@@ -909,70 +987,55 @@ function confirmSchoolChange(nextLabel) {
     saveBtn.addEventListener("click", onSaveClick);
   }
 
-  async function onSaveClick() {
-    if (!dirty) return;
+ async function onSaveClick() {
+  if (!dirty) return;
 
-    requireAdminSession(
-      "Your admin session has ended. Please sign in again before saving settings."
+  requireAdminSession("Your admin session has ended. Please sign in again before saving settings.");
+
+  saveBtn.disabled = true;
+  setStatus("Saving to Postgres…");
+
+  try {
+    const cfg = { ...(STATE.config || {}) };
+
+    if (cfg.widgetUrl && !cfg.widgetPath) cfg.widgetPath = cfg.widgetUrl;
+    if (cfg.widgetPath && !cfg.widgetUrl) cfg.widgetUrl = cfg.widgetPath;
+
+    if (cfg.dashboardUrl && !cfg.dashboardPath) cfg.dashboardPath = cfg.dashboardUrl;
+    if (cfg.dashboardPath && !cfg.dashboardUrl) cfg.dashboardUrl = cfg.dashboardPath;
+
+    const after = cfg.afterDashboard || {};
+    cfg.afterDashboard = {
+      signupUrl: (after.signupUrl || "").trim(),
+      ctaMessage: (after.ctaMessage || "").trim(),
+    };
+
+    const payload = {
+      config: cfg,
+      form:   STATE.form  || {},
+      image:  STATE.image || {},
+    };
+
+    const res = await fetch(
+      `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
+      {
+        method: "PUT",
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      }
     );
 
-    saveBtn.disabled = true;
-    setStatus("Saving to Postgres…");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.message || `HTTP ${res.status}`);
 
-    try {
-      const cfg = { ...(STATE.config || {}) };
-
-      if (cfg.widgetUrl && !cfg.widgetPath) {
-        cfg.widgetPath = cfg.widgetUrl;
-      }
-      if (cfg.widgetPath && !cfg.widgetUrl) {
-        cfg.widgetUrl = cfg.widgetPath;
-      }
-
-      if (cfg.dashboardUrl && !cfg.dashboardPath) {
-        cfg.dashboardPath = cfg.dashboardUrl;
-      }
-      if (cfg.dashboardPath && !cfg.dashboardUrl) {
-        cfg.dashboardUrl = cfg.dashboardPath;
-      }
-
-      const after = cfg.afterDashboard || {};
-      cfg.afterDashboard = {
-        signupUrl: (after.signupUrl || "").trim(),
-        ctaMessage: (after.ctaMessage || "").trim(),
-      };
-
-      const payload = {
-        config: cfg,
-        form:   STATE.form  || {},
-        image:  STATE.image || {},
-      };
-
-      const res = await fetch(
-        `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      if (!data.ok) {
-        console.warn("Save returned non-ok payload:", data);
-      }
-
-      setPristine();
-      setStatus("Saved. Widget will use updated settings on next load.");
-    } catch (err) {
-      console.error("Error saving settings", err);
-      saveBtn.disabled = false;
-      setStatus("Error saving settings. See console / network.", true);
-    }
+    setPristine();
+    setStatus("Saved. Widget will use updated settings on next load.");
+  } catch (err) {
+    console.error("Error saving settings", err);
+    saveBtn.disabled = false;
+    setStatus("Error saving settings. See console / network.", true);
   }
-
+}
   /* ------------------------------------------------------------------ */
   /* DASHBOARD TEMPLATE SELECTOR + PREVIEW                              */
   /* ------------------------------------------------------------------ */
@@ -1056,12 +1119,9 @@ function confirmSchoolChange(nextLabel) {
       }
 
       list.forEach(addDashboard);
-
       addDashboard(DEFAULTS.config.dashboardPath);
 
-      if (current && !seen.has(current)) {
-        addDashboard(current);
-      }
+      if (current && !seen.has(current)) addDashboard(current);
 
       dashboardTemplateSelect.value = current;
       if (!dashboardTemplateSelect.value && seen.size) {
@@ -1137,7 +1197,7 @@ function confirmSchoolChange(nextLabel) {
 
       function addWidget(nameOrPath) {
         if (!nameOrPath) return;
-        const filename = nameOrPath.split("/").pop();
+        const filename = String(nameOrPath).split("/").pop();
         const url = `/widgets/${filename}`;
         if (seen.has(url)) return;
         seen.add(url);
@@ -1151,7 +1211,7 @@ function confirmSchoolChange(nextLabel) {
       list.forEach(addWidget);
       addWidget("Widget.html");
 
-      if (current && !seen.has(current) && current.endsWith(".html")) {
+      if (current && !seen.has(current) && String(current).endsWith(".html")) {
         const opt = document.createElement("option");
         opt.value = current;
         opt.textContent = current.split("/").pop() || current;
@@ -1160,9 +1220,7 @@ function confirmSchoolChange(nextLabel) {
       }
 
       let target = current;
-      if (!seen.has(target)) {
-        target = "/widgets/Widget.html";
-      }
+      if (!seen.has(target)) target = "/widgets/Widget.html";
 
       widgetTemplateSelect.value = target;
       if (!widgetTemplateSelect.value && widgetTemplateSelect.options.length) {
@@ -1200,11 +1258,8 @@ function confirmSchoolChange(nextLabel) {
     const allow = !!(STATE.config && STATE.config.allowUpload);
 
     if (fieldWrapper) {
-      if (allow) {
-        fieldWrapper.classList.remove("hidden");
-      } else {
-        fieldWrapper.classList.add("hidden");
-      }
+      if (allow) fieldWrapper.classList.remove("hidden");
+      else fieldWrapper.classList.add("hidden");
     }
     uploadInput.disabled = !allow;
   }
@@ -1212,8 +1267,9 @@ function confirmSchoolChange(nextLabel) {
   function refreshImagePreview() {
     if (!imgPreview || !imgPreviewPlaceholder) return;
 
-    const url   = (STATE.image && STATE.image.url) || "";
-    const size  = (STATE.image && STATE.image.sizePercent) || 100;
+    const rawUrl = (STATE.image && STATE.image.url) || "";
+    const url    = rawUrl ? absolutizeImageUrl(rawUrl) : "";
+    const size   = (STATE.image && STATE.image.sizePercent) || 100;
 
     if (url) {
       imgPreview.src = url;
@@ -1272,98 +1328,84 @@ function confirmSchoolChange(nextLabel) {
     imgUploadBtn.addEventListener("click", openImageViewer);
   }
 
-// Dec 7
- function handleImageViewerMessage(event) {
-  const data = event.data || {};
-  if (!data || data.source !== "MSSImageViewer") return;
+  function handleImageViewerMessage(event) {
+    const data = event.data || {};
+    if (!data || data.source !== "MSSImageViewer") return;
 
-  const payload = data.payload || {};
+    // If you want to tighten later:
+    // if (event.origin !== window.location.origin) return;
 
-  if (data.type === "cancel") {
-    setStatus("Image viewer closed without changes.");
-    return;
-  }
+    const payload = data.payload || {};
 
-  if (data.type === "apply") {
-    const { slug, url, sizePercent, id } = payload;  // ← id from DB
-
-    if (!url) {
-      setStatus("Image viewer did not return an image URL.", true);
+    if (data.type === "cancel") {
+      setStatus("Image viewer closed without changes.");
       return;
     }
 
-    if (slug && slug !== SLUG) {
-      console.warn(
-        "[ConfigAdmin] Image from different slug:",
-        slug,
-        "(current SLUG=", SLUG, ")"
-      );
-    }
+    if (data.type === "apply") {
+      const { slug, url, sizePercent, id } = payload;
 
-    STATE.image = STATE.image || {};
-    if (typeof id === "number") {
-      STATE.image.id = id;                  // ← store branding_files.id
-    }
-    STATE.image.url = url;
-    if (typeof sizePercent === "number") {
-      STATE.image.sizePercent = sizePercent;
-    }
+      if (!url) {
+        setStatus("Image viewer did not return an image URL.", true);
+        return;
+      }
 
-    refreshImagePreview();
-    setDirty();
-    setStatus("Updated image from viewer. Don’t forget to Save.");
+      if (slug && slug !== SLUG) {
+        console.warn("[ConfigAdmin] Image from different slug:", slug, "(current SLUG=", SLUG, ")");
+      }
+
+      STATE.image = STATE.image || {};
+      if (typeof id === "number") STATE.image.id = id;
+      STATE.image.url = url;
+      if (typeof sizePercent === "number") STATE.image.sizePercent = sizePercent;
+
+      refreshImagePreview();
+      setDirty();
+      setStatus("Updated image from viewer. Don’t forget to Save.");
+    }
   }
-}
   window.addEventListener("message", handleImageViewerMessage);
 
   /* ------------------------------------------------------------------ */
   /* INIT                                                               */
   /* ------------------------------------------------------------------ */
 
- async function init() {
-  const session = requireAdminSession(
-    "Your admin session has ended. Please sign in again to manage school settings."
-  );
+  async function init() {
+    const session = requireAdminSession(
+      "Your admin session has ended. Please sign in again to manage school settings."
+    );
 
-  // Wire Admin Home button (DOM is ready because init runs on DOMContentLoaded)
-  wireAdminHomeButton();
 
-  console.log("[ConfigAdmin] Admin session:", session);
-  console.log("[ConfigAdmin] init() starting");
+    wireAdminHomeButton();
 
-  // Wire base UI
-  wireFormFields();
-  wireAfterDashboardEvents();
-  wireSave();
-  wireImageUpload();
-  wireDashboardSelector();
-  wireWidgetSelector();
+    console.log("[ConfigAdmin] Admin session:", session);
+    console.log("[ConfigAdmin] init() starting");
 
-  if (schoolRenameBtn) {
-    schoolRenameBtn.addEventListener("click", onSchoolRenameClick);
-  }
+    wireFormFields();
+    wireAfterDashboardEvents();
+    wireSave();
+    wireImageUpload();
+    wireDashboardSelector();
+    wireWidgetSelector();
 
-  if (schoolSelectEl) {
-    schoolSelectEl.addEventListener("change", onConfigSchoolChanged);
-  }
+    
+    if (schoolSelectEl)  schoolSelectEl.addEventListener("change", onConfigSchoolChanged);
 
-  const urlSlug = urlParams.get("slug");
-  if (!SLUG && urlSlug) {
-    SLUG = urlSlug;
-  }
-
-  await fetchConfigSchoolsForAdmin();
-
-  if (!SLUG) {
-    SLUG = urlSlug || "mss-demo";
-  }
-
-  syncSlugUi();
-
-  await loadFromServer();
-  await loadDashboardTemplates();
-  await loadWidgetTemplates();
+if (schoolRenameBtn) {
+  schoolRenameBtn.onclick = onSchoolRenameClick;
 }
 
-document.addEventListener("DOMContentLoaded", init);
+    await fetchConfigSchoolsForAdmin();
+
+    if (!SLUG) SLUG = urlParams.get("slug") || "mss-demo";
+
+    updateSlugInUrl(SLUG);
+    syncSlugUi();
+
+    await loadFromServer();
+    await loadDashboardTemplates();
+    await loadWidgetTemplates();
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
 })();

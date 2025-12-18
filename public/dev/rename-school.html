@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DEV – Rename School</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      background: #f8fafc;
+      padding: 40px;
+    }
+
+    .card {
+      max-width: 480px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 20px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-top: 16px;
+    }
+
+    select,
+    input {
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 8px;
+      border: none;
+      background: #1d4ed8;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    #status {
+      margin-top: 16px;
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    .error {
+      color: #b91c1c;
+    }
+
+    .ok {
+      color: #166534;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>DEV – Rename School</h1>
+
+    <label for="oldName">Existing school name</label>
+    <select id="oldName"></select>
+
+    <label for="newName">New school name</label>
+    <input id="newName" type="text" placeholder="Enter new name…" />
+
+    <button id="renameBtn">Update school name</button>
+
+    <div id="status"></div>
+  </div>
+
+<script>
+const oldSel = document.getElementById("oldName");
+const newInp = document.getElementById("newName");
+const status = document.getElementById("status");
+const btn = document.getElementById("renameBtn");
+
+function setStatus(msg, isError) {
+  status.textContent = msg || "";
+  status.className = isError ? "error" : "ok";
+}
+
+async function loadSchools() {
+  setStatus("Loading schools…");
+
+  const res = await fetch("/api/dev/schools");
+  const data = await res.json();
+
+  oldSel.innerHTML = "";
+
+  data.schools.forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r.name;
+    opt.textContent = r.name;
+    oldSel.appendChild(opt);
+  });
+
+  setStatus("");
+}
+
+btn.onclick = async () => {
+  const oldName = oldSel.value;
+  const newName = newInp.value.trim();
+
+  if (!newName) {
+    setStatus("Please enter a new name.", true);
+    return;
+  }
+
+  if (!confirm(`Rename:\n\n"${oldName}" → "${newName}"`)) {
+    return;
+  }
+
+  setStatus("Updating…");
+
+  const res = await fetch("/api/dev/school/rename", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ oldName, newName })
+  });
+
+  const data = await res.json();
+
+  if (!res.ok || data.ok === false) {
+    setStatus(data.message || "Rename failed.", true);
+    return;
+  }
+
+  setStatus(`Renamed to "${data.school.name}"`);
+  newInp.value = "";
+  await loadSchools();
+};
+
+// init
+loadSchools();
+</script>
+
+</body>
+</html>

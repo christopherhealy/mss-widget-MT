@@ -1,5 +1,5 @@
 <!-- WidgetAcademy_home.html — Widget Academy public landing + embedded MSS widget -->
-<!-- V7 -->
+<!-- V8 — Drop-zone only (no fallback, no duplicate widget-embed.js) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,9 +22,7 @@
       --wa-muted: #6b7280;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -100,9 +98,7 @@
       text-decoration: none;
     }
 
-    .wa-link:hover {
-      color: var(--wa-text);
-    }
+    .wa-link:hover { color: var(--wa-text); }
 
     .wa-cta-btn {
       border-radius: 999px;
@@ -124,9 +120,7 @@
       opacity: 0.85;
     }
 
-    .wa-cta-btn:hover {
-      background: #030712;
-    }
+    .wa-cta-btn:hover { background: #030712; }
 
     /* Layout ---------------------------------------------------------- */
     .wa-shell {
@@ -142,9 +136,7 @@
     }
 
     @media (max-width: 900px) {
-      .wa-shell {
-        grid-template-columns: minmax(0, 1fr);
-      }
+      .wa-shell { grid-template-columns: minmax(0, 1fr); }
     }
 
     /* Hero column ----------------------------------------------------- */
@@ -184,9 +176,7 @@
       color: #020617;
     }
 
-    .wa-hero-title strong {
-      color: var(--wa-accent);
-    }
+    .wa-hero-title strong { color: var(--wa-accent); }
 
     .wa-hero-subtitle {
       font-size: 14px;
@@ -306,7 +296,8 @@
       border-radius: 18px;
       border: 1px solid rgba(148, 163, 184, 0.6);
       background: #f9fafb;
-      overflow: visible; /* no fixed height; widget-embed.js sets iframe height */
+      overflow: visible; /* widget-embed.js can set iframe height */
+      padding: 10px;
     }
 
     /* Footer ---------------------------------------------------------- */
@@ -315,6 +306,14 @@
       padding: 12px 16px 20px;
       font-size: 11px;
       color: #9ca3af;
+    }
+
+    /* Optional: make pasted iframe fill the card nicely */
+    .wa-widget-frame-wrap iframe {
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      background: white;
     }
   </style>
 </head>
@@ -373,21 +372,9 @@
       </div>
 
       <ul class="wa-checklist">
-        <li>
-          <span class="wa-check">✓</span>
-          <span>Answer 3–4 short speaking questions (about 10 minutes).</span>
-        </li>
-        <li>
-          <span class="wa-check">✓</span>
-          <span>See your strengths and next steps at the B1–C1 CEFR levels.</span>
-        </li>
-        <li>
-          <span class="wa-check">✓</span>
-          <span>
-            After the test you’ll be invited to save your results and
-            request a placement with Widget Academy.
-          </span>
-        </li>
+        <li><span class="wa-check">✓</span><span>Answer 3–4 short speaking questions (about 10 minutes).</span></li>
+        <li><span class="wa-check">✓</span><span>See your strengths and next steps at the B1–C1 CEFR levels.</span></li>
+        <li><span class="wa-check">✓</span><span>After the test you’ll be invited to save your results and request a placement with Widget Academy.</span></li>
       </ul>
 
       <p class="wa-footnote">
@@ -406,22 +393,30 @@
             you’ll see your score and can sign up to join Widget Academy.
           </div>
         </div>
-        <div class="wa-badge-inline">
-          Powered by MSS Vox
-        </div>
+        <div class="wa-badge-inline">Powered by MSS Vox</div>
       </div>
 
-      <!-- Host div for the widget-embed script.
-           widget-embed.js will replace this with a responsive iframe and
-           auto-size it using postMessage from the widget. -->
       <div class="wa-widget-frame-wrap">
-        <div
-          class="mss-widget"
-          id="mss-widget-demo"
-          data-mss-slug="mss-demo"
-          data-mss-widget="/widgets/Widget3.html"
-          data-mss-maxwidth="720"
-        ></div>
+
+        <!-- ============================================================
+             PORTAL EMBED DROP ZONE
+             Paste the ENTIRE snippet from School Portal here, as-is.
+             IMPORTANT: Do NOT paste inside an HTML comment.
+             ============================================================ -->
+
+        <!-- BEGIN PORTAL EMBED SNIPPET -->
+        <!-- Paste here -->
+<!-- MySpeakingScore Speaking Widget -->
+<div
+  class="mss-widget"
+  data-mss-slug="12345-abc"
+  data-mss-widget="https://mss-widget-mt.vercel.app/widgets/Widget3.html"
+></div>
+<script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>
+<!-- End MySpeakingScore widget -->
+
+        <!-- END PORTAL EMBED SNIPPET -->
+
       </div>
     </section>
   </main>
@@ -430,13 +425,8 @@
     © <span id="wa-year"></span> Widget Academy · Speaking assessment powered by MySpeakingScore Vox.
   </footer>
 
-  <!-- MSS widget embed script: builds the iframe and manages height -->
-  <script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>
-
   <script>
-    // Tiny helper to keep the footer year fresh
-    document.getElementById("wa-year").textContent =
-      new Date().getFullYear();
+    document.getElementById("wa-year").textContent = new Date().getFullYear();
   </script>
 </body>
 </html>

@@ -1127,6 +1127,16 @@ function openHelpFor(index) {
     });
 }
 
+const helpCloseX = document.getElementById("helpCloseX");
+if (helpCloseX) {
+  helpCloseX.addEventListener("click", () => {
+    // Reuse your existing cancel/close path
+    const btn = document.getElementById("helpCancel");
+    if (btn) btn.click();
+    else closeHelpOverlay?.(); // if you have a close function
+  });
+}
+
 function wireHelpModal() {
   var cancel = $("helpCancel");
   if (cancel) {

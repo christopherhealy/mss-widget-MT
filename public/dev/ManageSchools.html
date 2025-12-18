@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manage Schools (DEV)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      background: #f8fafc;
+      padding: 32px;
+    }
+    h1 {
+      margin-bottom: 8px;
+    }
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      max-width: 520px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    }
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: 600;
+    }
+    select, input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      font-size: 14px;
+    }
+    .row {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary {
+      background: #1d4ed8;
+      color: #fff;
+    }
+    .danger {
+      background: #b91c1c;
+      color: #fff;
+    }
+    .status {
+      margin-top: 14px;
+      font-size: 14px;
+    }
+    .error {
+      color: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Manage Schools (DEV)</h1>
+  <p>Rename or delete schools directly in the database.</p>
+
+  <div class="card">
+    <label>
+      Select school
+      <select id="schoolSelect"></select>
+    </label>
+
+    <label>
+      New school name
+      <input id="newNameInput" placeholder="Enter new school name" />
+    </label>
+
+    <div class="row">
+      <button id="renameBtn" class="primary">Rename</button>
+      <button id="deleteBtn" class="danger">Delete</button>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+<script>
+  const schoolSelect = document.getElementById("schoolSelect");
+  const newNameInput = document.getElementById("newNameInput");
+  const renameBtn    = document.getElementById("renameBtn");
+  const deleteBtn    = document.getElementById("deleteBtn");
+  const statusEl     = document.getElementById("status");
+
+  function setStatus(msg, isError) {
+    statusEl.textContent = msg || "";
+    if (isError) statusEl.classList.add("error");
+    else statusEl.classList.remove("error");
+  }
+
+  function getSelectedSchoolId() {
+    const v = (schoolSelect && schoolSelect.value) ? String(schoolSelect.value) : "";
+    const id = Number(v);
+    return (Number.isFinite(id) && id > 0) ? id : null;
+  }
+
+  function getSelectedSchoolLabel() {
+    const opt = schoolSelect && schoolSelect.selectedIndex >= 0
+      ? schoolSelect.options[schoolSelect.selectedIndex]
+      : null;
+    return opt ? (opt.textContent || "") : "";
+  }
+
+  async function readJsonSafe(res) {
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.indexOf("application/json") >= 0) {
+      try { return await res.json(); } catch (_) {}
+    }
+    const text = await res.text().catch(() => "");
+    return { ok: false, message: text ? text.slice(0, 300) : "Non-JSON response" };
+  }
+
+  async function loadSchools() {
+    setStatus("Loading schools…", false);
+    schoolSelect.innerHTML = "";
+    schoolSelect.disabled = true;
+
+    const res = await fetch("/api/dev/schools", { cache: "no-store" });
+    const data = await readJsonSafe(res);
+
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.message || ("Failed to load schools (HTTP " + res.status + ")"));
+    }
+
+    const schools = Array.isArray(data.schools) ? data.schools : [];
+
+    if (!schools.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No schools found";
+      schoolSelect.appendChild(opt);
+      setStatus("No schools found.", true);
+      return;
+    }
+
+    for (let i = 0; i < schools.length; i++) {
+      const s = schools[i];
+      const opt = document.createElement("option");
+      opt.value = String(s.id);
+      opt.textContent = (s.name || "(unnamed)") + (s.slug ? ("  (slug: " + s.slug + ")") : "");
+      schoolSelect.appendChild(opt);
+    }
+
+    schoolSelect.disabled = false;
+    setStatus("Loaded " + schools.length + " schools.", false);
+  }
+
+  renameBtn.addEventListener("click", async function () {
+    const schoolId = getSelectedSchoolId();
+    const label    = getSelectedSchoolLabel();
+    const newName  = (newNameInput.value || "").trim();
+
+    if (!schoolId || !newName) {
+      setStatus("Select a school and enter a new name.", true);
+      return;
+    }
+
+    if (!confirm("Rename school?\n\n" + label + "\n\nNew name:\n" + newName)) return;
+
+    setStatus("Renaming…", false);
+
+    const res = await fetch("/api/dev/school/rename", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schoolId: schoolId, newName: newName })
+    });
+
+    const data = await readJsonSafe(res);
+
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.message || ("Rename failed (HTTP " + res.status + ")"));
+    }
+
+    setStatus('Renamed to "' + (data.school && data.school.name ? data.school.name : newName) + '".', false);
+    newNameInput.value = "";
+    await loadSchools();
+  });
+
+  deleteBtn.addEventListener("click", async function () {
+    const schoolId = getSelectedSchoolId();
+    const label    = getSelectedSchoolLabel();
+
+    if (!schoolId) {
+      setStatus("Select a school to delete.", true);
+      return;
+    }
+
+    if (!confirm("PURGE school:\n\n" + label + "\n\nThis cannot be undone.")) return;
+
+    setStatus("Purging…", false);
+
+    const res = await fetch("/api/dev/school/purge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schoolId: schoolId, mode: "PURGE", dryRun: false })
+    });
+
+    const data = await readJsonSafe(res);
+
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.message || ("Purge failed (HTTP " + res.status + ")"));
+    }
+
+    setStatus('Purged "' + label + '".', false);
+    await loadSchools();
+  });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    loadSchools().catch(function (e) {
+      console.error("[ManageSchools] loadSchools error:", e);
+      setStatus(e.message || "Error loading schools", true);
+    });
+  });
+</script>
+
+</body>
+</html>

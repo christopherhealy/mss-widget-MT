@@ -100,6 +100,26 @@
        font-size: 13px;
        background-color: #fff;
      }
+.modalHead { position: relative; }
+
+.modalClose{
+  position:absolute;
+  top:10px;
+  right:12px;
+  width:34px;
+  height:34px;
+  border-radius:10px;
+  border:1px solid rgba(148,163,184,0.55);
+  background:rgba(255,255,255,0.85);
+  cursor:pointer;
+  font-size:18px;
+  line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.modalClose:hover { background:#fff; }
   </style>
 </head>
 <body>
@@ -239,6 +259,7 @@
     <div class="modal" role="dialog" aria-modal="true" aria-label="Question Help">
       <div class="modalHead">
         <div class="title">Question Help</div>
+        <button id="helpCloseX" type="button" class="modalClose" aria-label="Close">✕</button>
       </div>
       <div class="modalBody">
         <div class="muted" style="margin-bottom:8px;">

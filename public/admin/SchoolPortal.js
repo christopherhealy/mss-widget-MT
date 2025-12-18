@@ -706,38 +706,61 @@ async function fetchSchoolsForAdmin() {
     iframeEl.src = url;
   }
 
-  // -----------------------------------------------------------------------
-  // Embed snippet builder
-  // -----------------------------------------------------------------------
+ // -----------------------------------------------------------------------
+ // Embed snippet builder (FIX: absolute widget URL for 3rd-party sites) Dec 17
+// -----------------------------------------------------------------------
 
-  function buildEmbedSnippet() {
-    if (!embedSnippetEl || !CURRENT_SLUG) return;
+function buildEmbedSnippet() {
+  if (!embedSnippetEl || !CURRENT_SLUG) return;
 
-    const safeSlug = String(CURRENT_SLUG || "").trim() || "mss-demo";
+  const safeSlug = String(CURRENT_SLUG || "").trim() || "mss-demo";
 
-    let widgetHtmlPath = widgetPath || "/widgets/Widget3.html";
-    if (
-      !/^https?:\/\//i.test(widgetHtmlPath) &&
-      !widgetHtmlPath.startsWith("/")
-    ) {
-      widgetHtmlPath = `/${widgetHtmlPath}`;
+  // Always generate embed code that works on THIRD-PARTY sites.
+  // So: widget URL must be ABSOLUTE, not "/widgets/WidgetMax.html".
+  //
+  // If you ever move production host, change this one constant.
+  const PROD_BASE = "https://mss-widget-mt.vercel.app";
+
+  // Normalize widget path
+  let widgetHtmlPath = widgetPath || "/widgets/Widget3.html";
+
+  // If widgetPath is relative like "WidgetMax.html", normalize to "/widgets/WidgetMax.html"
+  if (!/^https?:\/\//i.test(widgetHtmlPath)) {
+    if (!widgetHtmlPath.startsWith("/")) {
+      // If it's just "WidgetMax.html" (or "widgets/WidgetMax.html") normalize
+      if (/^widgets\//i.test(widgetHtmlPath)) {
+        widgetHtmlPath = "/" + widgetHtmlPath;
+      } else if (/\.html$/i.test(widgetHtmlPath)) {
+        widgetHtmlPath = "/widgets/" + widgetHtmlPath;
+      } else {
+        // last resort: treat as a path segment
+        widgetHtmlPath = "/" + widgetHtmlPath;
+      }
     }
-
-    const snippet = [
-      "<!-- MySpeakingScore Speaking Widget -->",
-      "<div",
-      '  class="mss-widget"',
-      `  data-mss-slug="${safeSlug}"`,
-      `  data-mss-widget="${widgetHtmlPath}"`,
-      "></div>",
-      '<script async src="https://mss-widget-mt.vercel.app/embed/widget-embed.js"></script>',
-      "<!-- End MySpeakingScore widget -->",
-      "",
-    ].join("\n");
-
-    embedSnippetEl.value = snippet;
   }
 
+  // Build absolute widget URL if it's not already absolute
+  const widgetUrl = /^https?:\/\//i.test(widgetHtmlPath)
+    ? widgetHtmlPath
+    : `${PROD_BASE}${widgetHtmlPath}`;
+
+  // Script URL should also be absolute
+  const embedJsUrl = `${PROD_BASE}/embed/widget-embed.js`;
+
+  const snippet = [
+    "<!-- MySpeakingScore Speaking Widget -->",
+    "<div",
+    '  class="mss-widget"',
+    `  data-mss-slug="${safeSlug}"`,
+    `  data-mss-widget="${widgetUrl}"`,
+    "></div>",
+    `<script async src="${embedJsUrl}"></script>`,
+    "<!-- End MySpeakingScore widget -->",
+    "",
+  ].join("\n");
+
+  embedSnippetEl.value = snippet;
+}
   function copyEmbedToClipboard() {
     if (!embedSnippetEl || !btnCopyEmbed) return;
     embedSnippetEl.select();

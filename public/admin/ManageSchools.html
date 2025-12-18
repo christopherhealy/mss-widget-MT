@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manage Schools</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Prefer your shared stylesheet if you have it -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <style>
+    body { background:#f8fafc; }
+    .page { padding: 28px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+    h1 { margin:0 0 6px 0; font-size:28px; }
+    .sub { margin:0; color:#64748b; }
+    .wrap { margin-top:18px; max-width:720px; }
+    .card {
+      background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+      padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.06);
+    }
+    label { display:block; margin-top:14px; font-weight:700; color:#0f172a; }
+    .help { margin-top:6px; color:#64748b; font-size:13px; }
+    select, input {
+      width:100%; box-sizing:border-box;
+      padding:10px 12px; margin-top:8px;
+      border-radius:10px; border:1px solid #cbd5e1; font-size:14px;
+      background:#fff;
+    }
+    /* Dropdown overflow fix */
+    select { max-width:100%; }
+    option { max-width: 100%; }
+    .row { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }
+    .btn {
+      padding:10px 14px; border-radius:10px; border:1px solid transparent;
+      font-weight:800; cursor:pointer;
+    }
+    .btn-primary { background:#1d4ed8; color:#fff; }
+    .btn-danger  { background:#b91c1c; color:#fff; }
+    .btn-ghost   { background:#fff; color:#0f172a; border-color:#cbd5e1; }
+    .status { margin-top:14px; font-size:14px; color:#0f172a; }
+    .status.error { color:#b91c1c; }
+
+    /* Modal */
+    #mss-modal-overlay {
+      position:fixed; inset:0; background:rgba(15,23,42,.55);
+      display:none; align-items:center; justify-content:center; z-index:9999; padding:16px;
+    }
+    #mss-modal {
+      width:min(560px, 100%);
+      background:#fff; border-radius:12px; overflow:hidden;
+      box-shadow:0 20px 50px rgba(15,23,42,.25);
+      font-family:system-ui, -apple-system, Segoe UI, sans-serif;
+    }
+    #mss-modal .top { padding:16px 18px; border-bottom:1px solid #e2e8f0; }
+    #mss-modal .title { font-size:16px; font-weight:800; color:#0f172a; }
+    #mss-modal .body { margin-top:8px; font-size:13px; color:#64748b; line-height:1.35; }
+    #mss-modal .actions { padding:16px 18px; display:flex; gap:10px; justify-content:flex-end; }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <h1>Manage Schools</h1>
+        <p class="sub">Super Admin tool for renaming schools and purging test tenants.</p>
+      </div>
+
+      <button class="btn btn-ghost" id="btn-close">Close</button>
+    </div>
+
+    <div class="wrap">
+      <div class="card">
+        <label for="schoolSelect">Select school</label>
+        <div class="help">Select by name; slug is shown for clarity.</div>
+        <select id="schoolSelect" disabled></select>
+
+        <label for="newNameInput">New school name</label>
+        <div class="help">Renaming updates the <b>schools.name</b> field (unique).</div>
+        <input id="newNameInput" placeholder="Enter new school name" />
+
+        <div class="row">
+          <button id="renameBtn" class="btn btn-primary">Rename</button>
+          <button id="purgeBtn"  class="btn btn-danger">Purge</button>
+        </div>
+
+        <div id="status" class="status"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="mss-modal-overlay" aria-hidden="true">
+    <div id="mss-modal" role="dialog" aria-modal="true">
+      <div class="top">
+        <div class="title" id="mss-modal-title">Confirm</div>
+        <div class="body"  id="mss-modal-body">Body</div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" id="mss-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="mss-modal-ok">Continue</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  const schoolSelect = document.getElementById("schoolSelect");
+  const newNameInput = document.getElementById("newNameInput");
+  const renameBtn    = document.getElementById("renameBtn");
+  const purgeBtn     = document.getElementById("purgeBtn");
+  const statusEl     = document.getElementById("status");
+  const closeBtn     = document.getElementById("btn-close");
+
+  // Modal elements
+  const overlay = document.getElementById("mss-modal-overlay");
+  const mTitle  = document.getElementById("mss-modal-title");
+  const mBody   = document.getElementById("mss-modal-body");
+  const mOk     = document.getElementById("mss-modal-ok");
+  const mCancel = document.getElementById("mss-modal-cancel");
+
+  function setStatus(msg, isError=false) {
+    statusEl.textContent = msg || "";
+    statusEl.classList.toggle("error", !!isError);
+  }
+
+  function getSelectedSchoolId() {
+    const v = schoolSelect?.value ? String(schoolSelect.value) : "";
+    const id = Number(v);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+
+  function getSelectedSchoolLabel() {
+    const opt = schoolSelect?.selectedOptions?.[0];
+    return opt?.textContent ? opt.textContent : "";
+  }
+
+  async function readJsonSafe(res) {
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) return res.json();
+    const text = await res.text();
+    return { ok:false, message: text ? text.slice(0, 500) : "Non-JSON response" };
+  }
+
+  function confirmModal({ title, bodyHtml, okText, okClass }) {
+    return new Promise((resolve) => {
+      mTitle.textContent = title || "Confirm";
+      mBody.innerHTML = bodyHtml || "";
+      mOk.textContent = okText || "Continue";
+
+      // button tone
+      mOk.className = "btn " + (okClass || "btn-primary");
+
+      const cleanup = (choice) => {
+        overlay.style.display = "none";
+        overlay.setAttribute("aria-hidden", "true");
+        mOk.onclick = null;
+        mCancel.onclick = null;
+        document.onkeydown = null;
+        resolve(choice);
+      };
+
+      mOk.onclick = () => cleanup(true);
+      mCancel.onclick = () => cleanup(false);
+
+      overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+
+      document.onkeydown = (e) => {
+        if (e.key === "Escape") cleanup(false);
+        if (e.key === "Enter")  cleanup(true);
+      };
+
+      overlay.style.display = "flex";
+      overlay.setAttribute("aria-hidden", "false");
+    });
+  }
+
+  async function loadSchools() {
+    setStatus("Loading schools…");
+    schoolSelect.innerHTML = "";
+    schoolSelect.disabled = true;
+
+    try {
+      const res  = await fetch("/api/dev/schools", { cache: "no-store" });
+      const data = await readJsonSafe(res);
+
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.message || `Failed to load schools (HTTP ${res.status})`);
+      }
+
+      const schools = Array.isArray(data.schools) ? data.schools : [];
+      if (!schools.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No schools found";
+        schoolSelect.appendChild(opt);
+        setStatus("No schools found.", true);
+        return;
+      }
+
+      for (const s of schools) {
+        const opt = document.createElement("option");
+        opt.value = String(s.id);
+        // keep this short so it doesn’t visually blow out the select
+        const slug = s.slug ? ` (slug: ${s.slug})` : "";
+        opt.textContent = `${s.name}${slug}`;
+        schoolSelect.appendChild(opt);
+      }
+
+      schoolSelect.disabled = false;
+      setStatus(`Loaded ${schools.length} schools.`);
+    } catch (e) {
+      console.error("[ManageSchools] loadSchools:", e);
+      setStatus(e?.message || "Error loading schools", true);
+    }
+  }
+
+  renameBtn.addEventListener("click", async () => {
+    const schoolId = getSelectedSchoolId();
+    const label    = getSelectedSchoolLabel();
+    const newName  = (newNameInput.value || "").trim();
+
+    if (!schoolId || !newName) {
+      setStatus("Select a school and enter a new name.", true);
+      return;
+    }
+
+    const ok = await confirmModal({
+      title: "Rename school?",
+      bodyHtml: `
+        <p style="margin:0;">You are renaming:</p>
+        <p style="margin:8px 0 0; font-weight:800; color:#0f172a;">${label}</p>
+        <p style="margin:10px 0 0;">New name:</p>
+        <p style="margin:8px 0 0; font-weight:800; color:#0f172a;">${newName}</p>
+      `,
+      okText: "Rename",
+      okClass: "btn-primary",
+    });
+    if (!ok) return;
+
+    setStatus("Renaming…");
+
+    try {
+      const res = await fetch("/api/dev/school/rename", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schoolId, newName }),
+      });
+
+      const data = await readJsonSafe(res);
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.message || `Rename failed (HTTP ${res.status})`);
+      }
+
+      setStatus(`Renamed to "${data.school?.name || newName}".`);
+      newNameInput.value = "";
+      await loadSchools();
+    } catch (e) {
+      console.error("[ManageSchools] rename:", e);
+      setStatus(e?.message || "Rename error", true);
+    }
+  });
+
+  purgeBtn.addEventListener("click", async () => {
+    const schoolId = getSelectedSchoolId();
+    const label    = getSelectedSchoolLabel();
+
+    if (!schoolId) {
+      setStatus("Select a school to purge.", true);
+      return;
+    }
+
+    const ok = await confirmModal({
+      title: "Purge school?",
+      bodyHtml: `
+        <p style="margin:0;">
+          This will run <b>admin_purge_school</b> and remove all related data for:
+        </p>
+        <p style="margin:8px 0 0; font-weight:900; color:#b91c1c;">${label}</p>
+        <p style="margin:10px 0 0;">
+          This cannot be undone.
+        </p>
+      `,
+      okText: "Purge",
+      okClass: "btn-danger",
+    });
+    if (!ok) return;
+
+    setStatus("Purging…");
+
+    try {
+      const res = await fetch("/api/dev/school/purge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schoolId, mode: "PURGE", dryRun: false }),
+      });
+
+      const data = await readJsonSafe(res);
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.message || `Purge failed (HTTP ${res.status})`);
+      }
+
+      setStatus("Purge complete.");
+      await loadSchools();
+    } catch (e) {
+      console.error("[ManageSchools] purge:", e);
+      setStatus(e?.message || "Purge error", true);
+    }
+  });
+
+  closeBtn.addEventListener("click", () => {
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.focus();
+        window.close();
+        return;
+      }
+    } catch (_) {}
+    window.location.href = "/admin-home/AdminHome.html";
+  });
+
+  document.addEventListener("DOMContentLoaded", loadSchools);
+})();
+</script>
+</body>
+</html>
