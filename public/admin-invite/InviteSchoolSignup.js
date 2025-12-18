@@ -1,8 +1,5 @@
 // /public/admin-invite/InviteSchoolSignup.js
-// v1.2 — JWT token version (prod-ready)
-// - Reads mssAdminSession + mss_admin_token
-// - Sends Authorization: Bearer <token>
-// - Payload matches server: { toEmail, firstName, subject, messageHtml, bcc }
+// v1.3 — JWT token + RTE sync fix (single submit handler)
 
 console.log("✅ InviteSchoolSignup.js loaded");
 
@@ -18,8 +15,12 @@ console.log("✅ InviteSchoolSignup.js loaded");
   const toEmailEl = document.getElementById("toEmail");
   const firstNameEl = document.getElementById("firstName");
   const subjectEl = document.getElementById("subject");
-  const messageEl = document.getElementById("messageHtml");
+  const messageEl = document.getElementById("messageHtml"); // hidden textarea (server payload)
   const bccEl = document.getElementById("bcc");
+
+  // RTE
+  const editorEl = document.getElementById("messageEditor");
+  const toolbarEl = document.querySelector(".rte-toolbar");
 
   function setStatus(msg, isError = false) {
     if (!statusEl) return;
@@ -38,7 +39,7 @@ console.log("✅ InviteSchoolSignup.js loaded");
 
   function readToken() {
     try {
-      return localStorage.getItem(LS_TOKEN_KEY) || "";
+      return (localStorage.getItem(LS_TOKEN_KEY) || "").trim();
     } catch {
       return "";
     }
@@ -56,8 +57,6 @@ console.log("✅ InviteSchoolSignup.js loaded");
   function defaultMessage(firstName) {
     const name = firstName ? firstName.trim() : "";
     const greet = name ? `Hi ${name},` : "Hi there,";
-
-    // IMPORTANT: adjust if your signup path differs
     const signupUrl = `${window.location.origin}/signup/SchoolSignUp.html`;
 
     return `
@@ -70,20 +69,7 @@ console.log("✅ InviteSchoolSignup.js loaded");
     `.trim();
   }
 
-  if (messageEl) messageEl.value = defaultMessage("");
-
-  if (firstNameEl && messageEl) {
-    firstNameEl.addEventListener("input", () => {
-      if (messageEl.dataset.touched === "1") return;
-      messageEl.value = defaultMessage(firstNameEl.value);
-    });
-
-    messageEl.addEventListener("input", () => {
-      messageEl.dataset.touched = "1";
-    });
-  }
-
-  // Guard access (client-side UX only — server must enforce JWT + superadmin)
+  // Guard access (UX only — server must enforce)
   const session = readSession();
   if (!isSuperAdminSession(session)) {
     setStatus("Access denied (Super Admin only).", true);
@@ -96,7 +82,56 @@ console.log("✅ InviteSchoolSignup.js loaded");
     console.error("[InviteSchoolSignup] Missing #inviteForm");
     return;
   }
+  if (!editorEl) {
+    console.error("[InviteSchoolSignup] Missing #messageEditor");
+    return;
+  }
+  if (!messageEl) {
+    console.error("[InviteSchoolSignup] Missing #messageHtml (hidden textarea)");
+    return;
+  }
 
+  // Init editor + hidden textarea
+  editorEl.innerHTML = defaultMessage("");
+  messageEl.value = editorEl.innerHTML;
+  editorEl.dataset.touched = "0";
+
+  // If firstName changes and user hasn't edited, regenerate message
+  if (firstNameEl) {
+    firstNameEl.addEventListener("input", () => {
+      if (editorEl.dataset.touched === "1") return;
+      editorEl.innerHTML = defaultMessage(firstNameEl.value);
+      messageEl.value = editorEl.innerHTML;
+    });
+  }
+
+  // Mark as touched when user edits
+  editorEl.addEventListener("input", () => {
+    editorEl.dataset.touched = "1";
+    messageEl.value = editorEl.innerHTML.trim();
+  });
+
+  // Toolbar actions
+  toolbarEl?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    if (btn.dataset.cmd) {
+      document.execCommand(btn.dataset.cmd, false, null);
+      editorEl.focus();
+    }
+
+    if (btn.dataset.link) {
+      const url = prompt("Enter link URL:");
+      if (url) document.execCommand("createLink", false, url);
+      editorEl.focus();
+    }
+
+    // keep textarea synced
+    messageEl.value = editorEl.innerHTML.trim();
+  });
+
+  // SINGLE submit handler (sync → payload → validate → send)
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -106,18 +141,22 @@ console.log("✅ InviteSchoolSignup.js loaded");
       return;
     }
 
+    // Sync editor -> hidden textarea -> payload
+    messageEl.value = editorEl.innerHTML.trim();
+
     const payload = {
-       toEmail: (toEmailEl?.value || "").trim(),
-       subject: (subjectEl?.value || "").trim(),
-       messageHtml: (messageEl?.value || "").trim(), // HTML allowed
-       bcc: (bccEl?.value || "").trim(),
+      toEmail: (toEmailEl?.value || "").trim(),
+      subject: (subjectEl?.value || "").trim(),
+      messageHtml: (messageEl?.value || "").trim(),
+      bcc: (bccEl?.value || "").trim(),
       firstName: (firstNameEl?.value || "").trim(),
     };
 
-if (!payload.toEmail || !payload.subject || !payload.messageHtml) {
-  setStatus("Recipient Email, Subject, and Message are required.", true);
-  return;
-}
+    if (!payload.toEmail || !payload.subject || !payload.messageHtml) {
+      setStatus("Recipient Email, Subject, and Message are required.", true);
+      return;
+    }
+
     setStatus("Sending…");
 
     try {
@@ -141,53 +180,12 @@ if (!payload.toEmail || !payload.subject || !payload.messageHtml) {
       form.reset();
 
       if (subjectEl) subjectEl.value = "Thanks — please create your School Sign-up";
-      if (messageEl) {
-        messageEl.dataset.touched = "0";
-        messageEl.value = defaultMessage("");
-      }
+      editorEl.dataset.touched = "0";
+      editorEl.innerHTML = defaultMessage("");
+      messageEl.value = editorEl.innerHTML;
     } catch (err) {
       console.error(err);
       setStatus("Network error sending invite.", true);
     }
   });
-
-const editorEl = document.getElementById("messageEditor");
-
-// init
-editorEl.innerHTML = defaultMessage("");
-messageEl.value = editorEl.innerHTML;
-
-// touched
-editorEl.addEventListener("input", () => { editorEl.dataset.touched = "1"; });
-
-// firstName change (only if not touched)
-firstNameEl.addEventListener("input", () => {
-  if (editorEl.dataset.touched === "1") return;
-  editorEl.innerHTML = defaultMessage(firstNameEl.value);
-});
-
-// toolbar
-document.querySelector(".rte-toolbar")?.addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-
-  if (btn.dataset.cmd) {
-    document.execCommand(btn.dataset.cmd, false, null);
-    editorEl.focus();
-  }
-
-  if (btn.dataset.link) {
-    const url = prompt("Enter link URL:");
-    if (url) document.execCommand("createLink", false, url);
-    editorEl.focus();
-  }
-});
-
-// submit: copy editor HTML into hidden textarea
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  messageEl.value = editorEl.innerHTML.trim();
-  // then proceed with your existing payload.messageHtml = messageEl.value
-});
-
 })();

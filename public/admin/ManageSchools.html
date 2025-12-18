@@ -113,7 +113,7 @@
   function getAdminApiBase() {
     const origin = window.location.origin || "";
 
-    // Local + Render-hosted pages hit same origin paths
+    // Local + Render-hosted pages hit same-origin paths
     if (
       origin.includes("localhost") ||
       origin.includes("127.0.0.1") ||
@@ -130,10 +130,10 @@
 
   const ADMIN_API_BASE = getAdminApiBase();
 
-  // ✅ Correct key for JWT (as per your screenshot)
+  // JWT token key (current)
   const LS_ADMIN_TOKEN = "mss_admin_token";
 
-  // Optional backwards-compat keys (in case older pages wrote these)
+  // Backwards-compat fallbacks (safe to keep)
   const LS_ADMIN_KEY_FALLBACK = "mss_admin_key";
   const LS_ADMIN_SESSION = "mssAdminSession";
 
@@ -145,7 +145,6 @@
       const t2 = (localStorage.getItem(LS_ADMIN_KEY_FALLBACK) || "").trim();
       if (t2) return t2;
 
-      // optional: session object fallback
       const raw = localStorage.getItem(LS_ADMIN_SESSION);
       if (raw) {
         const sess = JSON.parse(raw);
@@ -153,7 +152,6 @@
         if (t3) return t3;
       }
     } catch (_) {}
-
     return "";
   }
 
@@ -168,9 +166,19 @@
     return `${ADMIN_API_BASE}${path}`;
   }
 
-  /* -------------------------------------------------- */
-  /* rest of ManageSchools code continues...             */
-  /* -------------------------------------------------- */
+  function authMessage(res, data) {
+    if (res.status === 401) return "Not logged in (missing/expired admin token). Please sign in again.";
+    if (res.status === 403) return "Forbidden. This tool requires Super Admin privileges.";
+    return (data && data.message) ? data.message : `Request failed (HTTP ${res.status})`;
+  }
+
+  async function readJsonSafe(res) {
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) return res.json();
+    const text = await res.text();
+    return { ok: false, message: text ? text.slice(0, 500) : "Non-JSON response" };
+  }
+
   /* -------------------------------------------------- */
   /* ELEMENTS                                            */
   /* -------------------------------------------------- */
@@ -204,23 +212,6 @@
     return opt?.textContent ? opt.textContent : "";
   }
 
-  async function readJsonSafe(res) {
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("application/json")) return res.json();
-    const text = await res.text();
-    return { ok:false, message: text ? text.slice(0, 500) : "Non-JSON response" };
-  }
-
-  function friendlyAuthError(res, data) {
-    if (res.status === 401) {
-      return "Not logged in (missing/expired admin token). Please sign in again.";
-    }
-    if (res.status === 403) {
-      return "Forbidden. This tool requires Super Admin privileges.";
-    }
-    return (data && data.message) ? data.message : `Request failed (HTTP ${res.status})`;
-  }
-
   function confirmModal({ title, bodyHtml, okText, okClass }) {
     return new Promise((resolve) => {
       mTitle.textContent = title || "Confirm";
@@ -233,6 +224,7 @@
         overlay.setAttribute("aria-hidden", "true");
         mOk.onclick = null;
         mCancel.onclick = null;
+        overlay.onclick = null;
         document.onkeydown = null;
         resolve(choice);
       };
@@ -261,17 +253,16 @@
     schoolSelect.disabled = true;
 
     try {
-      const res  = await fetch(api("/api/admin/manage-schools/schools"), {
+      const res = await fetch(api("/api/admin/manage-schools/schools"), {
         method: "GET",
-        headers: adminHeaders(),
         cache: "no-store",
-        credentials: "include", // harmless; helps if you later add cookies
+        headers: adminHeaders(),
       });
 
       const data = await readJsonSafe(res);
 
       if (!res.ok || data.ok === false) {
-        throw new Error(friendlyAuthError(res, data));
+        throw new Error(authMessage(res, data));
       }
 
       const schools = Array.isArray(data.schools) ? data.schools : [];
@@ -300,7 +291,7 @@
     }
   }
 
-  renameBtn.addEventListener("click", async () => {
+  async function renameSchool() {
     const schoolId = getSelectedSchoolId();
     const label    = getSelectedSchoolLabel();
     const newName  = (newNameInput.value || "").trim();
@@ -329,14 +320,13 @@
       const res = await fetch(api("/api/admin/manage-schools/rename"), {
         method: "PUT",
         headers: adminHeaders({ "Content-Type": "application/json" }),
-        credentials: "include",
         body: JSON.stringify({ schoolId, newName }),
       });
 
       const data = await readJsonSafe(res);
 
       if (!res.ok || data.ok === false) {
-        throw new Error(friendlyAuthError(res, data));
+        throw new Error(authMessage(res, data));
       }
 
       setStatus(`Renamed to "${data.school?.name || newName}".`);
@@ -346,9 +336,9 @@
       console.error("[ManageSchools] rename:", e);
       setStatus(e?.message || "Rename error", true);
     }
-  });
+  }
 
-  purgeBtn.addEventListener("click", async () => {
+  async function purgeSchool() {
     const schoolId = getSelectedSchoolId();
     const label    = getSelectedSchoolLabel();
 
@@ -377,14 +367,13 @@
       const res = await fetch(api("/api/admin/manage-schools/purge"), {
         method: "POST",
         headers: adminHeaders({ "Content-Type": "application/json" }),
-        credentials: "include",
         body: JSON.stringify({ schoolId, mode: "PURGE", dryRun: false }),
       });
 
       const data = await readJsonSafe(res);
 
       if (!res.ok || data.ok === false) {
-        throw new Error(friendlyAuthError(res, data));
+        throw new Error(authMessage(res, data));
       }
 
       setStatus("Purge complete.");
@@ -393,18 +382,28 @@
       console.error("[ManageSchools] purge:", e);
       setStatus(e?.message || "Purge error", true);
     }
-  });
+  }
 
-  closeBtn.addEventListener("click", () => {
-    try {
-      if (window.opener && !window.opener.closed) {
-        window.opener.focus();
-        window.close();
-        return;
-      }
-    } catch (_) {}
-    window.location.href = "/admin-home/AdminHome.html";
-  });
+  /* -------------------------------------------------- */
+  /* WIRING                                              */
+  /* -------------------------------------------------- */
+
+  if (renameBtn) renameBtn.addEventListener("click", renameSchool);
+  if (purgeBtn)  purgeBtn.addEventListener("click", purgeSchool);
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      // Prefer closing if opened in a popup or viewer frame
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.focus();
+          window.close();
+          return;
+        }
+      } catch (_) {}
+      window.location.href = "/admin-home/AdminHome.html";
+    });
+  }
 
   document.addEventListener("DOMContentLoaded", loadSchools);
 })();

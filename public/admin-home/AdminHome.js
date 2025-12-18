@@ -152,14 +152,15 @@ console.log("✅ AdminHome.js loaded");
         });
       }
     }
+
    // Super admin only — School Sign Up
-    if (btnSchoolSignup) {
-      btnSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
-       if (superAdmin) {
-         btnSchoolSignup.addEventListener("click", () => {
-         openInViewer("School Sign Up", SCHOOL_SIGNUP_URL);
-       });
-   }
+if (btnSchoolSignup) {
+  btnSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
+  if (superAdmin) {
+    btnSchoolSignup.addEventListener("click", () => {
+      openInViewer("School Sign Up", SCHOOL_SIGNUP_URL);
+    });
+  }
 }
     if (btnLogout) {
       btnLogout.addEventListener("click", (e) => {

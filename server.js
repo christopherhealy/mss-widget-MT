@@ -3118,26 +3118,28 @@ app.post(
   requireAdminAuth,
   requireSuperAdmin,
   async (req, res) => {
-    const body = req.body || {};
+   const body = req.body || {};
 
-    const toEmail = String(body.to || "").trim().toLowerCase();
-    const firstName = String(body.firstName || "").trim();
-    const subject = String(body.subject || "").trim();
-    const messageHtml = String(body.message || "").trim(); // HTML allowed
-    const bcc = String(body.bcc || "").trim();
+// Accept BOTH naming conventions:
+//  - Legacy: to, message
+//  - Newer UI: toEmail, messageHtml
+const toEmail = String(body.toEmail ?? body.to ?? "").trim().toLowerCase();
+const firstName = String(body.firstName ?? "").trim();
+const subject = String(body.subject ?? "").trim();
+const messageHtml = String(body.messageHtml ?? body.message ?? "").trim(); // HTML allowed
+const bcc = String(body.bcc ?? "").trim();
 
-    // available if you want it
-    const senderEmail = req.adminAuth?.email || null;
-    const senderAdminId = req.adminAuth?.aid || null;
+// available if you want it
+const senderEmail = req.adminAuth?.email || null;
+const senderAdminId = req.adminAuth?.aid || null;
 
-    if (!toEmail || !subject || !messageHtml) {
-      return res.status(400).json({
-        ok: false,
-        error: "validation_error",
-        message: "to, subject, and message are required.",
-      });
-    }
-
+if (!toEmail || !subject || !messageHtml) {
+  return res.status(400).json({
+    ok: false,
+    error: "validation_error",
+    message: "to, subject, and message are required.",
+  });
+}
     try {
       await mailTransporter.sendMail({
         from: `"MySpeakingScore" <${smtpUser}>`,
@@ -3322,20 +3324,9 @@ app.post("/api/school-signup/v2", async (req, res) => {
 // ---------------------------------------------------------------------
 // Manage Schools (Super Admin)
 // ---------------------------------------------------------------------
-// Prereqs elsewhere in server:
-//   app.use(express.json());
-//   app.use(cors(corsOptions));
-//   requireAdminAuth, requireSuperAdmin defined and in scope
-//   const pool = new Pool(...)
 
-// Helpful for preflight debugging; safe to keep.
-// If you already have app.use(cors(...)) this will still work fine.
 app.options("/api/admin/manage-schools/*", (req, res) => res.sendStatus(204));
 
-/**
- * GET /api/admin/manage-schools/schools
- * Returns: { ok:true, schools:[{id,name,slug}, ...] }
- */
 app.get(
   "/api/admin/manage-schools/schools",
   requireAdminAuth,
@@ -3348,84 +3339,46 @@ app.get(
       return res.json({ ok: true, schools: rows });
     } catch (err) {
       console.error("[ManageSchools] list error:", err);
-      return res.status(500).json({
-        ok: false,
-        message: err.message || "Server error.",
-      });
+      return res.status(500).json({ ok: false, message: err.message || "Server error." });
     }
   }
 );
 
-/**
- * PUT /api/admin/manage-schools/school/rename
- * Body: { schoolId:number, newName:string }
- * Returns: { ok:true, school:{id,name,slug} }
- */
 app.put(
-  "/api/admin/manage-schools/school/rename",
+  "/api/admin/manage-schools/rename",
   requireAdminAuth,
   requireSuperAdmin,
   async (req, res) => {
     const schoolId = Number(req.body?.schoolId);
-    const newNameRaw = String(req.body?.newName || "");
-    const newName = newNameRaw.trim();
+    const newName = String(req.body?.newName || "").trim();
 
-    if (!Number.isFinite(schoolId) || schoolId <= 0) {
-      return res.status(400).json({ ok: false, message: "schoolId (number) is required." });
-    }
-    if (!newName) {
-      return res.status(400).json({ ok: false, message: "newName (string) is required." });
+    if (!Number.isFinite(schoolId) || schoolId <= 0 || !newName) {
+      return res.status(400).json({ ok: false, message: "schoolId (number) and newName are required." });
     }
 
     try {
-      // Optional: prevent no-op rename (nice UX)
-      const { rows: currentRows } = await pool.query(
-        "SELECT id, name, slug FROM schools WHERE id = $1",
-        [schoolId]
-      );
-      if (!currentRows.length) {
-        return res.status(404).json({ ok: false, message: "School not found (id)." });
-      }
-      const current = currentRows[0];
-      if (String(current.name).trim() === newName) {
-        return res.json({ ok: true, school: current, message: "No change (name already set)." });
-      }
-
       const { rows } = await pool.query(
         `UPDATE schools
-           SET name = $1
-         WHERE id = $2
-         RETURNING id, name, slug`,
+            SET name = $1
+          WHERE id = $2
+          RETURNING id, name, slug`,
         [newName, schoolId]
       );
+
+      if (!rows.length) {
+        return res.status(404).json({ ok: false, message: "School not found (id)." });
+      }
 
       return res.json({ ok: true, school: rows[0] });
     } catch (err) {
       console.error("[ManageSchools] rename error:", err);
-
-      // Friendlier message for unique constraint violations
-      if (err && err.code === "23505") {
-        return res.status(409).json({
-          ok: false,
-          message: "That school name already exists (unique constraint). Choose a different name.",
-        });
-      }
-
-      return res.status(500).json({
-        ok: false,
-        message: err.message || "Rename failed.",
-      });
+      return res.status(500).json({ ok: false, message: err.message || "Rename failed." });
     }
   }
 );
 
-/**
- * POST /api/admin/manage-schools/school/purge
- * Body: { schoolId:number, mode:"PURGE"|"DELETE"|"SOFT", dryRun:boolean }
- * Returns: { ok:true, result:[...] }
- */
 app.post(
-  "/api/admin/manage-schools/school/purge",
+  "/api/admin/manage-schools/purge",
   requireAdminAuth,
   requireSuperAdmin,
   async (req, res) => {
@@ -3448,10 +3401,7 @@ app.post(
       return res.json({ ok: true, result: rows });
     } catch (err) {
       console.error("[ManageSchools] purge error:", err);
-      return res.status(500).json({
-        ok: false,
-        message: err.message || "Purge failed.",
-      });
+      return res.status(500).json({ ok: false, message: err.message || "Purge failed." });
     }
   }
 );
