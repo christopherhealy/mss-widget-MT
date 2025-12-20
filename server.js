@@ -15,7 +15,7 @@ import jwt from "jsonwebtoken";
 
 //Dec 10 using SPs
 import bcrypt from "bcryptjs";
-import slugify from "slugify"; // or your own slug helper
+import slugifyPkg from "slugify";
 
 dotenv.config();
 // just to be sure
@@ -63,6 +63,21 @@ function requireAdminJwtSecret() {
     throw new Error("Missing MSS_ADMIN_JWT_SECRET");
   }
 }
+
+//===== Dec 19 manage schools ==========//
+//Slugify 2
+function slugifyLocal(input) {
+  return String(input || "")
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || "school";
+}
+
+
+//---------- end manage schools on Dec 19 ---------//
 
 function signAdminToken(admin) {
   requireAdminJwtSecret();
@@ -980,8 +995,8 @@ async function finalizePendingSignup(client, pending) {
   const passwordHash = payload.passwordHash;
 
   const slug =
-    payload.slug ||
-    slugify(schoolName || "new-school", { lower: true, strict: true, trim: true });
+  payload.slug ||
+  slugifyPkg(schoolName || "new-school", { lower: true, strict: true, trim: true });
 
   if (!schoolName || !adminEmail || !passwordHash) {
     throw new Error("Pending signup is missing required fields (schoolName/adminEmail/passwordHash).");
@@ -1606,14 +1621,6 @@ async function addAdminForSchool(slug, fullName, email, password) {
   return data.admin;
 }
 
-function slugifySchoolName(name) {
-  const base =
-    (name || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "school";
-  return base;
-}
 let defaultWidgetConfig = null;
 let defaultWidgetForm = null;
 
@@ -1665,11 +1672,7 @@ async function writeJson(rel, obj) {
 // ----------------------
 function normalizeSlug(nameOrSlug) {
   if (!nameOrSlug) return "";
-  return slugify(nameOrSlug, {
-    lower: true,
-    strict: true,
-    trim: true,
-  });
+  return slugifyPkg(nameOrSlug, { lower: true, strict: true, trim: true });
 }
 
 async function ensureUniqueSlug(baseSlug, db) {
@@ -3234,7 +3237,7 @@ app.post("/api/school-signup/v2", async (req, res) => {
 
   // ---- Build collision-proof slug ----
   const baseSlug =
-    slugify(schoolName, { lower: true, strict: true, trim: true }) || "new-school";
+  slugifyPkg(schoolName, { lower: true, strict: true, trim: true }) || "new-school";
   const rand = crypto.randomBytes(3).toString("hex"); // 6 chars
   const slug = `${baseSlug}-${Date.now()}-${rand}`;
 
@@ -3260,24 +3263,51 @@ app.post("/api/school-signup/v2", async (req, res) => {
     await client.query("BEGIN");
 
     const sp = await client.query(
-      `
-      SELECT *
-      FROM public.mss_provision_school_with_admin($1,$2,$3,$4,$5,$6)
-      `,
-      [slug, schoolName, adminEmail, adminFullName, passwordHash, sourceSlug]
-    );
+  `
+  SELECT *
+  FROM public.mss_provision_school_with_admin(
+    $1,$2,$3,$4,$5,$6,
+    $7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
+  )
+  `,
+  [
+    slug,
+    schoolName,
+    adminEmail,
+    adminFullName,
+    passwordHash,
+    sourceSlug,
+
+    websiteUrl,
+    country,
+    timeZone,
+    roleTitle,
+    teacherCount,
+    heard,
+    programDescription,
+    exams,
+    testsPerMonth,
+    (anonymousFunnel || "yes") === "yes",
+    funnelUrl,
+    notes
+  ]
+);
 
     if (!sp.rows || sp.rows.length === 0) {
       throw new Error("SP returned no rows (unexpected for RETURNS TABLE).");
     }
 
-    const out = sp.rows[0] || {};
-    const schoolId = out.school_id;
-    const adminId = out.admin_id;
+   // ✅ THIS BLOCK IS REQUIRED
+     const out = sp.rows[0];
 
-    if (!schoolId || !adminId) {
+     const schoolId = out.out_school_id ?? out.school_id;
+     const adminId  = out.out_admin_id  ?? out.admin_id;
+
+    
+
+     if (!schoolId || !adminId) {
       throw new Error(`Unexpected SP output: ${JSON.stringify(out)}`);
-    }
+     }
 
     await client.query("COMMIT");
 
@@ -3327,6 +3357,98 @@ app.post("/api/school-signup/v2", async (req, res) => {
 
 app.options("/api/admin/manage-schools/*", (req, res) => res.sendStatus(204));
 
+/* ----------------------------- Helpers ----------------------------- */
+
+function slugify(s) {
+  return String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+//2
+async function makeUniqueSchoolSlug(baseSlug) {
+  const base = (baseSlug && String(baseSlug).trim()) ? String(baseSlug).trim() : "school";
+  let slug = base;
+  let n = 2; // base-2, base-3...
+
+  while (true) {
+    const { rows } = await pool.query(
+      "SELECT 1 FROM schools WHERE slug = $1 LIMIT 1",
+      [slug]
+    );
+    if (!rows.length) return slug;
+    slug = `${base}-${n++}`;
+  }
+}
+
+function toNullableNumber(v) {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function pickSignupFromBody(body) {
+  const b = body || {};
+
+  const teacherCount = toNullableNumber(b.teacherCount);
+  const testsPerMonth = toNullableNumber(b.testsPerMonth);
+
+  if (Number.isNaN(teacherCount)) {
+    return { ok: false, message: "teacherCount must be a number (or blank)." };
+  }
+  if (Number.isNaN(testsPerMonth)) {
+    return { ok: false, message: "testsPerMonth must be a number (or blank)." };
+  }
+
+  return {
+    ok: true,
+    signup: {
+      websiteUrl: String(b.websiteUrl || "").trim(),
+      country: String(b.country || "").trim(),
+      timeZone: String(b.timeZone || "").trim(),
+      programDescription: String(b.programDescription || "").trim(),
+      contactName: String(b.contactName || "").trim(),
+      contactEmail: String(b.contactEmail || "").trim(),
+      roleTitle: String(b.roleTitle || "").trim(),
+      teacherCount,
+      testsPerMonth,
+      heard: String(b.heard || "").trim(),
+      funnelUrl: String(b.funnelUrl || "").trim(),
+      notes: String(b.notes || "").trim(),
+    },
+  };
+}
+
+function flattenSchoolRow(row) {
+  const settings = row?.settings || {};
+  const signup = settings?.signup || {};
+
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+
+    websiteUrl: signup.websiteUrl || "",
+    country: signup.country || "",
+    timeZone: signup.timeZone || "",
+    programDescription: signup.programDescription || "",
+    contactName: signup.contactName || "",
+    contactEmail: signup.contactEmail || "",
+    roleTitle: signup.roleTitle || "",
+    teacherCount: signup.teacherCount ?? "",
+    testsPerMonth: signup.testsPerMonth ?? "",
+    heard: signup.heard || "",
+    funnelUrl: signup.funnelUrl || "",
+    notes: signup.notes || "",
+  };
+}
+
+/* ----------------------------- Routes ------------------------------ */
+
+// List (dropdown)
 app.get(
   "/api/admin/manage-schools/schools",
   requireAdminAuth,
@@ -3344,39 +3466,7 @@ app.get(
   }
 );
 
-app.put(
-  "/api/admin/manage-schools/rename",
-  requireAdminAuth,
-  requireSuperAdmin,
-  async (req, res) => {
-    const schoolId = Number(req.body?.schoolId);
-    const newName = String(req.body?.newName || "").trim();
-
-    if (!Number.isFinite(schoolId) || schoolId <= 0 || !newName) {
-      return res.status(400).json({ ok: false, message: "schoolId (number) and newName are required." });
-    }
-
-    try {
-      const { rows } = await pool.query(
-        `UPDATE schools
-            SET name = $1
-          WHERE id = $2
-          RETURNING id, name, slug`,
-        [newName, schoolId]
-      );
-
-      if (!rows.length) {
-        return res.status(404).json({ ok: false, message: "School not found (id)." });
-      }
-
-      return res.json({ ok: true, school: rows[0] });
-    } catch (err) {
-      console.error("[ManageSchools] rename error:", err);
-      return res.status(500).json({ ok: false, message: err.message || "Rename failed." });
-    }
-  }
-);
-
+// Purge (existing)
 app.post(
   "/api/admin/manage-schools/purge",
   requireAdminAuth,
@@ -3402,6 +3492,269 @@ app.post(
     } catch (err) {
       console.error("[ManageSchools] purge error:", err);
       return res.status(500).json({ ok: false, message: err.message || "Purge failed." });
+    }
+  }
+);
+
+// Read one (inline editor)
+app.get("/api/admin/manage-schools/school/:id", requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  const schoolId = Number(req.params.id);
+  if (!Number.isFinite(schoolId) || schoolId <= 0) {
+    return res.status(400).json({ ok: false, message: "Invalid school id" });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        s.id,
+        s.slug,
+        s.name,
+
+        ss.website_url,
+        ss.country,
+        ss.time_zone,
+        ss.program_description,
+        ss.contact_name,
+        ss.contact_email,
+        ss.role_title,
+        ss.teacher_count,
+        ss.tests_per_month,
+        ss.heard_about,
+        ss.funnel_url,
+        ss.notes
+      FROM schools s
+      LEFT JOIN school_signups ss
+        ON ss.school_id = s.id
+      WHERE s.id = $1
+      LIMIT 1;
+      `,
+      [schoolId]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, message: "School not found" });
+
+    const r = rows[0];
+
+    return res.json({
+      ok: true,
+      school: {
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+
+        websiteUrl: r.website_url || "",
+        country: r.country || "",
+        timeZone: r.time_zone || "",
+        programDescription: r.program_description || "",
+        contactName: r.contact_name || "",
+        contactEmail: r.contact_email || "",
+        roleTitle: r.role_title || "",
+        teacherCount: r.teacher_count == null ? "" : String(r.teacher_count),
+        testsPerMonth: r.tests_per_month == null ? "" : String(r.tests_per_month),
+        heard: r.heard_about || "",
+        funnelUrl: r.funnel_url || "",
+        notes: r.notes || "",
+      },
+    });
+  } catch (e) {
+    console.error("[manage-schools] load school:", e);
+    return res.status(500).json({ ok: false, message: "Failed to load school" });
+  }
+});
+
+// Update one (inline editor)
+app.put("/api/admin/manage-schools/school/:id", requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  const schoolId = Number(req.params.id);
+  if (!Number.isFinite(schoolId) || schoolId <= 0) {
+    return res.status(400).json({ ok: false, message: "Invalid school id" });
+  }
+
+  const body = req.body || {};
+
+  // Map form payload → normalized server vars
+  const name = String(body.name || "").trim(); // from getFormValues()
+  const websiteUrl = String(body.websiteUrl || "").trim() || null;
+  const country = String(body.country || "").trim() || null;
+  const timeZone = String(body.timeZone || "").trim() || null;
+  const programDescription = String(body.programDescription || "").trim() || null;
+
+  const contactName = String(body.contactName || "").trim() || null;
+  const contactEmail = String(body.contactEmail || "").trim().toLowerCase() || null;
+  const roleTitle = String(body.roleTitle || "").trim() || null;
+
+  const teacherCount =
+    body.teacherCount === "" || body.teacherCount == null ? null : Number(body.teacherCount);
+
+  const testsPerMonth =
+    body.testsPerMonth === "" || body.testsPerMonth == null ? null : Number(body.testsPerMonth);
+
+  const heard = String(body.heard || "").trim() || null;
+  const funnelUrl = String(body.funnelUrl || "").trim() || null;
+  const notes = String(body.notes || "").trim() || null;
+
+  if (!name) return res.status(400).json({ ok: false, message: "School name is required" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1) schools.name (dropdown + canonical)
+    await client.query(
+      `UPDATE schools SET name = $2 WHERE id = $1`,
+      [schoolId, name]
+    );
+
+    // 2) school_signups upsert (source-of-truth fields)
+    // NOTE: "id" in school_signups auto-increments via default sequence.
+    await client.query(
+      `
+      INSERT INTO school_signups (
+        school_id,
+        school_name,
+        website_url,
+        country,
+        time_zone,
+        program_description,
+        contact_name,
+        contact_email,
+        role_title,
+        teacher_count,
+        tests_per_month,
+        heard_about,
+        funnel_url,
+        notes,
+        token,
+        verified
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+        encode(gen_random_bytes(24), 'hex'),
+        true
+      )
+      ON CONFLICT (school_id) DO UPDATE SET
+        school_name         = EXCLUDED.school_name,
+        website_url         = EXCLUDED.website_url,
+        country             = EXCLUDED.country,
+        time_zone           = EXCLUDED.time_zone,
+        program_description = EXCLUDED.program_description,
+        contact_name        = EXCLUDED.contact_name,
+        contact_email       = EXCLUDED.contact_email,
+        role_title          = EXCLUDED.role_title,
+        teacher_count       = EXCLUDED.teacher_count,
+        tests_per_month     = EXCLUDED.tests_per_month,
+        heard_about         = EXCLUDED.heard_about,
+        funnel_url          = EXCLUDED.funnel_url,
+        notes               = EXCLUDED.notes,
+        verified            = true,
+        verified_at         = now();
+      `,
+      [
+        schoolId,
+        name,
+        websiteUrl,
+        country,
+        timeZone,
+        programDescription,
+        contactName,
+        contactEmail,
+        roleTitle,
+        Number.isFinite(teacherCount) ? teacherCount : null,
+        Number.isFinite(testsPerMonth) ? testsPerMonth : null,
+        heard,
+        funnelUrl,
+        notes,
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      school: { id: schoolId },
+      message: "School updated.",
+    });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error("[manage-schools] update school:", e);
+    return res.status(500).json({ ok: false, message: e.message || "Failed to update school" });
+  } finally {
+    client.release();
+  }
+});
+
+// Create new school (inline editor)
+app.post(
+  "/api/admin/manage-schools/school",
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    const name = String(req.body?.name || "").trim();
+    if (!name) {
+      return res.status(400).json({ ok: false, message: "School name is required." });
+    }
+
+    const picked = pickSignupFromBody(req.body);
+    if (!picked.ok) {
+      return res.status(400).json({ ok: false, message: picked.message });
+    }
+
+    try {
+      const baseSlug = slugifyLocal(name) || "school";
+      const slug = await makeUniqueSchoolSlug(baseSlug);
+
+      const settings = { signup: picked.signup };
+
+      const { rows } = await pool.query(
+        `
+        INSERT INTO schools (name, slug, settings)
+        VALUES ($1, $2, $3::jsonb)
+        RETURNING id, name, slug, COALESCE(settings, '{}'::jsonb) AS settings
+        `,
+        [name, slug, JSON.stringify(settings)]
+      );
+
+      return res.status(201).json({ ok: true, school: flattenSchoolRow(rows[0]) });
+    } catch (err) {
+      console.error("[ManageSchools] create school error:", err);
+      return res.status(500).json({ ok: false, message: err.message || "Create failed." });
+    }
+  }
+);
+
+// Back-compat: rename endpoint (optional; keep until UI fully migrated)
+app.put(
+  "/api/admin/manage-schools/rename",
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    const schoolId = Number(req.body?.schoolId);
+    const newName = String(req.body?.newName || "").trim();
+
+    if (!Number.isFinite(schoolId) || schoolId <= 0 || !newName) {
+      return res.status(400).json({ ok: false, message: "schoolId (number) and newName are required." });
+    }
+
+    try {
+      // Only update name; preserve existing settings.signup
+      const { rows } = await pool.query(
+        `
+        UPDATE schools
+           SET name = $1
+         WHERE id = $2
+         RETURNING id, name, slug, COALESCE(settings, '{}'::jsonb) AS settings
+        `,
+        [newName, schoolId]
+      );
+
+      if (!rows.length) {
+        return res.status(404).json({ ok: false, message: "School not found (id)." });
+      }
+
+      return res.json({ ok: true, school: flattenSchoolRow(rows[0]) });
+    } catch (err) {
+      console.error("[ManageSchools] rename error:", err);
+      return res.status(500).json({ ok: false, message: err.message || "Rename failed." });
     }
   }
 );

@@ -74,14 +74,57 @@
         <div class="help">Select by name; slug is shown for clarity.</div>
         <select id="schoolSelect" disabled></select>
 
-        <label for="newNameInput">New school name</label>
-        <div class="help">Renaming updates the <b>schools.name</b> field (unique).</div>
-        <input id="newNameInput" placeholder="Enter new school name" />
+        <!-- School details (inline editor) -->
+<div id="schoolEditor" style="margin-top:14px;">
+  <label for="schoolName">School / institution name</label>
+  <input id="schoolName" placeholder="e.g., Example University" />
+
+  <label for="websiteUrl">Website URL</label>
+  <input id="websiteUrl" placeholder="https://example.edu" />
+
+  <label for="country">Country</label>
+  <input id="country" placeholder="Canada, Japan, Brazil…" />
+
+  <label for="timeZone">Time zone</label>
+  <input id="timeZone" placeholder="America/Toronto, Asia/Tokyo…" />
+
+  <label for="programDescription">Program description</label>
+  <input id="programDescription" placeholder="Short description of program / use case" />
+
+  <label for="contactName">Primary contact name</label>
+  <input id="contactName" placeholder="Contact name" />
+
+  <label for="contactEmail">Primary contact email</label>
+  <input id="contactEmail" placeholder="contact@example.edu" />
+
+  <label for="roleTitle">Role / Title</label>
+  <input id="roleTitle" placeholder="Director, ESL Coordinator, etc." />
+
+  <label for="teacherCount"># Teachers</label>
+  <input id="teacherCount" placeholder="e.g., 12" />
+
+  <label for="testsPerMonth">Estimated tests per month</label>
+  <input id="testsPerMonth" placeholder="e.g., 300" />
+
+  <label for="heard">How did you hear about us?</label>
+  <input id="heard" placeholder="Google, YouTube, colleague…" />
+
+  <label for="funnelUrl">Funnel URL (optional)</label>
+  <input id="funnelUrl" placeholder="UTM URL or landing page URL" />
+
+  <label for="notes">Notes (internal)</label>
+  <textarea id="notes" rows="4" style="width:100%; box-sizing:border-box; padding:10px 12px; margin-top:8px; border-radius:10px; border:1px solid #cbd5e1; font-size:14px; background:#fff;"></textarea>
+</div>
 
         <div class="row">
-          <button id="renameBtn" class="btn btn-primary">Rename</button>
-          <button id="purgeBtn"  class="btn btn-danger">Purge</button>
+         <div class="row">
+          <div class="row">
+          <button id="updateBtn" type="button" class="btn btn-primary">Update</button>
+          <button id="purgeBtn"  type="button" class="btn btn-danger">Purge</button>
+          <!-- button id="newBtn"    type="button" class="btn btn-ghost">New</button -->
+         </div>
         </div>
+      </div>
 
         <div id="status" class="status"></div>
       </div>
@@ -183,18 +226,37 @@
   /* ELEMENTS                                            */
   /* -------------------------------------------------- */
 
-  const schoolSelect = document.getElementById("schoolSelect");
-  const newNameInput = document.getElementById("newNameInput");
-  const renameBtn    = document.getElementById("renameBtn");
-  const purgeBtn     = document.getElementById("purgeBtn");
-  const statusEl     = document.getElementById("status");
-  const closeBtn     = document.getElementById("btn-close");
+const schoolSelect = document.getElementById("schoolSelect");
+const updateBtn    = document.getElementById("updateBtn");
+const purgeBtn     = document.getElementById("purgeBtn");
+const newBtn       = document.getElementById("newBtn");
+const statusEl     = document.getElementById("status");
+const closeBtn     = document.getElementById("btn-close");
+// Modal elements 
+const overlay = document.getElementById("mss-modal-overlay");
+const mTitle  = document.getElementById("mss-modal-title");
+const mBody   = document.getElementById("mss-modal-body");
+const mOk     = document.getElementById("mss-modal-ok");
+const mCancel = document.getElementById("mss-modal-cancel");
 
-  const overlay = document.getElementById("mss-modal-overlay");
-  const mTitle  = document.getElementById("mss-modal-title");
-  const mBody   = document.getElementById("mss-modal-body");
-  const mOk     = document.getElementById("mss-modal-ok");
-  const mCancel = document.getElementById("mss-modal-cancel");
+
+
+// editor fields
+const f = {
+  schoolName: document.getElementById("schoolName"),
+  websiteUrl: document.getElementById("websiteUrl"),
+  country: document.getElementById("country"),
+  timeZone: document.getElementById("timeZone"),
+  programDescription: document.getElementById("programDescription"),
+  contactName: document.getElementById("contactName"),
+  contactEmail: document.getElementById("contactEmail"),
+  roleTitle: document.getElementById("roleTitle"),
+  teacherCount: document.getElementById("teacherCount"),
+  testsPerMonth: document.getElementById("testsPerMonth"),
+  heard: document.getElementById("heard"),
+  funnelUrl: document.getElementById("funnelUrl"),
+  notes: document.getElementById("notes"),
+};
 
   function setStatus(msg, isError=false) {
     statusEl.textContent = msg || "";
@@ -243,6 +305,55 @@
     });
   }
 
+let MODE = "edit"; // "edit" | "new"
+
+function setMode(mode) {
+  MODE = mode === "new" ? "new" : "edit";
+  if (updateBtn) updateBtn.textContent = (MODE === "new") ? "Create" : "Update";
+  if (purgeBtn) purgeBtn.disabled = (MODE === "new"); // don’t purge a not-yet-created school
+}
+
+function getFormValues() {
+  return {
+    name: (f.schoolName.value || "").trim(),
+    websiteUrl: (f.websiteUrl.value || "").trim(),
+    country: (f.country.value || "").trim(),
+    timeZone: (f.timeZone.value || "").trim(),
+    programDescription: (f.programDescription.value || "").trim(),
+    contactName: (f.contactName.value || "").trim(),
+    contactEmail: (f.contactEmail.value || "").trim(),
+    roleTitle: (f.roleTitle.value || "").trim(),
+    teacherCount: (f.teacherCount.value || "").trim(),
+    testsPerMonth: (f.testsPerMonth.value || "").trim(),
+    heard: (f.heard.value || "").trim(),
+    funnelUrl: (f.funnelUrl.value || "").trim(),
+    notes: (f.notes.value || "").trim(),
+  };
+}
+
+function setFormValues(s) {
+  const v = s || {};
+  f.schoolName.value = v.name || "";
+  f.websiteUrl.value = v.websiteUrl || "";
+  f.country.value = v.country || "";
+  f.timeZone.value = v.timeZone || "";
+  f.programDescription.value = v.programDescription || "";
+  f.contactName.value = v.contactName || "";
+  f.contactEmail.value = v.contactEmail || "";
+  f.roleTitle.value = v.roleTitle || "";
+  f.teacherCount.value = v.teacherCount || "";
+  f.testsPerMonth.value = v.testsPerMonth || "";
+  f.heard.value = v.heard || "";
+  f.funnelUrl.value = v.funnelUrl || "";
+  f.notes.value = v.notes || "";
+}
+
+function clearForm() {
+  setFormValues({});
+}
+
+
+
   /* -------------------------------------------------- */
   /* API CALLS                                           */
   /* -------------------------------------------------- */
@@ -251,6 +362,7 @@
     setStatus("Loading schools…");
     schoolSelect.innerHTML = "";
     schoolSelect.disabled = true;
+    
 
     try {
       const res = await fetch(api("/api/admin/manage-schools/schools"), {
@@ -283,61 +395,80 @@
         schoolSelect.appendChild(opt);
       }
 
-      schoolSelect.disabled = false;
+      schoolSelect.disabled = false;     
       setStatus(`Loaded ${schools.length} schools.`);
+
+    // Auto-select first school + load details
+      const firstId = Number(schools[0]?.id);
+        if (Number.isFinite(firstId) && firstId > 0) {
+          schoolSelect.value = String(firstId);
+          await loadSchoolDetails(firstId);
+       }
+
     } catch (e) {
       console.error("[ManageSchools] loadSchools:", e);
       setStatus(e?.message || "Error loading schools", true);
     }
   }
 
-  async function renameSchool() {
-    const schoolId = getSelectedSchoolId();
-    const label    = getSelectedSchoolLabel();
-    const newName  = (newNameInput.value || "").trim();
+ async function updateOrCreateSchool() {
+  const payload = getFormValues();
 
-    if (!schoolId || !newName) {
-      setStatus("Select a school and enter a new name.", true);
-      return;
-    }
-
-    const ok = await confirmModal({
-      title: "Rename school?",
-      bodyHtml: `
-        <p style="margin:0;">You are renaming:</p>
-        <p style="margin:8px 0 0; font-weight:800; color:#0f172a;">${label}</p>
-        <p style="margin:10px 0 0;">New name:</p>
-        <p style="margin:8px 0 0; font-weight:800; color:#0f172a;">${newName}</p>
-      `,
-      okText: "Rename",
-      okClass: "btn-primary",
-    });
-    if (!ok) return;
-
-    setStatus("Renaming…");
-
-    try {
-      const res = await fetch(api("/api/admin/manage-schools/rename"), {
-        method: "PUT",
-        headers: adminHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ schoolId, newName }),
-      });
-
-      const data = await readJsonSafe(res);
-
-      if (!res.ok || data.ok === false) {
-        throw new Error(authMessage(res, data));
-      }
-
-      setStatus(`Renamed to "${data.school?.name || newName}".`);
-      newNameInput.value = "";
-      await loadSchools();
-    } catch (e) {
-      console.error("[ManageSchools] rename:", e);
-      setStatus(e?.message || "Rename error", true);
-    }
+  // minimal guardrails (tune as you like)
+  if (!payload.name) {
+    setStatus("School name is required.", true);
+    return;
+  }
+  if (!payload.contactEmail) {
+    setStatus("Contact email is required.", true);
+    return;
   }
 
+  const schoolId = getSelectedSchoolId();
+  const isNew = (MODE === "new");
+
+  const ok = await confirmModal({
+    title: isNew ? "Create school?" : "Update school?",
+    bodyHtml: isNew
+      ? `<p style="margin:0;">Create a new school:</p>
+         <p style="margin:8px 0 0; font-weight:900; color:#0f172a;">${payload.name}</p>`
+      : `<p style="margin:0;">Update details for selected school?</p>`,
+    okText: isNew ? "Create" : "Update",
+    okClass: "btn-primary",
+  });
+  if (!ok) return;
+
+  setStatus(isNew ? "Creating…" : "Updating…");
+
+  try {
+    const url = isNew
+      ? api("/api/admin/manage-schools/school")
+      : api(`/api/admin/manage-schools/school/${encodeURIComponent(String(schoolId))}`);
+
+    const res = await fetch(url, {
+      method: isNew ? "POST" : "PUT",
+      headers: adminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    });
+
+    const data = await readJsonSafe(res);
+    if (!res.ok || data.ok === false) throw new Error(authMessage(res, data));
+
+    setStatus(isNew ? "School created." : "School updated.");
+
+    // refresh dropdown and reselect created/updated school if API returns id
+    await loadSchools();
+    if (data.school?.id) {
+      schoolSelect.value = String(data.school.id);
+      await loadSchoolDetails(data.school.id);
+    } else if (!isNew && schoolId) {
+      await loadSchoolDetails(schoolId);
+    }
+  } catch (e) {
+    console.error("[ManageSchools] updateOrCreateSchool:", e);
+    setStatus(e?.message || "Update/Create error", true);
+  }
+}
   async function purgeSchool() {
     const schoolId = getSelectedSchoolId();
     const label    = getSelectedSchoolLabel();
@@ -384,12 +515,51 @@
     }
   }
 
+async function loadSchoolDetails(schoolId) {
+  if (!schoolId) return;
+
+  setStatus("Loading school details…");
+  try {
+    const res = await fetch(api(`/api/admin/manage-schools/school/${encodeURIComponent(String(schoolId))}`), {
+      method: "GET",
+      cache: "no-store",
+      headers: adminHeaders(),
+    });
+
+    const data = await readJsonSafe(res);
+    if (!res.ok || data.ok === false) throw new Error(authMessage(res, data));
+
+    setFormValues(data.school || {});
+    setMode("edit");
+    setStatus("School loaded.");
+  } catch (e) {
+    console.error("[ManageSchools] loadSchoolDetails:", e);
+    setStatus(e?.message || "Error loading school details", true);
+  }
+}
+
   /* -------------------------------------------------- */
   /* WIRING                                              */
   /* -------------------------------------------------- */
 
-  if (renameBtn) renameBtn.addEventListener("click", renameSchool);
-  if (purgeBtn)  purgeBtn.addEventListener("click", purgeSchool);
+if (updateBtn) updateBtn.addEventListener("click", updateOrCreateSchool);
+if (purgeBtn)  purgeBtn.addEventListener("click", purgeSchool);
+
+if (newBtn) {
+  newBtn.addEventListener("click", () => {
+    clearForm();
+    setMode("new");
+    setStatus("New school: enter details, then click Create.");
+  });
+}
+
+if (schoolSelect) {
+  schoolSelect.addEventListener("change", async () => {
+    const id = getSelectedSchoolId();
+    if (!id) return;
+    await loadSchoolDetails(id);
+  });
+}
 
   if (closeBtn) {
     closeBtn.addEventListener("click", () => {
@@ -405,7 +575,12 @@
     });
   }
 
-  document.addEventListener("DOMContentLoaded", loadSchools);
+  document.addEventListener("DOMContentLoaded", async () => {
+  setMode("edit");
+  clearForm();
+  await loadSchools();
+});
+
 })();
 </script>
 </body>
