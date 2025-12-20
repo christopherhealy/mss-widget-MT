@@ -1,0 +1,47 @@
+
+    body { background:#f8fafc; }
+    .page { padding: 28px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+    h1 { margin:0 0 6px 0; font-size:28px; }
+    .sub { margin:0; color:#64748b; }
+    .wrap { margin-top:18px; max-width:720px; }
+    .card {
+      background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+      padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.06);
+    }
+    label { display:block; margin-top:14px; font-weight:700; color:#0f172a; }
+    .help { margin-top:6px; color:#64748b; font-size:13px; }
+    select, input {
+      width:100%; box-sizing:border-box;
+      padding:10px 12px; margin-top:8px;
+      border-radius:10px; border:1px solid #cbd5e1; font-size:14px;
+      background:#fff;
+    }
+    select { max-width:100%; }
+    option { max-width: 100%; }
+    .row { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }
+    .btn {
+      padding:10px 14px; border-radius:10px; border:1px solid transparent;
+      font-weight:800; cursor:pointer;
+    }
+    .btn-primary { background:#1d4ed8; color:#fff; }
+    .btn-danger  { background:#b91c1c; color:#fff; }
+    .btn-ghost   { background:#fff; color:#0f172a; border-color:#cbd5e1; }
+    .status { margin-top:14px; font-size:14px; color:#0f172a; }
+    .status.error { color:#b91c1c; }
+
+    /* Modal */
+    #mss-modal-overlay {
+      position:fixed; inset:0; background:rgba(15,23,42,.55);
+      display:none; align-items:center; justify-content:center; z-index:9999; padding:16px;
+    }
+    #mss-modal {
+      width:min(560px, 100%);
+      background:#fff; border-radius:12px; overflow:hidden;
+      box-shadow:0 20px 50px rgba(15,23,42,.25);
+      font-family:system-ui, -apple-system, Segoe UI, sans-serif;
+    }
+    #mss-modal .top { padding:16px 18px; border-bottom:1px solid #e2e8f0; }
+    #mss-modal .title { font-size:16px; font-weight:800; color:#0f172a; }
+    #mss-modal .body { margin-top:8px; font-size:13px; color:#64748b; line-height:1.35; }
+    #mss-modal .actions { padding:16px 18px; display:flex; gap:10px; justify-content:flex-end; }

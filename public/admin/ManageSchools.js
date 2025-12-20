@@ -1,0 +1,437 @@
+
+(function () {
+  "use strict";
+
+  /* -------------------------------------------------- */
+  /* ADMIN API BASE + AUTH HEADERS                       */
+  /* -------------------------------------------------- */
+
+  function getAdminApiBase() {
+    const origin = window.location.origin || "";
+
+    // Local + Render-hosted pages hit same-origin paths
+    if (
+      origin.includes("localhost") ||
+      origin.includes("127.0.0.1") ||
+      origin.includes("mss-widget-mt.onrender.com")
+    ) return "";
+
+    // Vercel pages must call Render API
+    if (origin.includes("mss-widget-mt.vercel.app")) {
+      return "https://mss-widget-mt.onrender.com";
+    }
+
+    return "";
+  }
+
+  const ADMIN_API_BASE = getAdminApiBase();
+
+  // JWT token key (current)
+  const LS_ADMIN_TOKEN = "mss_admin_token";
+
+  // Backwards-compat fallbacks (safe to keep)
+  const LS_ADMIN_KEY_FALLBACK = "mss_admin_key";
+  const LS_ADMIN_SESSION = "mssAdminSession";
+
+  function getAdminToken() {
+    try {
+      const t1 = (localStorage.getItem(LS_ADMIN_TOKEN) || "").trim();
+      if (t1) return t1;
+
+      const t2 = (localStorage.getItem(LS_ADMIN_KEY_FALLBACK) || "").trim();
+      if (t2) return t2;
+
+      const raw = localStorage.getItem(LS_ADMIN_SESSION);
+      if (raw) {
+        const sess = JSON.parse(raw);
+        const t3 = String(sess?.token || sess?.adminToken || "").trim();
+        if (t3) return t3;
+      }
+    } catch (_) {}
+    return "";
+  }
+
+  function adminHeaders(extra) {
+    const h = { ...(extra || {}) };
+    const token = getAdminToken();
+    if (token) h["Authorization"] = `Bearer ${token}`;
+    return h;
+  }
+
+  function api(path) {
+    return `${ADMIN_API_BASE}${path}`;
+  }
+
+  function authMessage(res, data) {
+    if (res.status === 401) return "Not logged in (missing/expired admin token). Please sign in again.";
+    if (res.status === 403) return "Forbidden. This tool requires Super Admin privileges.";
+    return (data && data.message) ? data.message : `Request failed (HTTP ${res.status})`;
+  }
+
+  async function readJsonSafe(res) {
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) return res.json();
+    const text = await res.text();
+    return { ok: false, message: text ? text.slice(0, 500) : "Non-JSON response" };
+  }
+
+  /* -------------------------------------------------- */
+  /* ELEMENTS                                            */
+  /* -------------------------------------------------- */
+
+const schoolSelect = document.getElementById("schoolSelect");
+const updateBtn    = document.getElementById("updateBtn");
+const purgeBtn     = document.getElementById("purgeBtn");
+const newBtn       = document.getElementById("newBtn");
+const statusEl     = document.getElementById("status");
+const closeBtn     = document.getElementById("btn-close");
+// Modal elements 
+const overlay = document.getElementById("mss-modal-overlay");
+const mTitle  = document.getElementById("mss-modal-title");
+const mBody   = document.getElementById("mss-modal-body");
+const mOk     = document.getElementById("mss-modal-ok");
+const mCancel = document.getElementById("mss-modal-cancel");
+
+
+
+// editor fields
+const f = {
+  schoolName: document.getElementById("schoolName"),
+  websiteUrl: document.getElementById("websiteUrl"),
+  country: document.getElementById("country"),
+  timeZone: document.getElementById("timeZone"),
+  programDescription: document.getElementById("programDescription"),
+  contactName: document.getElementById("contactName"),
+  contactEmail: document.getElementById("contactEmail"),
+  roleTitle: document.getElementById("roleTitle"),
+  teacherCount: document.getElementById("teacherCount"),
+  testsPerMonth: document.getElementById("testsPerMonth"),
+  heard: document.getElementById("heard"),
+  funnelUrl: document.getElementById("funnelUrl"),
+  notes: document.getElementById("notes"),
+};
+
+  function setStatus(msg, isError=false) {
+    statusEl.textContent = msg || "";
+    statusEl.classList.toggle("error", !!isError);
+  }
+
+  function getSelectedSchoolId() {
+    const v = schoolSelect?.value ? String(schoolSelect.value) : "";
+    const id = Number(v);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+
+  function getSelectedSchoolLabel() {
+    const opt = schoolSelect?.selectedOptions?.[0];
+    return opt?.textContent ? opt.textContent : "";
+  }
+
+  function confirmModal({ title, bodyHtml, okText, okClass }) {
+    return new Promise((resolve) => {
+      mTitle.textContent = title || "Confirm";
+      mBody.innerHTML = bodyHtml || "";
+      mOk.textContent = okText || "Continue";
+      mOk.className = "btn " + (okClass || "btn-primary");
+
+      const cleanup = (choice) => {
+        overlay.style.display = "none";
+        overlay.setAttribute("aria-hidden", "true");
+        mOk.onclick = null;
+        mCancel.onclick = null;
+        overlay.onclick = null;
+        document.onkeydown = null;
+        resolve(choice);
+      };
+
+      mOk.onclick = () => cleanup(true);
+      mCancel.onclick = () => cleanup(false);
+      overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+
+      document.onkeydown = (e) => {
+        if (e.key === "Escape") cleanup(false);
+        if (e.key === "Enter")  cleanup(true);
+      };
+
+      overlay.style.display = "flex";
+      overlay.setAttribute("aria-hidden", "false");
+    });
+  }
+
+let MODE = "edit"; // "edit" | "new"
+
+function setMode(mode) {
+  MODE = mode === "new" ? "new" : "edit";
+  if (updateBtn) updateBtn.textContent = (MODE === "new") ? "Create" : "Update";
+  if (purgeBtn) purgeBtn.disabled = (MODE === "new"); // don’t purge a not-yet-created school
+}
+
+function getFormValues() {
+  return {
+    name: (f.schoolName.value || "").trim(),
+    websiteUrl: (f.websiteUrl.value || "").trim(),
+    country: (f.country.value || "").trim(),
+    timeZone: (f.timeZone.value || "").trim(),
+    programDescription: (f.programDescription.value || "").trim(),
+    contactName: (f.contactName.value || "").trim(),
+    contactEmail: (f.contactEmail.value || "").trim(),
+    roleTitle: (f.roleTitle.value || "").trim(),
+    teacherCount: (f.teacherCount.value || "").trim(),
+    testsPerMonth: (f.testsPerMonth.value || "").trim(),
+    heard: (f.heard.value || "").trim(),
+    funnelUrl: (f.funnelUrl.value || "").trim(),
+    notes: (f.notes.value || "").trim(),
+  };
+}
+
+function setFormValues(s) {
+  const v = s || {};
+  f.schoolName.value = v.name || "";
+  f.websiteUrl.value = v.websiteUrl || "";
+  f.country.value = v.country || "";
+  f.timeZone.value = v.timeZone || "";
+  f.programDescription.value = v.programDescription || "";
+  f.contactName.value = v.contactName || "";
+  f.contactEmail.value = v.contactEmail || "";
+  f.roleTitle.value = v.roleTitle || "";
+  f.teacherCount.value = v.teacherCount || "";
+  f.testsPerMonth.value = v.testsPerMonth || "";
+  f.heard.value = v.heard || "";
+  f.funnelUrl.value = v.funnelUrl || "";
+  f.notes.value = v.notes || "";
+}
+
+function clearForm() {
+  setFormValues({});
+}
+
+
+
+  /* -------------------------------------------------- */
+  /* API CALLS                                           */
+  /* -------------------------------------------------- */
+
+  async function loadSchools() {
+    setStatus("Loading schools…");
+    schoolSelect.innerHTML = "";
+    schoolSelect.disabled = true;
+    
+
+    try {
+      const res = await fetch(api("/api/admin/manage-schools/schools"), {
+        method: "GET",
+        cache: "no-store",
+        headers: adminHeaders(),
+      });
+
+      const data = await readJsonSafe(res);
+
+      if (!res.ok || data.ok === false) {
+        throw new Error(authMessage(res, data));
+      }
+
+      const schools = Array.isArray(data.schools) ? data.schools : [];
+      if (!schools.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No schools found";
+        schoolSelect.appendChild(opt);
+        setStatus("No schools found.", true);
+        return;
+      }
+
+      for (const s of schools) {
+        const opt = document.createElement("option");
+        opt.value = String(s.id);
+        const slug = s.slug ? ` (slug: ${s.slug})` : "";
+        opt.textContent = `${s.name}${slug}`;
+        schoolSelect.appendChild(opt);
+      }
+
+      schoolSelect.disabled = false;     
+      setStatus(`Loaded ${schools.length} schools.`);
+
+    // Auto-select first school + load details
+      const firstId = Number(schools[0]?.id);
+        if (Number.isFinite(firstId) && firstId > 0) {
+          schoolSelect.value = String(firstId);
+          await loadSchoolDetails(firstId);
+       }
+
+    } catch (e) {
+      console.error("[ManageSchools] loadSchools:", e);
+      setStatus(e?.message || "Error loading schools", true);
+    }
+  }
+
+ async function updateOrCreateSchool() {
+  const payload = getFormValues();
+
+  // minimal guardrails (tune as you like)
+  if (!payload.name) {
+    setStatus("School name is required.", true);
+    return;
+  }
+  if (!payload.contactEmail) {
+    setStatus("Contact email is required.", true);
+    return;
+  }
+
+  const schoolId = getSelectedSchoolId();
+  const isNew = (MODE === "new");
+
+  const ok = await confirmModal({
+    title: isNew ? "Create school?" : "Update school?",
+    bodyHtml: isNew
+      ? `<p style="margin:0;">Create a new school:</p>
+         <p style="margin:8px 0 0; font-weight:900; color:#0f172a;">${payload.name}</p>`
+      : `<p style="margin:0;">Update details for selected school?</p>`,
+    okText: isNew ? "Create" : "Update",
+    okClass: "btn-primary",
+  });
+  if (!ok) return;
+
+  setStatus(isNew ? "Creating…" : "Updating…");
+
+  try {
+    const url = isNew
+      ? api("/api/admin/manage-schools/school")
+      : api(`/api/admin/manage-schools/school/${encodeURIComponent(String(schoolId))}`);
+
+    const res = await fetch(url, {
+      method: isNew ? "POST" : "PUT",
+      headers: adminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    });
+
+    const data = await readJsonSafe(res);
+    if (!res.ok || data.ok === false) throw new Error(authMessage(res, data));
+
+    setStatus(isNew ? "School created." : "School updated.");
+
+    // refresh dropdown and reselect created/updated school if API returns id
+    await loadSchools();
+    if (data.school?.id) {
+      schoolSelect.value = String(data.school.id);
+      await loadSchoolDetails(data.school.id);
+    } else if (!isNew && schoolId) {
+      await loadSchoolDetails(schoolId);
+    }
+  } catch (e) {
+    console.error("[ManageSchools] updateOrCreateSchool:", e);
+    setStatus(e?.message || "Update/Create error", true);
+  }
+}
+  async function purgeSchool() {
+    const schoolId = getSelectedSchoolId();
+    const label    = getSelectedSchoolLabel();
+
+    if (!schoolId) {
+      setStatus("Select a school to purge.", true);
+      return;
+    }
+
+    const ok = await confirmModal({
+      title: "Purge school?",
+      bodyHtml: `
+        <p style="margin:0;">
+          This will run <b>admin_purge_school</b> and remove all related data for:
+        </p>
+        <p style="margin:8px 0 0; font-weight:900; color:#b91c1c;">${label}</p>
+        <p style="margin:10px 0 0;">This cannot be undone.</p>
+      `,
+      okText: "Purge",
+      okClass: "btn-danger",
+    });
+    if (!ok) return;
+
+    setStatus("Purging…");
+
+    try {
+      const res = await fetch(api("/api/admin/manage-schools/purge"), {
+        method: "POST",
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ schoolId, mode: "PURGE", dryRun: false }),
+      });
+
+      const data = await readJsonSafe(res);
+
+      if (!res.ok || data.ok === false) {
+        throw new Error(authMessage(res, data));
+      }
+
+      setStatus("Purge complete.");
+      await loadSchools();
+    } catch (e) {
+      console.error("[ManageSchools] purge:", e);
+      setStatus(e?.message || "Purge error", true);
+    }
+  }
+
+async function loadSchoolDetails(schoolId) {
+  if (!schoolId) return;
+
+  setStatus("Loading school details…");
+  try {
+    const res = await fetch(api(`/api/admin/manage-schools/school/${encodeURIComponent(String(schoolId))}`), {
+      method: "GET",
+      cache: "no-store",
+      headers: adminHeaders(),
+    });
+
+    const data = await readJsonSafe(res);
+    if (!res.ok || data.ok === false) throw new Error(authMessage(res, data));
+
+    setFormValues(data.school || {});
+    setMode("edit");
+    setStatus("School loaded.");
+  } catch (e) {
+    console.error("[ManageSchools] loadSchoolDetails:", e);
+    setStatus(e?.message || "Error loading school details", true);
+  }
+}
+
+  /* -------------------------------------------------- */
+  /* WIRING                                              */
+  /* -------------------------------------------------- */
+
+if (updateBtn) updateBtn.addEventListener("click", updateOrCreateSchool);
+if (purgeBtn)  purgeBtn.addEventListener("click", purgeSchool);
+
+if (newBtn) {
+  newBtn.addEventListener("click", () => {
+    clearForm();
+    setMode("new");
+    setStatus("New school: enter details, then click Create.");
+  });
+}
+
+if (schoolSelect) {
+  schoolSelect.addEventListener("change", async () => {
+    const id = getSelectedSchoolId();
+    if (!id) return;
+    await loadSchoolDetails(id);
+  });
+}
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      // Prefer closing if opened in a popup or viewer frame
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.focus();
+          window.close();
+          return;
+        }
+      } catch (_) {}
+      window.location.href = "/admin-home/AdminHome.html";
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+  setMode("edit");
+  clearForm();
+  await loadSchools();
+});
+
+})();

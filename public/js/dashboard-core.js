@@ -136,33 +136,26 @@ console.log("✅ dashboard-core.js file loaded");
     }
   }
 
-  function updateGauge(r) {
-    const iframe = document.getElementById("cefrGauge");
-    if (!iframe || !iframe.contentWindow) {
-      console.log("📈 Gauge iframe not found or not ready.");
-      return;
-    }
+ function updateGauge(r) {
+  const iframe =
+    document.getElementById("cefrGauge") ||
+    document.getElementById("gaugeFrame");
 
-    const cefr = r && r.cefr ? r.cefr : null;
-    const score =
-      r && r.overall != null
-        ? r.overall
-        : r && r.score != null
-        ? r.score
-        : null;
-
-    console.log("📈 Posting gauge update:", { cefr, score });
-
-    iframe.contentWindow.postMessage(
-      {
-        type: "mss:gauge:update",
-        cefr,
-        score,
-      },
-      "*"
-    );
+  if (!iframe || !iframe.contentWindow) {
+    console.log("📈 Gauge iframe not found or not ready.");
+    return;
   }
 
+  const cefr = r?.cefr ?? null;
+  const score = r?.overall ?? r?.score ?? null;
+
+  console.log("📈 Posting gauge update:", { cefr, score });
+
+  iframe.contentWindow.postMessage(
+    { type: "mss:gauge:update", cefr, score },
+    "*"
+  );
+}
   /* -----------------------------------------------------------
      LocalStorage cache (optional fallback)
      Matches cacheDashboardResult() in widget-core
