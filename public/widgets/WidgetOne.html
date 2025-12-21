@@ -1,0 +1,143 @@
+<!-- Pink Widget December 2025-->
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Speaking Widget</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Main visual theme (colors, typography, layout) -->
+  <link
+    id="themeCss"
+    rel="stylesheet"
+    href="../themes/MSSStylesheet.css"
+  />
+
+  <!-- Shared widget chrome (help modal, dashboard, submit spinner) -->
+  <link
+    rel="stylesheet"
+    href="../themes/MSSWidgetCore.css"
+  />
+</head>
+<body>
+  <!-- ROOT ------------------------------------------------------------- -->
+    <div id="mss-widget-root" class="widget-one" data-school-slug="">
+    <!-- HEADER / BRANDING --------------------------------------------- -->
+    <header class="mss-header">
+      <div class="mss-header-left">
+        <div id="logoWrap" class="mss-logo-wrap">
+          <!-- ID matches widget-core.js (brandLogo) -->
+          <img id="brandLogo" alt="Brand logo" class="mss-logo" />
+        </div>
+        <div class="mss-title-block">
+          <div id="brand" class="mss-brand">
+            ESL Success through reliable assessment 
+          </div>
+          <div id="powered" class="mss-powered">
+            Data-driven scoring powered by MSS Vox 
+          </div>
+        </div>
+      </div>
+
+      <div class="mss-header-right">
+        <span id="counter" class="mss-counter">QUESTION 1 OF 1</span>
+      </div>
+    </header>
+
+    <!-- QUESTION TEXT -------------------------------------------------- -->
+    <main class="mss-main">
+      <section class="mss-question-card">
+        <p id="question" class="mss-question-text">
+          Loading question…
+        </p>
+      </section>
+
+      <!-- CONTROLS ---------------------------------------------------- -->
+      <section class="mss-controls">
+        <div class="mss-nav-row">
+          <button id="prevBtn" type="button" class="mss-btn mss-btn-ghost">
+            Previous
+          </button>
+          <button id="nextBtn" type="button" class="mss-btn mss-btn-ghost">
+            Next
+          </button>
+        </div>
+
+        <div class="mss-record-row">
+          <button id="recBtn" type="button" class="mss-btn mss-btn-primary">
+            Record your response
+          </button>
+          <button id="stopBtn" type="button" class="mss-btn mss-btn-secondary">
+            Stop
+          </button>
+        </div>
+
+        
+        <div class="mss-timer-row">
+          <div class="mss-rec-indicator">
+            <span id="recDot" class="mss-rec-dot"></span>
+            <span id="recState" class="mss-rec-state">Not recording</span>
+          </div>
+          <div id="timer" class="mss-timer"></div>
+        </div>
+
+        <div id="playerWrap" class="mss-player-wrap" style="display:none;">
+          <audio id="player" controls class="mss-player"></audio>
+          <div id="lengthHint" class="mss-length-hint"></div>
+        </div>
+
+        <div class="mss-submit-row">
+          <button
+            id="submitBtn"
+            type="button"
+            class="mss-btn mss-btn-primary"
+            disabled
+          >
+            Submit for scoring
+          </button>
+        </div>
+      </section>     
+    </main>
+
+    <!-- STATUS LINE ---------------------------------------------------- -->
+    <footer class="mss-footer">
+      <div id="status" class="mss-status">
+        Ready to record when you are.
+      </div>
+    </footer>
+  </div>
+
+  <!-- SUBMIT PROGRESS ------------------------------------------------- -->
+  <div id="submitProgress" class="mss-submit-progress mss-hidden">
+    <div class="mss-progress-bar"></div>
+    <span class="mss-progress-text">Submitting your answer…</span>
+  </div>
+
+  <!-- INLINE DASHBOARD CONTAINER -------------------------------------- -->
+  <div id="dashboardContainer" class="mss-dashboard mss-dashboard-hidden">
+    <div class="mss-dashboard-header">
+      <span class="mss-dashboard-title">Your latest results</span>
+      <button
+        id="dashboardCloseBtn"
+        type="button"
+        class="mss-dashboard-close"
+        aria-label="Close results"
+      >
+        ×
+      </button>
+    </div>
+    <div id="dashboardBody" class="mss-dashboard-body">
+      <!-- iframe is injected here after submit -->
+    </div>
+  </div> 
+    </div>
+  </div>
+  <!-- SCRIPTS --------------------------------------------------------- -->
+  
+
+  <!-- Main widget logic (uses window.MSSHelp) -->
+  <script src="../js/widget-core.js" defer></script>
+</body>
+</html>

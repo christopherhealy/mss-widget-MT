@@ -226,3 +226,18 @@
   text-align: center;
   justify-content: center;
 }
+
+/* -------------------------------------------------- */
+/* WidgetOne – Pink reference widget                  */
+/* -------------------------------------------------- */
+
+
+
+/* WidgetOne border (debug + final) */
+#mss-widget-root.widget-one{
+  border: 5px solid hotpink !important;
+  outline: 1px solid lime !important;     /* debug: proves selector is applying */
+  border-radius: 18px !important;
+  overflow: hidden !important;
+  background: #fff !important;
+}

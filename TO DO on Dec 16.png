@@ -2,16 +2,15 @@ But time to clean up a few items.
 
 
 
-5. On the InviteSchoolSignup email form, the Send fails "required subject and message" even though those are already filled (and modified).
-6. Dash 3 is not working- Dash 4 has problems too - the CEFR is not right
+
+
 7. Let's mimic the pink widget and get that working	
 8. Change Schools confirmation - show in dialog (now in section) ???
 
-10. In the AI prompt - see Andrew's email
+10. In the AI prompt - see Andrew's email - WPM
 11, -- minor item - on the close the School Signup it takes me to the Admin page - in this case the person filling it in is not yet an admin - so it should just close.
 
-Save in Help editor FIXED
-Embed script is broken FIXED
+
 Check Vox gauge
 
 Build the funnel!
