@@ -3,8 +3,7 @@ But time to clean up a few items.
 
 
 
-
-7. Let's mimic the pink widget and get that working	
+	
 8. Change Schools confirmation - show in dialog (now in section) ???
 
 10. In the AI prompt - see Andrew's email - WPM
@@ -20,3 +19,5 @@ So that's some housekeeping for us.
 Testing 
 
 tickittaskit+ott-esl@gmail.com
+
+https://Localhost:3000/api/funnel/verify?token=f2b767b49744211fdc7ada9960b3cb54ebd383c3832ff215

@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
 
 
 //Dec 10 using SPs
@@ -167,27 +168,54 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 
 
-// --- Email (Nodemailer) setup ------ Nov 29 //
+// ------------------------------------------------------------
+// EMAIL (Nodemailer) support (shared)
+// ------------------------------------------------------------
 
-import nodemailer from "nodemailer";
 
-const smtpHost = process.env.SMTP_HOST;
+const SMTP_FROM = process.env.SMTP_FROM || "Chris <chris@myspeakingscore.com>";
+
+const smtpHost = (process.env.SMTP_HOST || "").trim();
 const smtpPort = Number(process.env.SMTP_PORT || 465);
-const smtpUser = process.env.SMTP_USER;
-const smtpPass = process.env.SMTP_PASS;
+const smtpUser = (process.env.SMTP_USER || "").trim();
+const smtpPass = (process.env.SMTP_PASS || "").trim();
+
+// If SMTP_SECURE explicitly set, respect it; otherwise infer from port 465.
 const smtpSecure =
-  process.env.SMTP_SECURE === "true" || smtpPort === 465;
+  String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpPort === 465;
 
-const mailTransporter = nodemailer.createTransport({
-  host: smtpHost,
-  port: smtpPort,
-  secure: smtpSecure,
-  auth: {
-    user: smtpUser,
-    pass: smtpPass,
-  },
-});
+const mailTransporter =
+  smtpHost && smtpUser && smtpPass
+    ? nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        auth: { user: smtpUser, pass: smtpPass },
+      })
+    : null;
 
+if (!mailTransporter) {
+  console.warn("[SMTP] Missing SMTP_HOST/SMTP_USER/SMTP_PASS. Email sending disabled.");
+}
+
+async function sendMailSafe({ to, subject, html, text }) {
+  if (!mailTransporter) {
+    return { ok: false, skipped: true, message: "SMTP not configured" };
+  }
+  try {
+    const info = await mailTransporter.sendMail({
+      from: SMTP_FROM,
+      to,
+      subject,
+      ...(html ? { html } : {}),
+      ...(text ? { text } : {}),
+    });
+    return { ok: true, info };
+  } catch (err) {
+    console.error("[SMTP] sendMail failed:", err);
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
 
 const ROOT = __dirname;
 const SRC_DIR = path.join(ROOT, "src");
@@ -241,6 +269,8 @@ app.use("/themes", express.static(path.join(PUBLIC_DIR, "themes")));
 app.use("/themes", express.static(THEMES_DIR));
 
 app.use("/api/admin", router);
+
+
 
 // ----- Postgres pool -----
 
@@ -5208,4 +5238,433 @@ app.delete("/api/admin/reports/delete", express.json(), async (req, res) => {
 /* ---------- start ---------- */
 app.listen(PORT, () => {
   console.log(`✅ MSS Widget service listening on port ${PORT}`);
+});
+
+//===========================================================//
+//             Funnel                                        //
+//===========================================================//
+
+//const crypto = require("crypto"); //already imported at top
+
+// helper: basic email validation
+function isValidEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
+}
+
+function getPublicBase(req) {
+  // For Vercel dashboards, your JS hits Render directly, so req is on Render.
+  // We can safely build link based on Render host unless you want a custom domain.
+  const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+  const host = (req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  return `${proto}://${host}`;
+}
+
+app.post("/api/funnel/start", async (req, res) => {
+  const body = req.body || {};
+
+  const slug = String(body.slug || "").trim();
+  const submissionId = Number(body.submissionId);
+  const studentEmail = String(body.studentEmail || "").trim().toLowerCase();
+
+  const meta = body.meta || {};
+  const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim() || null;
+  const ua = String(req.headers["user-agent"] || "") || null;
+
+  if (!slug) return res.status(400).json({ ok: false, message: "Missing slug." });
+  if (!Number.isFinite(submissionId) || submissionId <= 0)
+    return res.status(400).json({ ok: false, message: "Missing/invalid submissionId." });
+  if (!isValidEmail(studentEmail))
+    return res.status(400).json({ ok: false, message: "Missing/invalid studentEmail." });
+
+  const client = await pool.connect();
+  try {
+    // 1) Resolve school
+    const s = await client.query(`SELECT id, name FROM schools WHERE slug=$1 LIMIT 1`, [slug]);
+    if (!s.rows.length) return res.status(404).json({ ok: false, message: "School not found." });
+    const schoolId = s.rows[0].id;
+    const schoolName = s.rows[0].name;
+
+    // 2) Ensure submission belongs to that school
+    const sub = await client.query(
+      `SELECT id, school_id, created_at FROM submissions WHERE id=$1 LIMIT 1`,
+      [submissionId]
+    );
+    if (!sub.rows.length) return res.status(404).json({ ok: false, message: "Submission not found." });
+    if (Number(sub.rows[0].school_id) !== Number(schoolId))
+      return res.status(403).json({ ok: false, message: "Submission does not belong to this school." });
+
+    // 3) Create token + insert funnel request
+    const token = crypto.randomBytes(24).toString("hex");
+
+    const ins = await client.query(
+      `
+      INSERT INTO funnel_requests (
+        school_id, submission_id, student_email, token,
+        ip, user_agent, referrer, page_url
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (submission_id, lower(student_email))
+      DO UPDATE SET
+        token = EXCLUDED.token,
+        status = 'pending',
+        created_at = now(),
+        verified_at = null,
+        notified_at = null,
+        error_message = null
+      RETURNING id, token
+      `,
+      [
+        schoolId,
+        submissionId,
+        studentEmail,
+        token,
+        ip,
+        ua,
+        meta.referrer || req.headers.referer || null,
+        meta.page || null,
+      ]
+    );
+
+    const reqId = ins.rows[0].id;
+
+    // 4) Email student: verification link
+    const base = getPublicBase(req);
+    const verifyUrl = `${base}/api/funnel/verify?token=${encodeURIComponent(token)}`;
+
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from: SMTP_FROM,
+      to: studentEmail,
+      subject: `Verify your email to receive your free report`,
+      html: `
+        <p>Hi,</p>
+        <p>Please verify your email to receive your free speaking report from <b>${schoolName}</b>.</p>
+        <p><a href="${verifyUrl}">Click here to verify and receive your report</a></p>
+        <p>If you did not request this, you can ignore this message.</p>
+      `,
+    });
+
+    return res.json({ ok: true, requestId: reqId, message: "Verification email sent." });
+  } catch (err) {
+    console.error("[funnel/start] failed:", err);
+    return res.status(500).json({ ok: false, message: err.message || "Internal error." });
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------
+// FUNNEL VERIFY (simple admin alert)
+// GET /api/funnel/verify?token=...
+// Verifies student email + emails school_signups.contact_email
+// ---------------------------------------------------------------------
+app.get("/api/funnel/verify", async (req, res) => {
+  const token = String(req.query.token || "").trim();
+  if (!token) return res.status(400).send("Missing token.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1) Load funnel request + school info
+    const frq = await client.query(
+      `
+      SELECT fr.id,
+             fr.school_id,
+             fr.submission_id,
+             fr.student_email,
+             fr.status,
+             s.slug,
+             s.name
+      FROM funnel_requests fr
+      JOIN schools s ON s.id = fr.school_id
+      WHERE fr.token = $1
+      LIMIT 1
+      `,
+      [token]
+    );
+
+    if (!frq.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).send("Invalid or expired token.");
+    }
+
+    const fr = frq.rows[0];
+    const funnelRequestId = fr.id;
+    const schoolId = fr.school_id;
+    const submissionId = fr.submission_id;
+    const schoolSlug = fr.slug;
+    const schoolName = fr.name;
+    const studentEmail = fr.student_email;
+    const currentStatus = String(fr.status || "").toLowerCase();
+
+    // 1a) Idempotency: if already sent, do not resend email
+    if (currentStatus === "sent") {
+      await client.query("COMMIT");
+      return res.status(200).send(renderVerifiedPage(true));
+    }
+
+    // 2) Mark verified (idempotent)
+    await client.query(
+      `
+      UPDATE funnel_requests
+      SET status = CASE
+                     WHEN status = 'sent' THEN status
+                     WHEN status = 'error' THEN status
+                     ELSE 'verified'
+                   END,
+          verified_at = COALESCE(verified_at, now())
+      WHERE id = $1
+      `,
+      [funnelRequestId]
+    );
+
+    // 3) Resolve admin recipient (school_signups.contact_email)
+    const ssQ = await client.query(
+      `
+      SELECT contact_email
+      FROM school_signups
+      WHERE school_id = $1
+      LIMIT 1
+      `,
+      [schoolId]
+    );
+
+    const adminEmail = ssQ.rows[0]?.contact_email || null;
+
+    if (!adminEmail) {
+      await client.query(
+        `
+        UPDATE funnel_requests
+        SET status='error',
+            error_message='No admin contact_email found in school_signups'
+        WHERE id=$1
+        `,
+        [funnelRequestId]
+      );
+      await client.query("COMMIT");
+      return res
+        .status(500)
+        .send("Verified, but could not notify the school (no admin email).");
+    }
+
+    // 4) Optional safety: ensure submission exists (can remove if you want)
+    const subQ = await client.query(
+      `SELECT 1 FROM submissions WHERE id=$1 AND school_id=$2 LIMIT 1`,
+      [submissionId, schoolId]
+    );
+    if (!subQ.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).send("Submission not found for this token.");
+    }
+
+    // 5) Send simple admin alert
+    const subject = `MSS Funnel Lead Verified: ${studentEmail} (${schoolName})`;
+
+    const text = [
+      `A student email has been verified for a new report request.`,
+      ``,
+      `Student: ${studentEmail}`,
+      `School: ${schoolName} (${schoolSlug})`,
+      `Submission ID: ${submissionId}`,
+      ``,
+      `Next step: Please review this submission in the portal and follow up as appropriate.`
+    ].join("\n");
+
+    const html = `
+      <p><b>New verified report request</b></p>
+      <p>
+        <b>Student:</b> ${escapeHtml(studentEmail)}<br/>
+        <b>School:</b> ${escapeHtml(schoolName)} (${escapeHtml(schoolSlug)})<br/>
+        <b>Submission ID:</b> ${escapeHtml(submissionId)}
+      </p>
+      <p>Next step: Please review this submission in the portal and follow up as appropriate.</p>
+    `;
+
+    const sent = await sendMailSafe({
+      to: adminEmail,
+      subject,
+      html,
+      text,
+    });
+
+    if (!sent.ok) {
+      await client.query(
+        `
+        UPDATE funnel_requests
+        SET status='error',
+            error_message=$2
+        WHERE id=$1
+        `,
+        [funnelRequestId, sent.error || sent.message || "Email send failed"]
+      );
+      await client.query("COMMIT");
+      return res
+        .status(500)
+        .send("Verified, but could not notify the school (email failed).");
+    }
+
+    // 6) Mark sent (idempotent)
+    await client.query(
+      `
+      UPDATE funnel_requests
+      SET status='sent',
+          notified_at = COALESCE(notified_at, now())
+      WHERE id=$1
+      `,
+      [funnelRequestId]
+    );
+
+    await client.query("COMMIT");
+    return res.status(200).send(renderVerifiedPage(false));
+
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[funnel/verify] failed:", err);
+    return res.status(500).send(err.message || "Internal error.");
+  } finally {
+    client.release();
+  }
+
+  // helpers
+  function escapeHtml(v) {
+    return String(v || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function renderVerifiedPage(alreadySent) {
+    return `
+      <html>
+        <head><meta charset="utf-8"><title>Verified</title></head>
+        <body style="font-family:system-ui; padding:24px;">
+          <h2>Email verified</h2>
+          <p>Thanks — your request has been verified.</p>
+          <p>
+            ${
+              alreadySent
+                ? "The school has already been notified."
+                : "The school has been notified and will follow up with your report and next steps."
+            }
+          </p>
+        </body>
+      </html>
+    `;
+  }
+});
+// ---------------------------------------------------------------------
+// FUNNEL: START (collect student email, send verification link)
+// POST /api/funnel/start
+// ---------------------------------------------------------------------
+app.post("/api/funnel/start", express.json(), async (req, res) => {
+  const slug = String(req.body?.slug || "").trim();
+  const submissionId = Number(req.body?.submissionId);
+  const studentEmail = String(req.body?.studentEmail || "").trim().toLowerCase();
+
+  if (!slug) return res.status(400).json({ ok: false, message: "Missing slug." });
+  if (!Number.isFinite(submissionId) || submissionId <= 0) {
+    return res.status(400).json({ ok: false, message: "Missing/invalid submissionId." });
+  }
+  if (!studentEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(studentEmail)) {
+    return res.status(400).json({ ok: false, message: "Missing/invalid studentEmail." });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1) resolve school_id
+    const s = await client.query(
+      `SELECT id, name FROM schools WHERE slug=$1 LIMIT 1`,
+      [slug]
+    );
+    if (!s.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, message: "School not found for slug." });
+    }
+    const schoolId = s.rows[0].id;
+    const schoolName = s.rows[0].name;
+
+    // 2) ensure submission exists (and belongs to that school)
+    const sub = await client.query(
+      `SELECT 1 FROM submissions WHERE id=$1 AND school_id=$2 LIMIT 1`,
+      [submissionId, schoolId]
+    );
+    if (!sub.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, message: "Submission not found for this school." });
+    }
+
+    // 3) upsert funnel request (idempotent per submission+email)
+    const newToken = crypto.randomBytes(24).toString("hex");
+
+    const up = await client.query(
+      `
+      INSERT INTO funnel_requests
+        (school_id, submission_id, student_email, token, status, created_at)
+      VALUES
+        ($1,$2,$3,$4,'pending', now())
+      ON CONFLICT (submission_id, lower(student_email))
+      DO UPDATE SET
+        school_id     = EXCLUDED.school_id,
+        -- Option A (recommended): keep existing token so old email links still work
+        token         = funnel_requests.token,
+        status        = CASE
+                          WHEN funnel_requests.status = 'sent' THEN 'sent'
+                          WHEN funnel_requests.status = 'error' THEN 'pending'
+                          ELSE funnel_requests.status
+                        END,
+        error_message = NULL
+      RETURNING id, token, status
+      `,
+      [schoolId, submissionId, studentEmail, newToken]
+    );
+
+    const row = up.rows[0];
+    const token = row.token;
+    const status = String(row.status || "pending").toLowerCase();
+
+    // If already sent, we can simply return ok (no need to re-email student)
+    if (status === "sent") {
+      await client.query("COMMIT");
+      return res.json({
+        ok: true,
+        message: "You have already verified your email. The school has been notified.",
+      });
+    }
+
+    const verifyUrl = `${getPublicBaseUrl()}/api/funnel/verify?token=${encodeURIComponent(token)}`;
+
+    // 4) email student
+    const sent = await sendMailSafe({
+      to: studentEmail,
+      subject: `Verify your email to receive your free report (${schoolName})`,
+      html: `
+        <p>Thanks for taking the free assessment.</p>
+        <p><b>One last step:</b> please verify your email to receive your free report.</p>
+        <p><a href="${verifyUrl}">Verify my email</a></p>
+        <p style="color:#64748b; font-size:12px;">If you did not request this, you can ignore this email.</p>
+      `,
+      text: `Verify your email: ${verifyUrl}`,
+    });
+
+    if (!sent.ok) {
+      await client.query(
+        `UPDATE funnel_requests SET status='error', error_message=$2 WHERE id=$1`,
+        [row.id, sent.error || sent.message || "Email send failed"]
+      );
+      await client.query("COMMIT");
+      return res.status(500).json({ ok: false, message: "Could not send verification email." });
+    }
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, message: "Verification email sent." });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[api/funnel/start] failed:", err);
+    return res.status(500).json({ ok: false, message: err.message || "Internal error." });
+  } finally {
+    client.release();
+  }
 });

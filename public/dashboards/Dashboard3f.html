@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MSS Dashboard 3 – Gauge + Funnel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css">
+  <link rel="stylesheet" href="/themes/Dashboard.css">
+</head>
+<body>
+  <script>
+    // MSS_BACKEND_BASE: same-origin by default; Vercel uses Render backend.
+    (function () {
+      const host = window.location.hostname || "";
+      window.MSS_BACKEND_BASE =
+        (host.endsWith(".vercel.app") || host.includes("mss-widget"))
+          ? "https://mss-widget-mt.onrender.com"
+          : "";
+    })();
+  </script>
+
+  <div class="dash-root">
+    <header class="dash-header">
+      <div class="dash-title">Your latest MSS Vox gauge</div>
+      <div class="dash-subtitle">
+        CEFR and MSS score visualised in a single interactive gauge.
+      </div>
+    </header>
+
+    <main>
+      <div class="gauge-shell">
+        <iframe
+          id="cefrGauge"
+          class="gauge-frame"
+          src="mocks/mss-gauge1.html?preview=1"
+          title="MSS CEFR gauge"
+        ></iframe>
+      </div>
+
+      <section class="dash-card" style="margin-top:16px;">
+        <div style="font-weight:800; margin-bottom:6px;">Get your free report</div>
+        <div style="color:#64748b; font-size:13px; margin-bottom:10px;">
+          Share your email to receive a free report and next steps from the school.
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <input
+            id="funnelEmail"
+            type="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+            style="flex:1; min-width:240px; padding:10px 12px; border-radius:10px; border:1px solid #cbd5e1;"
+          />
+          <button
+            id="funnelBtn"
+            type="button"
+            style="padding:10px 14px; border-radius:10px; border:0; font-weight:800; cursor:pointer; background:#1d4ed8; color:#fff;"
+          >
+            Email me my report
+          </button>
+        </div>
+
+        <div id="funnelStatus" style="margin-top:10px; font-size:13px; color:#0f172a;"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Core dashboard logic (loads results + updates iframe gauge via postMessage) -->
+  <script src="/js/dashboard-core.js" defer></script>
+
+  <!-- Dashboard3f-only funnel logic -->
+  <script>
+    (function () {
+      function qs(name) {
+        return (new URLSearchParams(window.location.search || "")).get(name) || "";
+      }
+
+      const slug = (qs("slug") || "").trim();
+      const submissionId = Number(qs("submissionId") || "");
+
+      const emailEl = document.getElementById("funnelEmail");
+      const btnEl = document.getElementById("funnelBtn");
+      const statusEl = document.getElementById("funnelStatus");
+
+      if (!emailEl || !btnEl || !statusEl) return;
+
+      function setStatus(msg) {
+        statusEl.textContent = msg || "";
+      }
+
+      function looksLikeEmail(s) {
+        // pragmatic: strong enough to block obvious junk; server should still validate.
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || ""));
+      }
+
+      btnEl.addEventListener("click", async () => {
+        const studentEmail = String(emailEl.value || "").trim().toLowerCase();
+
+        if (!studentEmail) return setStatus("Please enter your email.");
+        if (!looksLikeEmail(studentEmail)) return setStatus("Please enter a valid email address.");
+        if (!slug || !Number.isFinite(submissionId) || submissionId <= 0) {
+          return setStatus("Missing link parameters (slug/submissionId).");
+        }
+
+        btnEl.disabled = true;
+        setStatus("Sending verification email…");
+
+        try {
+          const res = await fetch((window.MSS_BACKEND_BASE || "") + "/api/funnel/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug, submissionId, studentEmail }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok || data.ok === false) {
+            btnEl.disabled = false;
+            return setStatus((data && data.message) ? data.message : "Could not start funnel.");
+          }
+
+          setStatus("Check your inbox and click the verification link to receive your report.");
+        } catch (e) {
+          console.error("[Dashboard3f funnel] start error:", e);
+          btnEl.disabled = false;
+          setStatus("Network error starting funnel.");
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
