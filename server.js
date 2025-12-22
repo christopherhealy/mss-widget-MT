@@ -271,10 +271,32 @@ function isAllowedOrigin(origin) {
 //   credentials: true  AND  sameSite=None; secure for cookies
 // Your current portal uses `credentials: "include"` in fetch,
 // so enable credentials here.
+
+// ---------------------------------------------
+// CORS helpers
+// ---------------------------------------------
+
+function isAllowedOrigin(origin) {
+  // Allow server-to-server, curl, health checks
+  if (!origin) return true;
+
+  // Exact matches from env
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+
+  // Allow Vercel preview URLs:
+  // https://mss-widget-mt-xyz.vercel.app
+  if (/^https:\/\/mss-widget-mt-[a-z0-9-]+\.vercel\.app$/i.test(origin)) {
+    return true;
+  }
+
+  return false;
+}
+
 const corsOptions = {
   origin: function (origin, callback) {
     if (isAllowedOrigin(origin)) return callback(null, true);
-    console.warn("[CORS] Blocked origin:", origin, "Allowed:", ALLOWED_ORIGINS);
+
+    console.warn("[CORS] Blocked origin:", origin);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
@@ -285,7 +307,14 @@ const corsOptions = {
     "x-mss-admin-key",
     "x-admin-key",
   ],
+  maxAge: 86400,
+};
+
+// Apply CORS globally
+app.use(cors(corsOptions));
+  // optional, but can help with debugging / client reading rate-limit headers later
   exposedHeaders: [],
+
   maxAge: 86400,
 };
 
@@ -2823,6 +2852,120 @@ app.put("/api/admin/help/:slug/:questionId", async (req, res) => {
   }
 });
 
+/* ---------------------------------------------------------------
+   Public Reddit proxy (v1, no OAuth)
+   GET /api/public/reddit/:sub?sort=new|hot|top&t=day|week|month|year|all&limit=10..50
+   --------------------------------------------------------------- */
+app.get("/api/public/reddit/:sub", async (req, res) => {
+  try {
+    const sub = String(req.params.sub || "").trim();
+
+    // Allow-list (expand as desired)
+    const ALLOWED = new Set([
+      "EnglishLearning",
+      "ESL",
+      "IELTS",
+      "TOEFL",
+      "languagelearning",
+      "pronunciation",
+    ]);
+
+    if (!ALLOWED.has(sub)) {
+      return res.status(400).json({
+        ok: false,
+        error: "subreddit_not_allowed",
+        message: `Subreddit not allowed: ${sub}`,
+        allowed: Array.from(ALLOWED),
+      });
+    }
+
+    // Query params
+    const sort = String(req.query.sort || "hot").toLowerCase();
+    const validSort = new Set(["hot", "new", "top"]);
+    const safeSort = validSort.has(sort) ? sort : "hot";
+
+    // "top" supports `t=` timeframe; others ignore it
+    const t = String(req.query.t || "week").toLowerCase();
+    const validT = new Set(["hour", "day", "week", "month", "year", "all"]);
+    const safeT = validT.has(t) ? t : "week";
+
+    const limitRaw = Number(req.query.limit || 25);
+    const limit = Math.max(10, Math.min(50, Number.isFinite(limitRaw) ? limitRaw : 25));
+
+    const qs = new URLSearchParams({
+      limit: String(limit),
+      raw_json: "1",
+    });
+    if (safeSort === "top") qs.set("t", safeT);
+
+    const redditUrl = `https://www.reddit.com/r/${encodeURIComponent(sub)}/${safeSort}.json?${qs.toString()}`;
+
+    // IMPORTANT: Reddit expects a real User-Agent
+    const ua =
+      process.env.REDDIT_USER_AGENT ||
+      "eslsuccess.club/1.0 (public reddit proxy; contact: admin@eslsuccess.club)";
+
+    const r = await fetch(redditUrl, {
+      headers: {
+        "User-Agent": ua,
+        "Accept": "application/json",
+      },
+    });
+
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      return res.status(502).json({
+        ok: false,
+        error: "reddit_fetch_failed",
+        status: r.status,
+        message: "Reddit returned a non-OK response.",
+        detail: text.slice(0, 400),
+      });
+    }
+
+    const data = await r.json();
+
+    // Normalize into a stable shape for your UI
+    const posts = (data?.data?.children || [])
+      .map((c) => c?.data)
+      .filter(Boolean)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        title: p.title,
+        author: p.author,
+        subreddit: p.subreddit,
+        created_utc: p.created_utc,
+        permalink: p.permalink ? `https://www.reddit.com${p.permalink}` : null,
+        url: p.url || null,
+        score: p.score ?? null,
+        num_comments: p.num_comments ?? null,
+        selftext: p.selftext || "",
+        thumbnail: (p.thumbnail && typeof p.thumbnail === "string") ? p.thumbnail : null,
+        is_self: !!p.is_self,
+      }));
+
+    // Light caching (edge/CDN can respect this)
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300");
+
+    return res.json({
+      ok: true,
+      subreddit: sub,
+      sort: safeSort,
+      t: safeSort === "top" ? safeT : undefined,
+      limit,
+      posts,
+    });
+  } catch (err) {
+    console.error("❌ /api/public/reddit error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "reddit_proxy_failed",
+      message: err.message,
+    });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // HELP: return min/max help text for a question
 // POST /api/widget/help  { slug, questionId, level }
@@ -3079,6 +3222,39 @@ app.get("/api/admin/my-schools", async (req, res) => {
     });
   }
 });
+
+let redditTokenCache = {
+  token: null,
+  expires: 0,
+};
+
+async function getRedditToken() {
+  const now = Date.now();
+  if (redditTokenCache.token && redditTokenCache.expires > now) {
+    return redditTokenCache.token;
+  }
+
+  const auth = Buffer.from(
+    `${process.env.REDDIT_CLIENT_ID}:${process.env.REDDIT_CLIENT_SECRET}`
+  ).toString("base64");
+
+  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": process.env.REDDIT_USER_AGENT,
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  const json = await res.json();
+
+  redditTokenCache.token = json.access_token;
+  redditTokenCache.expires = now + (json.expires_in - 60) * 1000;
+
+  return redditTokenCache.token;
+}
 // ---------------------------------------------------------------------
 // ADMIN LOGIN API (JWT session, bcrypt-aware)
 // POST /api/admin/login
@@ -3175,8 +3351,81 @@ async function handleAdminLogin(req, res) {
 
 app.post("/api/admin/login", handleAdminLogin);
 app.post("/api/login", handleAdminLogin); // legacy
-//Dec 14
+//Dec 22 Reddit community 
 
+app.get("/api/reddit/posts", async (req, res) => {
+  try {
+    const subreddit = String(req.query.subreddit || "EnglishLearning")
+      .replace(/^r\//i, "")
+      .replace(/[^A-Za-z0-9_]+/g, "")
+      .slice(0, 40) || "EnglishLearning";
+
+    // Helpful: allow calling this endpoint directly from the browser
+    // (If you already have global CORS middleware, this is optional.)
+    // res.setHeader("Access-Control-Allow-Origin", "https://www.eslsuccess.club");
+    // res.setHeader("Vary", "Origin");
+
+    const token = await getRedditToken();
+
+    const url = `https://oauth.reddit.com/r/${subreddit}/hot?limit=5`;
+    const r = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "User-Agent": process.env.REDDIT_USER_AGENT || "eslsuccess:reddit-proxy:v1 (by /u/yourusername)",
+      },
+    });
+
+    const text = await r.text();
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      console.error("[/api/reddit/posts] Non-JSON from Reddit:", r.status, text.slice(0, 300));
+      return res.status(502).json({
+        ok: false,
+        error: "reddit_non_json",
+        status: r.status,
+      });
+    }
+
+    if (!r.ok) {
+      // Reddit often returns { message, error } when auth fails
+      console.error("[/api/reddit/posts] Reddit error:", r.status, json);
+      return res.status(502).json({
+        ok: false,
+        error: "reddit_http_error",
+        status: r.status,
+        reddit: json,
+      });
+    }
+
+    const children = json?.data?.children;
+    if (!Array.isArray(children)) {
+      console.error("[/api/reddit/posts] Unexpected shape:", json);
+      return res.status(502).json({
+        ok: false,
+        error: "reddit_bad_shape",
+      });
+    }
+
+    const posts = children.map((c) => ({
+      title: c?.data?.title || "",
+      url: "https://reddit.com" + (c?.data?.permalink || ""),
+      score: Number(c?.data?.score || 0),
+      subreddit: c?.data?.subreddit || subreddit,
+    })).filter(p => p.title && p.url);
+
+    return res.json({ ok: true, posts });
+  } catch (err) {
+    console.error("Reddit API error", err);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: err?.message || String(err),
+    });
+  }
+});
 // ---------------------------------------------------------------------
 // Invite School Sign-up (Super Admin only) — JWT
 // POST /api/admin/invite-school-signup

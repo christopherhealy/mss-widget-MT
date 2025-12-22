@@ -198,6 +198,20 @@
     @media (max-width: 980px){
       .grid-3{ grid-template-columns: 1fr; }
     }
+    /* add this */
+     .grid-4{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:14px;
+     }
+    @media (max-width: 1100px){
+      .grid-4{ grid-template-columns: repeat(2, 1fr); }
+    }
+
+@media (max-width: 640px){
+  .grid-4{ grid-template-columns: 1fr; }
+}
+
     .mini{
       border:1px solid var(--line);
       border-radius:16px;
@@ -428,14 +442,20 @@
         </p>
       </div>
 
-      <div class="grid-3">
+      <div class="grid-4">
         <div class="mini">
           <h3>YouTube, curated</h3>
           <p>Short lists by skill: fluency, pronunciation, grammar, vocabulary, confidence.</p>
         </div>
         <div class="mini">
           <h3>Community channels</h3>
-          <p>Reddit and other ESL channels—organized by topic and learner level.</p>
+          <p>Popular ESL channels—organized by topic and learner level.</p>
+        </div>
+       <div class="mini" id="reddit-feed">
+         <h3>Reddit: ESL discussions</h3>
+           <p class="small">Live posts from selected ESL communities.</p>
+           <div id="redditStatus" class="small" style="margin-top:8px;"></div>
+           <ul id="redditPosts" style="margin-top:10px; padding-left:16px;"></ul>
         </div>
         <div class="mini">
           <h3>News & events</h3>
@@ -527,6 +547,58 @@
       subMsg.textContent = "Thanks — subscription support is coming next.";
       subEmail.value = "";
     });
+async function loadReddit(subreddit = "EnglishLearning") {
+  const status = document.getElementById("redditStatus");
+  const list = document.getElementById("redditPosts");
+
+  try {
+    status.textContent = "Loading Reddit posts…";
+
+    const url =
+      "https://api.eslsuccess.club/api/reddit/posts?subreddit=" +
+      encodeURIComponent(subreddit);
+
+    const res = await fetch(url, { method: "GET" });
+
+    const raw = await res.text();
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      status.textContent =
+        "API did not return JSON. Check server route / CORS / proxy.";
+      console.warn("Non-JSON response:", raw.slice(0, 300));
+      return;
+    }
+
+    if (!data.ok) {
+      status.textContent = "API returned ok:false. Check server logs.";
+      console.warn("API response:", data);
+      return;
+    }
+
+    list.innerHTML = "";
+    (data.posts || []).forEach(p => {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <a href="${p.url}" target="_blank" rel="noopener">${p.title}</a>
+        <div style="font-size:11px;color:#64748b;">
+          r/${p.subreddit} · ${p.score} upvotes
+        </div>
+      `;
+      list.appendChild(li);
+    });
+
+    status.textContent = data.posts?.length ? "" : "No posts returned.";
+
+  } catch (err) {
+    status.textContent = "Reddit load failed (see console).";
+    console.error("Reddit load failed", err);
+  }
+}
+window.addEventListener("DOMContentLoaded", () => loadReddit("EnglishLearning"));
   </script>
+
 </body>
 </html>
