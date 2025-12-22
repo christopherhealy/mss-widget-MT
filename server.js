@@ -3193,51 +3193,7 @@ app.get("/api/admin/my-schools", async (req, res) => {
   }
 });
 
-let redditTokenCache = {
-  token: null,
-  expires: 0,
-};
 
-let REDDIT_TOKEN = null;
-let REDDIT_TOKEN_EXP = 0;
-
-async function getRedditToken() {
-  const now = Date.now();
-  if (REDDIT_TOKEN && now < REDDIT_TOKEN_EXP) return REDDIT_TOKEN;
-
-  const clientId = process.env.REDDIT_CLIENT_ID;
-  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) throw new Error("Missing REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET");
-
-  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-  const r = await fetch("https://www.reddit.com/api/v1/access_token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": process.env.REDDIT_USER_AGENT || "web:eslsuccess:v1.0 (by /u/UNKNOWN)",
-      Accept: "application/json",
-    },
-    body: new URLSearchParams({ grant_type: "client_credentials" }),
-  });
-
-  const body = await r.text();
-  if (!r.ok) {
-    console.warn("[RedditToken] HTTP", r.status, body.slice(0, 300));
-    throw new Error(`Reddit token failed: ${r.status}`);
-  }
-
-  const json = JSON.parse(body);
-  REDDIT_TOKEN = json.access_token;
-
-  // expires_in is seconds
-  const ttlMs = Math.max(30, Number(json.expires_in || 3600) - 60) * 1000;
-  REDDIT_TOKEN_EXP = Date.now() + ttlMs;
-
-  return REDDIT_TOKEN;
-}
 // ---------------------------------------------------------------------
 // ADMIN LOGIN API (JWT session, bcrypt-aware)
 // POST /api/admin/login
@@ -3336,26 +3292,106 @@ app.post("/api/admin/login", handleAdminLogin);
 app.post("/api/login", handleAdminLogin); // legacy
 //Dec 22 Reddit community 
 
+// ---------------------------------------------------------------------
+// Reddit token cache + helpers
+// ---------------------------------------------------------------------
+const redditTokenCache = {
+  token: null,
+  expMs: 0, // epoch ms
+};
+
+function redditUA() {
+  return process.env.REDDIT_USER_AGENT || "web:eslsuccess.club:0.1 (by /u/Puzzled_Reality4549)";
+}
+
+async function fetchRedditTokenClientCredentials() {
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET");
+  }
+
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+  const r = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": redditUA(),
+      Accept: "application/json",
+    },
+    body: new URLSearchParams({ grant_type: "client_credentials" }),
+  });
+
+  const ct = (r.headers.get("content-type") || "").toLowerCase();
+  const body = await r.text();
+
+  if (!r.ok) {
+    console.warn("[RedditToken] HTTP", r.status, body.slice(0, 300));
+    throw new Error(`Reddit token failed: ${r.status}`);
+  }
+
+  if (!ct.includes("application/json")) {
+    console.warn("[RedditToken] Non-JSON token response:", body.slice(0, 300));
+    throw new Error("Reddit token non-JSON response");
+  }
+
+  const json = JSON.parse(body);
+  if (!json.access_token) throw new Error("Reddit token missing access_token");
+
+  // expires_in is seconds; refresh 60s early; floor to 30s minimum
+  const ttlSec = Math.max(30, Number(json.expires_in || 3600) - 60);
+  redditTokenCache.token = json.access_token;
+  redditTokenCache.expMs = Date.now() + ttlSec * 1000;
+
+  return redditTokenCache.token;
+}
+
+async function getRedditToken() {
+  const now = Date.now();
+  if (redditTokenCache.token && now < redditTokenCache.expMs) return redditTokenCache.token;
+  return fetchRedditTokenClientCredentials();
+}
+
+// ---------------------------------------------------------------------
+// Reddit posts route
+// ---------------------------------------------------------------------
 app.get("/api/reddit/posts", async (req, res) => {
+  const subreddit = String(req.query.subreddit || "EnglishLearning").trim();
+
   try {
-    const subreddit = String(req.query.subreddit || "EnglishLearning").trim();
-    const token = await getRedditToken();
+    // 1) get token
+    let token = await getRedditToken();
 
-    const url = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/hot?limit=5`;
+    // 2) attempt fetch (retry once on 401)
+    async function fetchListing(t) {
+      const url = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/hot?limit=5&raw_json=1`;
+      return fetch(url, {
+        headers: {
+          Authorization: `Bearer ${t}`,
+          "User-Agent": redditUA(),
+          Accept: "application/json",
+        },
+      });
+    }
 
-    const r = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "User-Agent": process.env.REDDIT_USER_AGENT || "web:eslsuccess:v1.0 (by /u/UNKNOWN)",
-        Accept: "application/json",
-      },
-    });
+    let r = await fetchListing(token);
 
+    if (r.status === 401) {
+      // token rejected; clear cache and retry once
+      redditTokenCache.token = null;
+      redditTokenCache.expMs = 0;
+      token = await getRedditToken();
+      r = await fetchListing(token);
+    }
+
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
     const body = await r.text();
 
-    // If Reddit blocks, it often returns HTML/text. Surface it.
     if (!r.ok) {
-      console.warn("[Reddit] HTTP", r.status, "Body:", body.slice(0, 300));
+      console.warn("[Reddit] HTTP", r.status, body.slice(0, 300));
       return res.status(502).json({
         ok: false,
         error: "reddit_http",
@@ -3364,23 +3400,23 @@ app.get("/api/reddit/posts", async (req, res) => {
       });
     }
 
-    let json;
-    try {
-      json = JSON.parse(body);
-    } catch (e) {
+    if (!ct.includes("application/json")) {
       console.warn("[Reddit] Non-JSON body:", body.slice(0, 300));
       return res.status(502).json({
         ok: false,
         error: "reddit_non_json",
         status: 502,
+        sample: body.slice(0, 200),
       });
     }
 
+    const json = JSON.parse(body);
+
     const posts = (json?.data?.children || []).map((c) => ({
-      title: c.data.title,
-      url: "https://reddit.com" + c.data.permalink,
-      score: c.data.score,
-      subreddit: c.data.subreddit,
+      title: c?.data?.title,
+      url: "https://reddit.com" + c?.data?.permalink,
+      score: c?.data?.score,
+      subreddit: c?.data?.subreddit,
     }));
 
     return res.json({ ok: true, posts });
@@ -3389,6 +3425,7 @@ app.get("/api/reddit/posts", async (req, res) => {
     return res.status(500).json({ ok: false, error: "reddit_failed", message: err.message });
   }
 });
+
 // ---------------------------------------------------------------------
 // Invite School Sign-up (Super Admin only) — JWT
 // POST /api/admin/invite-school-signup
