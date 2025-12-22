@@ -3198,32 +3198,45 @@ let redditTokenCache = {
   expires: 0,
 };
 
+let REDDIT_TOKEN = null;
+let REDDIT_TOKEN_EXP = 0;
+
 async function getRedditToken() {
   const now = Date.now();
-  if (redditTokenCache.token && redditTokenCache.expires > now) {
-    return redditTokenCache.token;
-  }
+  if (REDDIT_TOKEN && now < REDDIT_TOKEN_EXP) return REDDIT_TOKEN;
 
-  const auth = Buffer.from(
-    `${process.env.REDDIT_CLIENT_ID}:${process.env.REDDIT_CLIENT_SECRET}`
-  ).toString("base64");
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
 
-  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
+  if (!clientId || !clientSecret) throw new Error("Missing REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET");
+
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+  const r = await fetch("https://www.reddit.com/api/v1/access_token", {
     method: "POST",
     headers: {
-      "Authorization": `Basic ${auth}`,
+      Authorization: `Basic ${basic}`,
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": process.env.REDDIT_USER_AGENT,
+      "User-Agent": process.env.REDDIT_USER_AGENT || "web:eslsuccess:v1.0 (by /u/UNKNOWN)",
+      Accept: "application/json",
     },
-    body: "grant_type=client_credentials",
+    body: new URLSearchParams({ grant_type: "client_credentials" }),
   });
 
-  const json = await res.json();
+  const body = await r.text();
+  if (!r.ok) {
+    console.warn("[RedditToken] HTTP", r.status, body.slice(0, 300));
+    throw new Error(`Reddit token failed: ${r.status}`);
+  }
 
-  redditTokenCache.token = json.access_token;
-  redditTokenCache.expires = now + (json.expires_in - 60) * 1000;
+  const json = JSON.parse(body);
+  REDDIT_TOKEN = json.access_token;
 
-  return redditTokenCache.token;
+  // expires_in is seconds
+  const ttlMs = Math.max(30, Number(json.expires_in || 3600) - 60) * 1000;
+  REDDIT_TOKEN_EXP = Date.now() + ttlMs;
+
+  return REDDIT_TOKEN;
 }
 // ---------------------------------------------------------------------
 // ADMIN LOGIN API (JWT session, bcrypt-aware)
@@ -3325,75 +3338,55 @@ app.post("/api/login", handleAdminLogin); // legacy
 
 app.get("/api/reddit/posts", async (req, res) => {
   try {
-    const subreddit = String(req.query.subreddit || "EnglishLearning")
-      .replace(/^r\//i, "")
-      .replace(/[^A-Za-z0-9_]+/g, "")
-      .slice(0, 40) || "EnglishLearning";
-
-    // Helpful: allow calling this endpoint directly from the browser
-    // (If you already have global CORS middleware, this is optional.)
-    // res.setHeader("Access-Control-Allow-Origin", "https://www.eslsuccess.club");
-    // res.setHeader("Vary", "Origin");
-
+    const subreddit = String(req.query.subreddit || "EnglishLearning").trim();
     const token = await getRedditToken();
 
-    const url = `https://oauth.reddit.com/r/${subreddit}/hot?limit=5`;
+    const url = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/hot?limit=5`;
+
     const r = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
-        "User-Agent": process.env.REDDIT_USER_AGENT || "eslsuccess:reddit-proxy:v1 (by /u/yourusername)",
+        "User-Agent": process.env.REDDIT_USER_AGENT || "web:eslsuccess:v1.0 (by /u/UNKNOWN)",
+        Accept: "application/json",
       },
     });
 
-    const text = await r.text();
+    const body = await r.text();
+
+    // If Reddit blocks, it often returns HTML/text. Surface it.
+    if (!r.ok) {
+      console.warn("[Reddit] HTTP", r.status, "Body:", body.slice(0, 300));
+      return res.status(502).json({
+        ok: false,
+        error: "reddit_http",
+        status: r.status,
+        sample: body.slice(0, 200),
+      });
+    }
 
     let json;
     try {
-      json = JSON.parse(text);
-    } catch {
-      console.error("[/api/reddit/posts] Non-JSON from Reddit:", r.status, text.slice(0, 300));
+      json = JSON.parse(body);
+    } catch (e) {
+      console.warn("[Reddit] Non-JSON body:", body.slice(0, 300));
       return res.status(502).json({
         ok: false,
         error: "reddit_non_json",
-        status: r.status,
+        status: 502,
       });
     }
 
-    if (!r.ok) {
-      // Reddit often returns { message, error } when auth fails
-      console.error("[/api/reddit/posts] Reddit error:", r.status, json);
-      return res.status(502).json({
-        ok: false,
-        error: "reddit_http_error",
-        status: r.status,
-        reddit: json,
-      });
-    }
-
-    const children = json?.data?.children;
-    if (!Array.isArray(children)) {
-      console.error("[/api/reddit/posts] Unexpected shape:", json);
-      return res.status(502).json({
-        ok: false,
-        error: "reddit_bad_shape",
-      });
-    }
-
-    const posts = children.map((c) => ({
-      title: c?.data?.title || "",
-      url: "https://reddit.com" + (c?.data?.permalink || ""),
-      score: Number(c?.data?.score || 0),
-      subreddit: c?.data?.subreddit || subreddit,
-    })).filter(p => p.title && p.url);
+    const posts = (json?.data?.children || []).map((c) => ({
+      title: c.data.title,
+      url: "https://reddit.com" + c.data.permalink,
+      score: c.data.score,
+      subreddit: c.data.subreddit,
+    }));
 
     return res.json({ ok: true, posts });
   } catch (err) {
     console.error("Reddit API error", err);
-    return res.status(500).json({
-      ok: false,
-      error: "server_error",
-      message: err?.message || String(err),
-    });
+    return res.status(500).json({ ok: false, error: "reddit_failed", message: err.message });
   }
 });
 // ---------------------------------------------------------------------
