@@ -874,26 +874,35 @@ app.post("/api/widget/submit", async (req, res) => {
   }
 });
 /* ---------------------------------------------------------------
-   Reports endpoint for School Portal (uses vw_widget_reports)
+   Reports endpoint for School Portal
+   Uses view: v_widget_reports
    --------------------------------------------------------------- */
 app.get("/api/admin/reports/:slug", async (req, res) => {
   try {
-    const slug = req.params.slug;
-    const limit = Number(req.query.limit || 500);
+    const slug = String(req.params.slug || "").trim();
+    const limit = Math.min(Number(req.query.limit || 500), 1000);
+
+    if (!slug) {
+      return res.status(400).json({
+        ok: false,
+        error: "missing_slug",
+        message: "Missing school slug"
+      });
+    }
 
     const sql = `
       SELECT *
-      FROM vw_widget_reports
+      FROM v_widget_reports
       WHERE school_slug = $1
-      ORDER BY submitted_at DESC
+      ORDER BY created_at DESC
       LIMIT $2
     `;
 
-    const result = await pool.query(sql, [slug, limit]);
+    const { rows } = await pool.query(sql, [slug, limit]);
 
     return res.json({
       ok: true,
-      tests: result.rows
+      tests: rows
     });
 
   } catch (err) {
@@ -901,7 +910,7 @@ app.get("/api/admin/reports/:slug", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: "reports_failed",
-      message: err.message
+      message: err.message || "Failed to load reports"
     });
   }
 });

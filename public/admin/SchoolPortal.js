@@ -1095,7 +1095,7 @@ function buildEmbedSnippet() {
           <td>${safe(date)}</td>
 
           <!-- 5: Student -->
-          <td>${safe(t.student_id)}</td>
+          <td>${safe(t.student_email || t.student_name || t.student_id)}</td>
 
           <!-- 6: Question -->
           <td title="${safe(t.question)}">
