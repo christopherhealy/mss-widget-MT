@@ -45,10 +45,33 @@
       display:flex; align-items:center; gap:10px;
       font-weight:800; letter-spacing:-.02em;
     }
-    .brand-dot{
-      width:10px; height:10px; border-radius:999px; background:var(--blue);
-      box-shadow:0 0 0 6px rgba(37,99,235,.12);
+
+    /* -------------------------------------------------------
+       Brand mark: target + arrow "lands" once on page load
+       ------------------------------------------------------- */
+    .brand-mark{
+      width:18px;
+      height:18px;
+      display:block;
+      flex:0 0 auto;
     }
+    .brand-arrow{
+      transform: translate(6px, -6px);
+      opacity: 0;
+      animation: arrow-land 700ms cubic-bezier(.22,.61,.36,1) forwards;
+      animation-delay: 1200ms;
+      transform-origin: 11px 11px;
+    }
+    @keyframes arrow-land {
+      0% { transform: translate(6px, -6px); opacity: 0; }
+      60% { opacity: 1; }
+      100% { transform: translate(0, 0); opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .brand-arrow { animation: none; opacity: 1; transform: none; }
+    }
+    /* ----------------------------------------------------- */
+
     .nav{
       display:flex; align-items:center; gap:10px;
       font-size:14px;
@@ -212,7 +235,19 @@
     <div class="wrap">
       <div class="topbar-inner">
         <a class="brand" href="/">
-          <span class="brand-dot"></span>
+          <!-- target + arrow mark -->
+          <svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+            <!-- target -->
+            <circle cx="11" cy="11" r="9" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"/>
+            <circle cx="11" cy="11" r="5" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.55"/>
+            <circle cx="11" cy="11" r="2.5" fill="#ef4444"/>
+            <!-- arrow -->
+            <g class="brand-arrow">
+              <path d="M16.5 5.5 L20.5 1.5" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M18.8 1.5 L20.5 1.5 L20.5 3.2" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+            </g>
+          </svg>
+
           <span>ESL Success Club</span>
         </a>
 
@@ -294,36 +329,36 @@
       </div>
 
       <div class="grid-3">
-  <a
-    class="mini"
-    href="https://www.myspeakingscore.com"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    <h3>MySpeakingScore</h3>
-    <p>World-class authorized SpeechRater and Vox TOEFL assessment services.</p>
-  </a>
+        <a
+          class="mini"
+          href="https://www.myspeakingscore.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <h3>MySpeakingScore</h3>
+          <p>World-class authorized SpeechRater and Vox TOEFL assessment services.</p>
+        </a>
 
-  <a
-    class="mini"
-    href="https://www.learnyourenglish.com"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    <h3>LearnYourEnglish</h3>
-    <p>Specialized learning programs and curriculum-driven support.</p>
-  </a>
+        <a
+          class="mini"
+          href="https://www.learnyourenglish.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <h3>LearnYourEnglish</h3>
+          <p>Specialized learning programs and curriculum-driven support.</p>
+        </a>
 
-  <a
-    class="mini"
-    href="https://www.toeflresources.com"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    <h3>Test Resources</h3>
-    <p>Independent test prep tools and curated practice material across major exams.</p>
-  </a>
-</div>
+        <a
+          class="mini"
+          href="https://www.toeflresources.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <h3>Test Resources</h3>
+          <p>Independent test prep tools and curated practice material across major exams.</p>
+        </a>
+      </div>
     </div>
   </section>
 
@@ -440,7 +475,17 @@
       <div class="footer-grid">
         <div>
           <div class="brand" style="margin-bottom:10px;">
-            <span class="brand-dot"></span>
+            <!-- target + arrow mark (same as header) -->
+            <svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+              <circle cx="11" cy="11" r="9" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"/>
+              <circle cx="11" cy="11" r="5" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.55"/>
+              <circle cx="11" cy="11" r="2.5" fill="#2563eb"/>
+              <g class="brand-arrow">
+                <path d="M16.5 5.5 L20.5 1.5" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M18.8 1.5 L20.5 1.5 L20.5 3.2" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+              </g>
+            </svg>
+
             <span>ESL Success Club</span>
           </div>
           <p class="small" style="margin:0;">
@@ -458,8 +503,8 @@
             <a href="#sponsors">Sponsors</a>
           </div>
           <p class="small" style="margin:10px 0 0;">
-  © <span id="year"></span> ESLSuccess.club · We're Canadian, eh? 🇨🇦
-</p>
+            © <span id="year"></span> ESLSuccess.club · We're Canadian, eh? 🇨🇦
+          </p>
         </div>
       </div>
     </div>
