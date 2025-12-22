@@ -231,28 +231,26 @@ const allowedOrigins = [
   "http://localhost:3000",              // local dev (Next/Vite/etc.)
   "http://localhost:5173",
 ];
-//Dec 21
 // ---------------------------------------------------------------------
-// CORS (Render API: allow Vercel site + local dev)
+// CORS (Render API: allow Vercel site + custom domains + local dev)
 // ---------------------------------------------------------------------
 
 function parseAllowedOrigins(raw) {
   return String(raw || "")
     .split(",")
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 }
 
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
 
-// Support basic wildcard patterns like:
+// Support wildcard patterns like:
 //   https://mss-widget-mt-*.vercel.app
 //   https://*.vercel.app
 function originMatches(allowed, origin) {
   if (!allowed || !origin) return false;
   if (allowed === origin) return true;
 
-  // Treat allowed entries containing "*" as wildcard patterns
   if (allowed.includes("*")) {
     const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
     const reStr = "^" + escaped.replace(/\*/g, ".*") + "$";
@@ -263,31 +261,15 @@ function originMatches(allowed, origin) {
 }
 
 function isAllowedOrigin(origin) {
-  if (!origin) return true; // non-browser clients (curl, server-to-server)
-  return ALLOWED_ORIGINS.some(a => originMatches(a, origin));
-}
-
-// IMPORTANT: If you are using cookies across domains, you must use:
-//   credentials: true  AND  sameSite=None; secure for cookies
-// Your current portal uses `credentials: "include"` in fetch,
-// so enable credentials here.
-
-// ---------------------------------------------
-// CORS helpers
-// ---------------------------------------------
-
-function isAllowedOrigin(origin) {
-  // Allow server-to-server, curl, health checks
+  // Allow server-to-server, curl, health checks (no Origin header)
   if (!origin) return true;
 
-  // Exact matches from env
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  // Match exact + wildcard entries from env
+  if (ALLOWED_ORIGINS.some((a) => originMatches(a, origin))) return true;
 
-  // Allow Vercel preview URLs:
-  // https://mss-widget-mt-xyz.vercel.app
-  if (/^https:\/\/mss-widget-mt-[a-z0-9-]+\.vercel\.app$/i.test(origin)) {
-    return true;
-  }
+  // Optional safety net for Vercel preview URLs
+  // (useful if you forget to include the wildcard in env)
+  if (/^https:\/\/mss-widget-mt-[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
 
   return false;
 }
@@ -296,29 +278,17 @@ const corsOptions = {
   origin: function (origin, callback) {
     if (isAllowedOrigin(origin)) return callback(null, true);
 
-    console.warn("[CORS] Blocked origin:", origin);
+    console.warn("[CORS] Blocked origin:", origin, "Allowed:", ALLOWED_ORIGINS);
     return callback(new Error("Not allowed by CORS"));
   },
-  credentials: true,
+  credentials: true, // keep true because your portal uses credentials include
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "x-mss-admin-key",
-    "x-admin-key",
-  ],
-  maxAge: 86400,
-};
-
-// Apply CORS globally
-app.use(cors(corsOptions));
-  // optional, but can help with debugging / client reading rate-limit headers later
+  allowedHeaders: ["Content-Type", "Authorization", "x-mss-admin-key", "x-admin-key"],
   exposedHeaders: [],
-
   maxAge: 86400,
 };
 
-// Apply CORS globally
+// Apply CORS globally (must be before routes)
 app.use(cors(corsOptions));
 
 // Preflight for all routes
