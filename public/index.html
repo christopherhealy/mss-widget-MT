@@ -1,118 +1,470 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>MySpeakingScore Widget Suite</title>
-<style>
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: linear-gradient(180deg,#f8fafc,#e2e8f0);
-    margin: 0; padding: 0;
-    min-height: 100vh;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    color: #1e293b;
-  }
-  .card {
-    background: #fff;
-    padding: 30px 40px;
-    border-radius: 20px;
-    box-shadow: 0 12px 30px rgba(0,0,0,.08);
-    max-width: 480px;
-    text-align: center;
-  }
-  h1 {
-    font-size: 1.8rem;
-    margin-bottom: 0.4em;
-  }
-  p {
-    color: #475569;
-    font-size: 1rem;
-    margin-top: 0;
-  }
-  .links {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 20px;
-  }
-  .btn {
-    background: #1d4ed8;
-    color: white;
-    border: none;
-    border-radius: 999px;
-    padding: 12px 20px;
-    font-weight: 600;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: background .2s ease;
-  }
-  .btn:hover {
-    background: #1e40af;
-  }
-  .status {
-    font-size: 0.85rem;
-    color: #64748b;
-    margin-top: 24px;
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ESL Success Club</title>
+  <meta name="description" content="A community hub for ESL learners and teachers: free assessment, resources, teacher registry, and tools." />
+
+  <style>
+    :root{
+      --bg: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --muted2:#64748b;
+      --line:#e2e8f0;
+      --soft:#f8fafc;
+      --blue:#1d4ed8;
+      --blue2:#2563eb;
+      --shadow: 0 20px 60px rgba(15,23,42,.10);
+      --radius: 18px;
+      --max: 1120px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--ink);
+      background:var(--bg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    a{ color:inherit; text-decoration:none; }
+    .wrap{ max-width:var(--max); margin:0 auto; padding:0 22px; }
+    .topbar{
+      position:sticky; top:0; z-index:50;
+      background:rgba(255,255,255,.86);
+      backdrop-filter:saturate(180%) blur(12px);
+      border-bottom:1px solid var(--line);
+    }
+    .topbar-inner{
+      display:flex; align-items:center; justify-content:space-between;
+      height:64px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:800; letter-spacing:-.02em;
+    }
+    .brand-dot{
+      width:10px; height:10px; border-radius:999px; background:var(--blue);
+      box-shadow:0 0 0 6px rgba(37,99,235,.12);
+    }
+    .nav{
+      display:flex; align-items:center; gap:10px;
+      font-size:14px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .nav a{
+      padding:10px 12px;
+      border-radius:12px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .nav a:hover{ background:var(--soft); color:var(--ink); }
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:10px 14px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:#fff;
+      font-weight:700;
+      font-size:14px;
+      cursor:pointer;
+    }
+    .btn-primary{
+      background:var(--blue);
+      color:#fff;
+      border:1px solid rgba(29,78,216,.25);
+    }
+    .btn-primary:hover{ background:var(--blue2); }
+    .hero{
+      padding:56px 0 26px;
+    }
+    .hero-grid{
+      display:grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap:22px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .hero-grid{ grid-template-columns: 1fr; }
+    }
+    h1{
+      margin:0 0 12px;
+      font-size:52px;
+      line-height:1.05;
+      letter-spacing:-.04em;
+    }
+    @media (max-width: 560px){
+      h1{ font-size:40px; }
+    }
+    .lead{
+      font-size:18px;
+      line-height:1.55;
+      color:var(--muted);
+      max-width:58ch;
+      margin:0 0 18px;
+    }
+    .hero-actions{
+      display:flex; gap:10px; flex-wrap:wrap;
+      margin-top:14px;
+    }
+    .pill-row{
+      display:flex; gap:8px; flex-wrap:wrap;
+      margin-top:18px;
+    }
+    .pill{
+      font-size:12px;
+      color:var(--muted2);
+      border:1px solid var(--line);
+      background:#fff;
+      padding:8px 10px;
+      border-radius:999px;
+    }
+    .card{
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:#fff;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding:16px 16px 12px;
+      border-bottom:1px solid var(--line);
+    }
+    .card-title{
+      font-weight:800;
+      letter-spacing:-.02em;
+      margin:0;
+      font-size:16px;
+    }
+    .card-sub{
+      margin:6px 0 0;
+      color:var(--muted2);
+      font-size:13px;
+      line-height:1.35;
+    }
+    .card-body{ padding:16px; }
+    .section{
+      padding:34px 0;
+      border-top:1px solid var(--line);
+    }
+    .sec-head{
+      display:flex; align-items:flex-end; justify-content:space-between;
+      gap:16px; flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .sec-title{
+      font-size:24px;
+      letter-spacing:-.02em;
+      margin:0;
+    }
+    .sec-desc{
+      margin:0;
+      color:var(--muted);
+      max-width:70ch;
+      line-height:1.55;
+      font-size:14px;
+    }
+    .grid-3{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:14px;
+    }
+    @media (max-width: 980px){
+      .grid-3{ grid-template-columns: 1fr; }
+    }
+    .mini{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:16px;
+      background:#fff;
+    }
+    .mini h3{ margin:0 0 6px; font-size:15px; letter-spacing:-.01em; }
+    .mini p{ margin:0; color:var(--muted); font-size:13px; line-height:1.45; }
+    footer{
+      border-top:1px solid var(--line);
+      background:var(--soft);
+      padding:28px 0;
+    }
+    .footer-grid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:18px;
+      align-items:start;
+    }
+    @media (max-width: 980px){ .footer-grid{ grid-template-columns:1fr; } }
+    .links{
+      display:flex; gap:10px; flex-wrap:wrap;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .links a{ padding:8px 10px; border-radius:10px; }
+    .links a:hover{ background:#fff; color:var(--ink); }
+    .small{ font-size:12px; color:var(--muted2); line-height:1.45; }
+  </style>
 </head>
+
 <body>
-  <div class="card">
-    <h1>🎙 MySpeakingScore Widget Suite</h1>
-    <p>Launch any module below. The system will automatically wake up the Render backend.</p>
-    <div class="links">
-      <button class="btn" onclick="openTool('Widget.html')">Open Widget</button>
-      <button class="btn" onclick="openTool('WidgetSurvey.html')">Open Widget Survey</button>
-      <button class="btn" onclick="openTool('WidgetAdmin.html')">Open Widget Admin</button>
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="wrap">
+      <div class="topbar-inner">
+        <a class="brand" href="/">
+          <span class="brand-dot"></span>
+          <span>ESL Success Club</span>
+        </a>
+
+        <nav class="nav">
+          <a href="#sponsors">Sponsors</a>
+          <a href="#teachers">Teachers</a>
+          <a href="#schools">Schools</a>
+          <a href="#resources">Resources</a>
+          <a href="#test">Free Test</a>
+          <a class="btn" href="/admin-login/AdminLogin.html">Teacher login</a>
+          <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">School signup</a>
+        </nav>
+      </div>
     </div>
-    <div id="status" class="status">Warming up Render…</div>
   </div>
 
-<script>
-/* ------------------------------------------------------------------
-   CONFIG: detect environment and choose Render vs localhost
------------------------------------------------------------------- */
-const SERVICE_BASE = window.location.hostname.includes('localhost')
-  ? 'http://localhost:3000'
-  : 'https://msswidget-dev.onrender.com';
+  <!-- Hero -->
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <h1>All things ESL, in one place.</h1>
+          <p class="lead">
+            ESL Success Club is a community hub for learners and teachers:
+            free speaking evaluation, high-quality resources, a teacher registry,
+            and lightweight tools that help teachers convert interest into lessons.
+          </p>
 
-const mode = SERVICE_BASE.includes('localhost') ? 'LOCAL DEV' : 'RENDER PROD';
-console.log(`🧩 Index running in ${mode} mode`);
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="/WidgetAcademy_home.html">Take the free speaking test</a>
+            <a class="btn" href="/admin-login/AdminLogin.html">Teacher login</a>
+            <a class="btn" href="/school-signup/SchoolSignUp.html">Register your school</a>
+          </div>
 
-/* ------------------------------------------------------------------
-   Wake up Render backend (free-tier warm-up)
------------------------------------------------------------------- */
-async function wakeRender() {
-  const url = SERVICE_BASE.replace(/\/+$/, '') + '/config/widget?ts=' + Date.now();
-  const statusEl = document.getElementById('status');
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
-    clearTimeout(timeout);
-    if (res.ok) {
-      statusEl.textContent = '✅ Backend awake and ready.';
-      console.log('✅ Render awake:', url);
-    } else {
-      statusEl.textContent = '⚠️ Backend responded, but not OK (' + res.status + ').';
-      console.log('⚠️ Render responded:', res.status);
-    }
-  } catch (err) {
-    document.getElementById('status').textContent = '⏱ Render may still be waking up…';
-    console.warn('⏱ Render may still be waking up…', err);
-  }
-}
+          <div class="pill-row">
+            <span class="pill">Free evaluation</span>
+            <span class="pill">Teacher tools</span>
+            <span class="pill">Resources (YouTube-first)</span>
+            <span class="pill">Registry + discovery</span>
+            <span class="pill">Community channels</span>
+          </div>
+        </div>
 
-/* ------------------------------------------------------------------
-   Navigation
------------------------------------------------------------------- */
-function openTool(page) {
-  window.open(page, '_blank', 'noopener');
-}
+        <!-- Free test card (widget hidden for now) -->
+        <div class="card" id="test">
+          <div class="card-head">
+            <p class="card-title">Free speaking evaluation</p>
+            <p class="card-sub">
+              Record or upload a short response and get an instant estimate (CEFR + more).
+            </p>
+          </div>
+          <div class="card-body">
+            <p style="margin:0 0 12px; color:var(--muted); line-height:1.55;">
+              The free test is currently shown on a dedicated page while we finalize the homepage layout.
+            </p>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <a class="btn btn-primary" href="/WidgetAcademy_home.html">Take the free speaking test</a>
+              <a class="btn" href="#resources">Explore resources</a>
+            </div>
+            <p class="small" style="margin:12px 0 0;">
+              By using the free test, you agree that ESL Success Club may contact you with tips and resources.
+              You can unsubscribe at any time.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
 
-window.addEventListener('DOMContentLoaded', wakeRender);
-</script>
+  <!-- Sponsors -->
+  <section class="section" id="sponsors">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">Sponsors</h2>
+        <p class="sec-desc">
+          Sponsors help fund a free platform for learners and teachers. In return, sponsors receive homepage prominence
+          and curated placement aligned to their services.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="mini">
+          <h3>MySpeakingScore</h3>
+          <p>Evaluation engine + teacher tools (widgets, dashboards, funnel follow-up).</p>
+        </div>
+        <div class="mini">
+          <h3>LearnYourEnglish</h3>
+          <p>Specialized learning programs and curriculum-driven support.</p>
+        </div>
+        <div class="mini">
+          <h3>Test Resources</h3>
+          <p>Test prep tools and curated practice material across major exams.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Teachers -->
+  <section class="section" id="teachers">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">Teachers</h2>
+        <p class="sec-desc">
+          Teachers who join get the ESL Success basic platform: Zoom-ready workflow, personalized widgets and dashboards,
+          submission tracking, and funnel sign-up. The v1 goal is engagement and feedback—not pricing.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="mini">
+          <h3>Widget MT, free to start</h3>
+          <p>Stand up a branded speaking widget and start collecting submissions immediately.</p>
+        </div>
+        <div class="mini">
+          <h3>Funnel follow-up</h3>
+          <p>Students verify email; admins get notified; teachers follow up manually with a strong workflow.</p>
+        </div>
+        <div class="mini">
+          <h3>Teacher profiles</h3>
+          <p>Post your picture, class description, pricing, reviews, and materials—then improve placement over time.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Schools -->
+  <section class="section" id="schools">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">Schools</h2>
+        <p class="sec-desc">
+          Any school can register and be discoverable by learners. Over time, schools can add specializations,
+          packages, and featured placement.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="mini">
+          <h3>Register for free</h3>
+          <p>Create a presence and start using the widget + portal tools.</p>
+        </div>
+        <div class="mini">
+          <h3>Advertise specializations</h3>
+          <p>IELTS, TOEFL, interview prep, pronunciation coaching, academic writing, and more.</p>
+        </div>
+        <div class="mini">
+          <h3>Conversion tracking</h3>
+          <p>See what learners submit, what they need, and how follow-up converts into lessons.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Resources -->
+  <section class="section" id="resources">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">Resources</h2>
+        <p class="sec-desc">
+          Searchable, curated ESL resources for every conceivable need—YouTube-first, plus tools, worksheets, and communities.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="mini">
+          <h3>YouTube, curated</h3>
+          <p>Short lists by skill: fluency, pronunciation, grammar, vocabulary, confidence.</p>
+        </div>
+        <div class="mini">
+          <h3>Community channels</h3>
+          <p>Reddit and other ESL channels—organized by topic and learner level.</p>
+        </div>
+        <div class="mini">
+          <h3>News & events</h3>
+          <p>What’s changing in ESL tests, education, and learning technology.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Subscribe -->
+  <section class="section" id="subscribe">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">Subscribe</h2>
+        <p class="sec-desc">
+          Subscribe to ESL Success Club and receive updates, tips, and discounts on the best tools in the ESL community.
+        </p>
+      </div>
+
+      <div class="card" style="box-shadow:none;">
+        <div class="card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input
+            id="subEmail"
+            type="email"
+            placeholder="your@email.com"
+            style="flex:1; min-width:240px; padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:14px;"
+          />
+          <button class="btn btn-primary" id="subBtn" type="button">Subscribe</button>
+          <span class="small" id="subMsg"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div>
+          <div class="brand" style="margin-bottom:10px;">
+            <span class="brand-dot"></span>
+            <span>ESL Success Club</span>
+          </div>
+          <p class="small" style="margin:0;">
+            A community platform for ESL learners and teachers. v1 is for engagement, feedback, and iteration.
+          </p>
+        </div>
+
+        <div>
+          <div class="links">
+            <a href="/admin-login/AdminLogin.html">Teacher login</a>
+            <a href="/school-signup/SchoolSignUp.html">School signup</a>
+            <a href="/WidgetAcademy_home.html">Free test</a>
+            <a href="#resources">Resources</a>
+            <a href="#teachers">Teachers</a>
+            <a href="#sponsors">Sponsors</a>
+          </div>
+          <p class="small" style="margin:10px 0 0;">
+            © <span id="year"></span> ESLSuccess.club
+          </p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+
+    // v1: discussion-ready subscribe handler. Later, wire to a real API endpoint.
+    const subBtn = document.getElementById("subBtn");
+    const subEmail = document.getElementById("subEmail");
+    const subMsg = document.getElementById("subMsg");
+
+    subBtn.addEventListener("click", () => {
+      const email = String(subEmail.value || "").trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        subMsg.textContent = "Please enter a valid email.";
+        return;
+      }
+      subMsg.textContent = "Thanks — subscription support is coming next.";
+      subEmail.value = "";
+    });
+  </script>
 </body>
 </html>
