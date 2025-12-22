@@ -24,69 +24,6 @@ console.log("[env] DATABASE_URL present:", !!process.env.DATABASE_URL);
 console.log("[env] MSS_ADMIN_JWT_SECRET present:", !!process.env.MSS_ADMIN_JWT_SECRET);
 console.log("[env] MSS_ADMIN_JWT_TTL:", process.env.MSS_ADMIN_JWT_TTL || "(default)");
 
-// ---------------------------------------------------------------------
-// CORS (Render API: allow Vercel site + local dev)
-// ---------------------------------------------------------------------
-
-function parseAllowedOrigins(raw) {
-  return String(raw || "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
-
-// Support basic wildcard patterns like:
-//   https://mss-widget-mt-*.vercel.app
-//   https://*.vercel.app
-function originMatches(allowed, origin) {
-  if (!allowed || !origin) return false;
-  if (allowed === origin) return true;
-
-  // Treat allowed entries containing "*" as wildcard patterns
-  if (allowed.includes("*")) {
-    const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-    const reStr = "^" + escaped.replace(/\*/g, ".*") + "$";
-    return new RegExp(reStr, "i").test(origin);
-  }
-
-  return false;
-}
-
-function isAllowedOrigin(origin) {
-  if (!origin) return true; // non-browser clients (curl, server-to-server)
-  return ALLOWED_ORIGINS.some(a => originMatches(a, origin));
-}
-
-// IMPORTANT: If you are using cookies across domains, you must use:
-//   credentials: true  AND  sameSite=None; secure for cookies
-// Your current portal uses `credentials: "include"` in fetch,
-// so enable credentials here.
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (isAllowedOrigin(origin)) return callback(null, true);
-    console.warn("[CORS] Blocked origin:", origin, "Allowed:", ALLOWED_ORIGINS);
-    return callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "x-mss-admin-key",
-    "x-admin-key",
-  ],
-  exposedHeaders: [],
-  maxAge: 86400,
-};
-
-// Apply CORS globally
-app.use(cors(corsOptions));
-
-// Preflight for all routes
-app.options("*", cors(corsOptions));
-
 
 // ---------------------------------------------------------------------
 // Public base URL for email links - Nov 29
@@ -294,31 +231,68 @@ const allowedOrigins = [
   "http://localhost:3000",              // local dev (Next/Vite/etc.)
   "http://localhost:5173",
 ];
-//Dec 6
+//Dec 21
+// ---------------------------------------------------------------------
+// CORS (Render API: allow Vercel site + local dev)
+// ---------------------------------------------------------------------
+
+function parseAllowedOrigins(raw) {
+  return String(raw || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
+
+// Support basic wildcard patterns like:
+//   https://mss-widget-mt-*.vercel.app
+//   https://*.vercel.app
+function originMatches(allowed, origin) {
+  if (!allowed || !origin) return false;
+  if (allowed === origin) return true;
+
+  // Treat allowed entries containing "*" as wildcard patterns
+  if (allowed.includes("*")) {
+    const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    const reStr = "^" + escaped.replace(/\*/g, ".*") + "$";
+    return new RegExp(reStr, "i").test(origin);
+  }
+
+  return false;
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true; // non-browser clients (curl, server-to-server)
+  return ALLOWED_ORIGINS.some(a => originMatches(a, origin));
+}
+
+// IMPORTANT: If you are using cookies across domains, you must use:
+//   credentials: true  AND  sameSite=None; secure for cookies
+// Your current portal uses `credentials: "include"` in fetch,
+// so enable credentials here.
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    console.warn("🚫 CORS blocked origin:", origin);
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    console.warn("[CORS] Blocked origin:", origin, "Allowed:", ALLOWED_ORIGINS);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
-    "Authorization",     // ✅ ADD THIS
-    "ADMIN-KEY",
-    "X-ADMIN-KEY",
-    "X-MSS-ADMIN-KEY",   // ✅ (optional but matches server reader)
-    "API-KEY",
-    "API-SECRET",
+    "Authorization",
+    "x-mss-admin-key",
+    "x-admin-key",
   ],
+  exposedHeaders: [],
+  maxAge: 86400,
 };
 
+// Apply CORS globally
 app.use(cors(corsOptions));
 
+// Preflight for all routes
 app.options("*", cors(corsOptions));
 
 // Body parsers (single source of truth)
@@ -937,35 +911,26 @@ app.post("/api/widget/submit", async (req, res) => {
   }
 });
 /* ---------------------------------------------------------------
-   Reports endpoint for School Portal
-   Uses view: v_widget_reports
+   Reports endpoint for School Portal (uses vw_widget_reports)
    --------------------------------------------------------------- */
 app.get("/api/admin/reports/:slug", async (req, res) => {
   try {
-    const slug = String(req.params.slug || "").trim();
-    const limit = Math.min(Number(req.query.limit || 500), 1000);
-
-    if (!slug) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_slug",
-        message: "Missing school slug"
-      });
-    }
+    const slug = req.params.slug;
+    const limit = Number(req.query.limit || 500);
 
     const sql = `
       SELECT *
-      FROM v_widget_reports
+      FROM vw_widget_reports
       WHERE school_slug = $1
-      ORDER BY created_at DESC
+      ORDER BY submitted_at DESC
       LIMIT $2
     `;
 
-    const { rows } = await pool.query(sql, [slug, limit]);
+    const result = await pool.query(sql, [slug, limit]);
 
     return res.json({
       ok: true,
-      tests: rows
+      tests: result.rows
     });
 
   } catch (err) {
@@ -973,7 +938,7 @@ app.get("/api/admin/reports/:slug", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: "reports_failed",
-      message: err.message || "Failed to load reports"
+      message: err.message
     });
   }
 });
