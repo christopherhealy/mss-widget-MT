@@ -232,66 +232,48 @@ const allowedOrigins = [
   "http://localhost:5173",
 ];
 // ---------------------------------------------------------------------
-// CORS (Render API: allow Vercel site + custom domains + local dev)
+// CORS (Dec 22) — supports exact + wildcard patterns from CORS_ORIGIN
 // ---------------------------------------------------------------------
-
 function parseAllowedOrigins(raw) {
   return String(raw || "")
     .split(",")
-    .map((s) => s.trim())
+    .map(s => s.trim())
     .filter(Boolean);
 }
 
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
 
-// Support wildcard patterns like:
-//   https://mss-widget-mt-*.vercel.app
-//   https://*.vercel.app
 function originMatches(allowed, origin) {
   if (!allowed || !origin) return false;
   if (allowed === origin) return true;
 
+  // Wildcard support: https://mss-widget-mt-*.vercel.app
   if (allowed.includes("*")) {
     const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
     const reStr = "^" + escaped.replace(/\*/g, ".*") + "$";
     return new RegExp(reStr, "i").test(origin);
   }
-
   return false;
 }
 
 function isAllowedOrigin(origin) {
-  // Allow server-to-server, curl, health checks (no Origin header)
-  if (!origin) return true;
-
-  // Match exact + wildcard entries from env
-  if (ALLOWED_ORIGINS.some((a) => originMatches(a, origin))) return true;
-
-  // Optional safety net for Vercel preview URLs
-  // (useful if you forget to include the wildcard in env)
-  if (/^https:\/\/mss-widget-mt-[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
-
-  return false;
+  if (!origin) return true; // curl / server-to-server
+  return ALLOWED_ORIGINS.some(a => originMatches(a, origin));
 }
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (isAllowedOrigin(origin)) return callback(null, true);
-
+  origin: (origin, cb) => {
+    if (isAllowedOrigin(origin)) return cb(null, true);
     console.warn("[CORS] Blocked origin:", origin, "Allowed:", ALLOWED_ORIGINS);
-    return callback(new Error("Not allowed by CORS"));
+    return cb(new Error("Not allowed by CORS"));
   },
-  credentials: true, // keep true because your portal uses credentials include
+  credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-mss-admin-key", "x-admin-key"],
-  exposedHeaders: [],
   maxAge: 86400,
 };
 
-// Apply CORS globally (must be before routes)
 app.use(cors(corsOptions));
-
-// Preflight for all routes
 app.options("*", cors(corsOptions));
 
 // Body parsers (single source of truth)

@@ -554,11 +554,9 @@ async function loadReddit(subreddit = "EnglishLearning") {
   try {
     status.textContent = "Loading Reddit posts…";
 
-    const url =
-      "https://api.eslsuccess.club/api/reddit/posts?subreddit=" +
-      encodeURIComponent(subreddit);
-
-    const res = await fetch(url, { method: "GET" });
+    const url = "https://api.eslsuccess.club/api/reddit/posts?subreddit=" 
+         +encodeURIComponent(subreddit);
+    const res = await fetch(url, { method: "GET", credentials: "omit" });
 
     const raw = await res.text();
 
