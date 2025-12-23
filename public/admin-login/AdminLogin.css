@@ -160,3 +160,10 @@ footer {
   font-size: 0.9rem;
   color: #666;
 }
+.admin-login-logo {
+  width: 96px;
+  height: auto;
+  display: block;
+  margin: 0 auto 16px;
+}
+
