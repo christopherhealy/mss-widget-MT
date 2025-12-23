@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ESL Success Club</title>
-  <meta name="description" content="A community hub for ESL learners and teachers: free assessment, resources, teacher registry, and tools." />
+  <meta name="description" content="Instant, data-driven ESL speaking assessment for teachers and schools." />
 
   <style>
     :root{
@@ -101,6 +101,7 @@
       border:1px solid rgba(29,78,216,.25);
     }
     .btn-primary:hover{ background:var(--blue2); }
+
     .hero{
       padding:56px 0 26px;
     }
@@ -126,7 +127,7 @@
       font-size:18px;
       line-height:1.55;
       color:var(--muted);
-      max-width:58ch;
+      max-width:62ch;
       margin:0 0 18px;
     }
     .hero-actions{
@@ -145,6 +146,7 @@
       padding:8px 10px;
       border-radius:999px;
     }
+
     .card{
       border:1px solid var(--line);
       border-radius:var(--radius);
@@ -169,6 +171,7 @@
       line-height:1.35;
     }
     .card-body{ padding:16px; }
+
     .section{
       padding:34px 0;
       border-top:1px solid var(--line);
@@ -186,10 +189,11 @@
     .sec-desc{
       margin:0;
       color:var(--muted);
-      max-width:70ch;
+      max-width:78ch;
       line-height:1.55;
       font-size:14px;
     }
+
     .grid-3{
       display:grid;
       grid-template-columns: repeat(3, 1fr);
@@ -198,19 +202,6 @@
     @media (max-width: 980px){
       .grid-3{ grid-template-columns: 1fr; }
     }
-    /* add this */
-     .grid-4{
-      display:grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap:14px;
-     }
-    @media (max-width: 1100px){
-      .grid-4{ grid-template-columns: repeat(2, 1fr); }
-    }
-
-@media (max-width: 640px){
-  .grid-4{ grid-template-columns: 1fr; }
-}
 
     .mini{
       border:1px solid var(--line);
@@ -220,6 +211,7 @@
     }
     .mini h3{ margin:0 0 6px; font-size:15px; letter-spacing:-.01em; }
     .mini p{ margin:0; color:var(--muted); font-size:13px; line-height:1.45; }
+
     footer{
       border-top:1px solid var(--line);
       background:var(--soft);
@@ -240,6 +232,70 @@
     .links a{ padding:8px 10px; border-radius:10px; }
     .links a:hover{ background:#fff; color:var(--ink); }
     .small{ font-size:12px; color:var(--muted2); line-height:1.45; }
+
+.grid-4{
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap:14px;
+}
+@media (max-width: 1100px){
+  .grid-4{ grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px){
+  .grid-4{ grid-template-columns: 1fr; }
+}
+
+/* Pricing */
+.pricing-grid{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:14px;
+}
+@media (max-width: 980px){
+  .pricing-grid{ grid-template-columns:1fr; }
+}
+
+.plan{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#fff;
+  padding:16px;
+  box-shadow: var(--shadow);
+}
+.plan-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.plan-name{ margin:0; font-size:16px; letter-spacing:-.01em; font-weight:800; }
+.plan-price{ text-align:right; }
+.plan-price strong{ display:block; font-size:22px; letter-spacing:-.02em; }
+.plan-price span{ display:block; font-size:12px; color:var(--muted2); margin-top:2px; }
+
+.badge{
+  display:inline-flex; align-items:center;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  font-size:12px;
+  color:var(--muted2);
+  background:#fff;
+  margin-top:10px;
+}
+
+.plan ul{ margin:12px 0 0; padding-left:18px; color:var(--muted); font-size:13px; line-height:1.45; }
+.plan li{ margin:6px 0; }
+
+.dash-row{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:10px;
+  margin-top:14px;
+}
+.dash{
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+  background: var(--soft);
+}
+.dash .k{ font-size:11px; color:var(--muted2); }
+.dash .v{ font-size:14px; font-weight:800; letter-spacing:-.01em; margin-top:2px; }
   </style>
 </head>
 
@@ -249,30 +305,24 @@
     <div class="wrap">
       <div class="topbar-inner">
         <a class="brand" href="/">
-          <!-- target + arrow mark -->
           <svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-            <!-- target -->
             <circle cx="11" cy="11" r="9" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"/>
             <circle cx="11" cy="11" r="5" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.55"/>
             <circle cx="11" cy="11" r="2.5" fill="#ef4444"/>
-            <!-- arrow -->
             <g class="brand-arrow">
               <path d="M16.5 5.5 L20.5 1.5" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
               <path d="M18.8 1.5 L20.5 1.5 L20.5 3.2" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
             </g>
           </svg>
-
-          <span>ESL Success Club</span>
+          <span>ESL Pathway to Success </span>
         </a>
 
         <nav class="nav">
-          <a href="#sponsors">Sponsors</a>
-          <a href="#teachers">Teachers</a>
-          <a href="#schools">Schools</a>
-          <a href="#resources">Resources</a>
-          <a href="#test">Free Test</a>
+          <a href="#why">Why ESL Success</a>
+          <a href="#how">How it works</a>
+          <a href="#pricing">Pricing</a>
           <a class="btn" href="/admin-login/AdminLogin.html">Teacher login</a>
-          <a class="btn btn-primary" href="/signup/SchoolSignUp.html">School signup</a>
+         
         </nav>
       </div>
     </div>
@@ -283,47 +333,58 @@
     <div class="wrap">
       <div class="hero-grid">
         <div>
-          <h1>All things ESL, in one place.</h1>
+          <h1>Instant ESL speaking assessment for teachers.</h1>
           <p class="lead">
-            ESL Success Club is a community hub for ESL learners and teachers:
-            free speaking evaluation, high-quality resources, a teacher registry,
-            and lightweight tools that help teachers convert interest into lessons. And lessons in to ESL Success. Get your dream job. Get ESL Success.
+            ESL Success Club gives teachers a fast, data-driven speaking evaluation (CEFR-aligned and consistent)
+            so you can place students, show progress, and teach with confidence—without expensive institutional tools.
           </p>
 
           <div class="hero-actions">
-            <a class="btn btn-primary" href="/WidgetAcademy_home.html">Take the free speaking test</a>
+            <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start free (teachers & schools)</a>
             <a class="btn" href="/admin-login/AdminLogin.html">Teacher login</a>
-            <a class="btn" href="/school-signup/SchoolSignUp.html">Register your school</a>
+            <a class="btn" href="/WidgetAcademy_home.html">Try the sample assessment</a>
           </div>
 
           <div class="pill-row">
-            <span class="pill">Free evaluation</span>
-            <span class="pill">Teacher tools</span>
-            <span class="pill">Resources (YouTube-first)</span>
-            <span class="pill">Registry + discovery</span>
-            <span class="pill">Community channels</span>
+            <span class="pill">30–60 sec speaking tasks</span>
+            <span class="pill">Instant results</span>
+            <span class="pill">CEFR-aligned</span>
+            <span class="pill">Built for Zoom + tutoring</span>
+            <span class="pill">Low cost</span>
           </div>
         </div>
 
-        <!-- Free test card (widget hidden for now) -->
-        <div class="card" id="test">
+        <!-- “What you get” card -->
+        <div class="card" id="why">
           <div class="card-head">
-            <p class="card-title">Free speaking evaluation</p>
+            <p class="card-title">What you get</p>
             <p class="card-sub">
-              Record or upload a short response and get an instant estimate (CEFR + more).
+              Assessment-first tooling designed for real teaching workflows.
             </p>
           </div>
           <div class="card-body">
-            <p style="margin:0 0 12px; color:var(--muted); line-height:1.55;">
-              The free test is currently shown on a dedicated page while we finalize the homepage layout.
-            </p>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-              <a class="btn btn-primary" href="/WidgetAcademy_home.html">Take the free speaking test</a>
-              <a class="btn" href="#resources">Explore resources</a>
+            <div class="grid-3" style="grid-template-columns: 1fr; gap:10px;">
+              <div class="mini">
+                <h3>Placement in minutes</h3>
+                <p>Run a short speaking task and get a consistent level estimate you can use immediately.</p>
+              </div>
+              <div class="mini">
+                <h3>Progress you can show</h3>
+                <p>Repeat assessments over time to demonstrate improvement with objective signals.</p>
+              </div>
+              <div class="mini">
+                <h3>Teacher-first workflow</h3>
+                <p>Use a branded widget, collect submissions, and review results in a simple dashboard.</p>
+              </div>
             </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+              <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start free</a>
+              <a class="btn" href="/WidgetAcademy_home.html">Run a sample</a>
+            </div>
+
             <p class="small" style="margin:12px 0 0;">
-              By using the free test, you agree that ESL Success Club may contact you with tips and resources.
-              You can unsubscribe at any time.
+              Note: v1 is focused on assessment reliability and teacher workflow. We will add reporting and class features iteratively.
             </p>
           </div>
         </div>
@@ -331,147 +392,279 @@
     </div>
   </header>
 
-  <!-- Sponsors -->
-  <section class="section" id="sponsors">
+  <!-- How it works -->
+  <section class="section" id="how">
     <div class="wrap">
       <div class="sec-head">
-        <h2 class="sec-title">Sponsors</h2>
+        <h2 class="sec-title">How it works</h2>
         <p class="sec-desc">
-          Sponsors help fund a free platform for learners and teachers. In return, sponsors receive homepage prominence
-          and curated placement aligned to their services.
-        </p>
-      </div>
-
-      <div class="grid-3">
-        <a
-          class="mini"
-          href="https://www.myspeakingscore.com"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h3>MySpeakingScore</h3>
-          <p>World-class authorized SpeechRater and Vox TOEFL assessment services.</p>
-        </a>
-
-        <a
-          class="mini"
-          href="https://www.learnyourenglish.com"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h3>LearnYourEnglish</h3>
-          <p>Specialized learning programs and curriculum-driven support.</p>
-        </a>
-
-        <a
-          class="mini"
-          href="https://www.toeflresources.com"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h3>Test Resources</h3>
-          <p>Independent test prep tools and curated practice material across major exams.</p>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- Teachers -->
-  <section class="section" id="teachers">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2 class="sec-title">Teachers</h2>
-        <p class="sec-desc">
-          Teachers who join get the ESL Success basic platform: Zoom-ready workflow, personalized widgets and dashboards,
-          submission tracking, and funnel sign-up. The v1 goal is engagement and feedback—not pricing.
+          The goal is to get a teacher from “sign up” to “first student assessed” in under five minutes.
         </p>
       </div>
 
       <div class="grid-3">
         <div class="mini">
-          <h3>Widget MT, free to start</h3>
-          <p>Stand up a branded speaking widget and start collecting submissions immediately.</p>
+          <h3>1) Create your assessment widget</h3>
+          <p>Brand it for your tutoring practice or school program and share a link with students.</p>
         </div>
         <div class="mini">
-          <h3>Funnel follow-up</h3>
-          <p>Students verify email; admins get notified; teachers follow up manually with a strong workflow.</p>
+          <h3>2) Students submit a speaking response</h3>
+          <p>They record or upload a short answer. No complicated setup.</p>
         </div>
         <div class="mini">
-          <h3>Teacher profiles</h3>
-          <p>Post your picture, class description, pricing, reviews, and materials—then improve placement over time.</p>
+          <h3>3) You get instant results</h3>
+          <p>Review scores and supporting details in your dashboard and use them in your lesson plan.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Schools -->
-  <section class="section" id="schools">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2 class="sec-title">Schools</h2>
-        <p class="sec-desc">
-          Any school can register and be discoverable by learners. Over time, schools can add specializations,
-          packages, and featured placement.
+<!-- Funnel -->
+<section class="section" id="funnel">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title">Build a success path right to your door</h2>
+      <p class="sec-desc">
+        ESL Success is not just a great teaching tool. It’s a practical sales funnel, too: a teacher-ready assessment experience that
+        turns anonymous interest into verified, trackable leads—without sacrificing trust.
+      </p>
+    </div>
+
+    <div class="grid-4">
+      <div class="mini">
+        <h3>1) Share your customized widget</h3>
+        <p>
+          Put your branded assessment link on your website, YouTube, Instagram bio, WhatsApp, QR code, or email signature.
         </p>
       </div>
 
-      <div class="grid-3">
-        <div class="mini">
-          <h3>Register for free</h3>
-          <p>Create a presence and start using the widget + portal tools.</p>
-        </div>
-        <div class="mini">
-          <h3>Advertise specializations</h3>
-          <p>IELTS, TOEFL, interview prep, pronunciation coaching, academic writing, and more.</p>
-        </div>
-        <div class="mini">
-          <h3>Conversion tracking</h3>
-          <p>See what learners submit, what they need, and how follow-up converts into lessons.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Resources -->
-  <section class="section" id="resources">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2 class="sec-title">Resources</h2>
-        <p class="sec-desc">
-          Searchable, curated ESL resources for every conceivable need—YouTube-first, plus tools, worksheets, and communities.
+      <div class="mini">
+        <h3>2) Students submit a sample</h3>
+        <p>
+          They record or upload a short answer (30–60 seconds). The widget produces instant scores + transcript.
         </p>
       </div>
 
-      <div class="grid-4">
-        <div class="mini">
-          <h3>YouTube, curated</h3>
-          <p>Short lists by skill: fluency, pronunciation, grammar, vocabulary, confidence.</p>
-        </div>
-        <div class="mini">
-          <h3>Community channels</h3>
-          <p>Popular ESL channels—organized by topic and learner level.</p>
-        </div>
-       <div class="mini" id="reddit-feed">
-         <h3>Reddit: ESL discussions</h3>
-           <p class="small">Live posts from selected ESL communities.</p>
-           <div id="redditStatus" class="small" style="margin-top:8px;"></div>
-           <ul id="redditPosts" style="margin-top:10px; padding-left:16px;"></ul>
-        </div>
-        <div class="mini">
-          <h3>News & events</h3>
-          <p>What’s changing in ESL tests, education, and learning technology.</p>
-        </div>
+      <div class="mini">
+        <h3>3) Verify and route</h3>
+        <p>
+          After verifying their email, their result is submitted to you. You instantly get notified with the result and get an AI-assisted report you can share - and build the trust you need to gain a new student.
+        </p>
+      </div>
+
+      <div class="mini">
+        <h3>4) You follow up confidently</h3>
+        <p>
+          You see submissions in your portal, send a teaching offer, and convert the right learners into lessons.
+        </p>
+      </div>
+    </div> 
+        
+    </div>
+  </div>
+</section>
+
+  <!-- What we measure (replaces Sponsors) -->
+<section class="section" id="measure">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title">What the widget measures</h2>
+      <p class="sec-desc">
+        ESL Success assessments are designed for teachers who need fast, consistent signals they can use for
+        placement, progress tracking, and lesson planning. Students record a short answer (30–60 seconds),
+        and the widget returns a compact report across core speaking dimensions.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+      <!-- TODO: point to your actual sample report page when ready -->
+     <button class="btn btn-primary" id="btnSampleReport" type="button">View sample report</button>
+      
+    </div>
+
+
+    <div class="grid-3">
+      <div class="mini">
+        <h3>CEFR level estimate</h3>
+        <p>A practical proficiency band to support placement and progress tracking.</p>
+      </div>
+      <div class="mini">
+        <h3>Overall speaking score</h3>
+        <p>A single headline score for quick comparisons across students and time.</p>
+      </div>
+      <div class="mini">
+        <h3>Fluency</h3>
+        <p>Flow, pausing, and speed—useful for identifying practice priorities.</p>
+      </div>
+
+      <div class="mini">
+        <h3>Pronunciation</h3>
+        <p>Clarity, intelligibility, and pronunciation accuracy signals.</p>
+      </div>
+      <div class="mini">
+        <h3>Grammar</h3>
+        <p>Sentence control, error frequency, and complexity indicators.</p>
+      </div>
+      <div class="mini">
+        <h3>Vocabulary</h3>
+        <p>Range and appropriateness of word choice for the task.</p>
       </div>
     </div>
-  </section>
 
-  <!-- Subscribe -->
+    <div class="grid-3" style="margin-top:14px;">
+      <div class="mini">
+        <h3>Transcript</h3>
+        <p>Auto transcript for teacher review and student feedback loops.</p>
+      </div>
+      <div class="mini">
+        <h3>WPM (words per minute)</h3>
+        <p>A simple fluency companion metric that helps spot pacing issues.</p>
+      </div>
+      <div class="mini">
+        <h3>Task fit</h3>
+        <p>Teachers can align prompts to course goals (placement, interview, TOEFL-style, etc.).</p>
+      </div>
+    </div>
+
+    <p class="small" style="margin:14px 0 0;">
+      Notes: These signals are designed for teaching decisions (placement + progress). They are not a replacement for
+      high-stakes testing, but they are reliable enough to support instruction at a fraction of the cost.
+    </p>
+  </div>
+</section>
+
+
+
+<section class="section" id="pricing">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title">Pricing</h2>
+      <p class="sec-desc">
+        Simple and teacher-friendly. No contracts. Opt out anytime.
+        Pricing is a placeholder for now, but designed to be realistic.
+      </p>
+    </div>
+
+    <div class="pricing-grid">
+      <!-- Always Free -->
+      <div class="plan">
+        <div class="plan-top">
+          <div>
+            <p class="plan-name">Always Free</p>
+            <span class="badge">Best for testing</span>
+          </div>
+          <div class="plan-price">
+            <strong>$0</strong>
+            <span>/ month</span>
+          </div>
+        </div>
+
+        <ul>
+          <li>Up to <strong>10</strong> widget reports / month</li>
+          <li>Teacher dashboard access</li>
+          <li>Email-verified submissions</li>
+        </ul>
+
+        <div class="dash-row" aria-label="Plan dash metrics">
+          <div class="dash"><div class="k">Reports / month</div><div class="v">10</div></div>
+          <div class="dash"><div class="k">Typical use</div><div class="v">Trials</div></div>
+          <div class="dash"><div class="k">Best for</div><div class="v">Solo tutor</div></div>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+          <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start free</a>
+          <button class="btn" type="button" id="btnSampleFree">See sample report</button>
+        </div>
+
+        <p class="small" style="margin:12px 0 0;">
+          Ideal for trying the workflow with a handful of learners.
+        </p>
+      </div>
+
+      <!-- Rookie -->
+      <div class="plan">
+        <div class="plan-top">
+          <div>
+            <p class="plan-name">Rookie</p>
+            <span class="badge">Most popular</span>
+          </div>
+          <div class="plan-price">
+            <strong>$7.50</strong>
+            <span>/ month</span>
+          </div>
+        </div>
+
+        <ul>
+          <li>Up to <strong>30</strong> widget reports / month</li>
+          <li>Teacher dashboard access</li>
+          <li>AI-assisted report text (shareable)</li>
+        </ul>
+
+        <div class="dash-row">
+          <div class="dash"><div class="k">Reports / month</div><div class="v">30</div></div>
+          <div class="dash"><div class="k">Typical use</div><div class="v">Weekly intakes</div></div>
+          <div class="dash"><div class="k">Best for</div><div class="v">Small school</div></div>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+          <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start Rookie</a>
+          <button class="btn" type="button" id="btnSampleRookie">See sample report</button>
+        </div>
+
+        <p class="small" style="margin:12px 0 0;">
+          A practical plan for steady tutoring pipelines and class placement.
+        </p>
+      </div>
+
+      <!-- Pro -->
+      <div class="plan">
+        <div class="plan-top">
+          <div>
+            <p class="plan-name">Pro</p>
+            <span class="badge">Unlimited</span>
+          </div>
+          <div class="plan-price">
+            <strong>$29.00</strong>
+            <span>/ month</span>
+          </div>
+        </div>
+
+        <ul>
+          <li><strong>Unlimited</strong> widget reports</li>
+          <li>Teacher dashboard access</li>
+          <li>Designed for higher volume programs</li>
+        </ul>
+
+        <div class="dash-row">
+          <div class="dash"><div class="k">Reports / month</div><div class="v">∞</div></div>
+          <div class="dash"><div class="k">Typical use</div><div class="v">Program scale</div></div>
+          <div class="dash"><div class="k">Best for</div><div class="v">Teams</div></div>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+          <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start Pro</a>
+          <button class="btn" type="button" id="btnSamplePro">See sample report</button>
+        </div>
+
+        <p class="small" style="margin:12px 0 0;">
+          For schools and teachers running frequent placement and progress checks.
+        </p>
+      </div>
+    </div>
+
+    <p class="small" style="margin:14px 0 0;">
+      No contract. Opt out anytime. This pricing is a placeholder; we’ll tune it as we learn real teacher usage patterns.
+    </p>
+  </div>
+</section>
+
+  <!-- Subscribe (optional) -->
   <section class="section" id="subscribe">
     <div class="wrap">
       <div class="sec-head">
-        <h2 class="sec-title">Subscribe</h2>
+        <h2 class="sec-title">Get Started</h2>
         <p class="sec-desc">
-          Subscribe to ESL Success Club and receive updates, tips, and discounts on the best tools in the ESL community.
+          Register for your getting starting kit. It's always free and you can be up and running your first assessments in minutes.
         </p>
       </div>
 
@@ -483,44 +676,42 @@
             placeholder="your@email.com"
             style="flex:1; min-width:240px; padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:14px;"
           />
-          <button class="btn btn-primary" id="subBtn" type="button">Subscribe</button>
+          <button class="btn btn-primary" id="subBtn" type="button">Register</button>
           <span class="small" id="subMsg"></span>
         </div>
       </div>
     </div>
   </section>
 
+
   <footer>
     <div class="wrap">
       <div class="footer-grid">
         <div>
           <div class="brand" style="margin-bottom:10px;">
-            <!-- target + arrow mark (same as header) -->
             <svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
               <circle cx="11" cy="11" r="9" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"/>
               <circle cx="11" cy="11" r="5" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.55"/>
-              <circle cx="11" cy="11" r="2.5" fill="#2563eb"/>
+              <circle cx="11" cy="11" r="2.5" fill="#ef4444"/>
               <g class="brand-arrow">
                 <path d="M16.5 5.5 L20.5 1.5" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
                 <path d="M18.8 1.5 L20.5 1.5 L20.5 3.2" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
               </g>
             </svg>
-
             <span>ESL Success Club</span>
           </div>
           <p class="small" style="margin:0;">
-            A community platform for ESL learners and teachers. v1 is for engagement, feedback, and iteration.
+            Assessment-first tooling for ESL teachers and schools. Workflow for ESL success.
           </p>
         </div>
 
         <div>
           <div class="links">
+            <a href="#why">Why ESL Success</a>
+            <a href="#how">How it works</a>
+            <a href="/WidgetAcademy_home.html">Sample assessment</a>
             <a href="/admin-login/AdminLogin.html">Teacher login</a>
-            <a href="/school-signup/SchoolSignUp.html">School signup</a>
-            <a href="/WidgetAcademy_home.html">Free test</a>
-            <a href="#resources">Resources</a>
-            <a href="#teachers">Teachers</a>
-            <a href="#sponsors">Sponsors</a>
+            <a href="/school-signup/SchoolSignUp.html">Start free</a>
           </div>
           <p class="small" style="margin:10px 0 0;">
             © <span id="year"></span> ESLSuccess.club · We're Canadian, eh? 🇨🇦
@@ -529,6 +720,49 @@
       </div>
     </div>
   </footer>
+
+<!-- Sample Report Viewer Modal -->
+<div id="viewerOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9999;">
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="viewerTitle"
+    style="
+      max-width: 960px;
+      margin: 5vh auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    "
+  >
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--line);">
+      <div>
+        <div id="viewerTitle" style="font-weight:800; letter-spacing:-.02em;">Sample ESL Speaking Report</div>
+        <div class="small" id="viewerSubtitle" style="margin-top:2px;">
+          What teachers receive after a student submission
+        </div>
+      </div>
+
+      <button class="btn" id="viewerCloseBtn" type="button" style="border-radius:999px;">Close</button>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex; gap:8px; flex-wrap:wrap; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--soft);">
+      <button class="btn" type="button" data-tab="tab-report">Report</button>
+      <button class="btn" type="button" data-tab="tab-transcript">Transcript</button>
+      <button class="btn" type="button" data-tab="tab-email">Teacher Email</button>
+    </div>
+
+    <!-- Content -->
+    <div style="padding:16px; max-height:72vh; overflow:auto;">
+      <div id="tab-report"></div>
+      <div id="tab-transcript" style="display:none;"></div>
+      <div id="tab-email" style="display:none;"></div>
+    </div>
+  </div>
+</div>
 
   <script>
     document.getElementById("year").textContent = new Date().getFullYear();
@@ -547,56 +781,225 @@
       subMsg.textContent = "Thanks — subscription support is coming next.";
       subEmail.value = "";
     });
-async function loadReddit(subreddit = "EnglishLearning") {
-  const status = document.getElementById("redditStatus");
-  const list = document.getElementById("redditPosts");
 
-  try {
-    status.textContent = "Loading Reddit posts…";
+// ----------------------------------------------------
+// Sample Report Viewer (static v1, no backend required)
+// ----------------------------------------------------
+const viewerOverlay = document.getElementById("viewerOverlay");
+const viewerCloseBtn = document.getElementById("viewerCloseBtn");
+const btnSampleReport = document.getElementById("btnSampleReport");
 
-    const url = "https://api.eslsuccess.club/api/reddit/posts?subreddit=" 
-         +encodeURIComponent(subreddit);
-    const res = await fetch(url, { method: "GET", credentials: "omit" });
-
-    const raw = await res.text();
-
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      status.textContent =
-        "API did not return JSON. Check server route / CORS / proxy.";
-      console.warn("Non-JSON response:", raw.slice(0, 300));
-      return;
-    }
-
-    if (!data.ok) {
-      status.textContent = "API returned ok:false. Check server logs.";
-      console.warn("API response:", data);
-      return;
-    }
-
-    list.innerHTML = "";
-    (data.posts || []).forEach(p => {
-      const li = document.createElement("li");
-      li.innerHTML = `
-        <a href="${p.url}" target="_blank" rel="noopener">${p.title}</a>
-        <div style="font-size:11px;color:#64748b;">
-          r/${p.subreddit} · ${p.score} upvotes
-        </div>
-      `;
-      list.appendChild(li);
-    });
-
-    status.textContent = data.posts?.length ? "" : "No posts returned.";
-
-  } catch (err) {
-    status.textContent = "Reddit load failed (see console).";
-    console.error("Reddit load failed", err);
-  }
+function escapeHtml(s) {
+  return String(s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
-window.addEventListener("DOMContentLoaded", () => loadReddit("EnglishLearning"));
-  </script>
 
+function setActiveTab(tabId) {
+  ["tab-report", "tab-transcript", "tab-email"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = id === tabId ? "block" : "none";
+  });
+}
+
+// Sample data based on your prompt
+const SAMPLE = {
+  studentEmail: "achang4312@gmail.com",
+  promptTitle: "Favourite Music",
+  promptText:
+    "What is your favourite kind of music? Tell me why you like it and how you tend to enjoy it.",
+
+  scores: {
+    taskScore: "N/A / 4",
+    wpm: "N/A",
+    fluency: "89 / 100",
+    pronunciation: "41 / 100",
+    grammar: "78 / 100",
+    vocabulary: "86 / 100",
+    cefr: "B1",
+    toefl: "13 / 30",
+    ielts: "4.5 / 9",
+    pte: "24 / 100",
+  },
+
+  transcript: `My favourite kind of music is pop music, because it is very easy to listen and it make me feel more relax.
+I like pop music because the melody is usually simple and I can remember the song very fast, even when I hear it first time.
+
+I usually listen pop music when I am going to work or when I am studying, because it help me to feel more motivate.
+Sometimes I also listen music when I am cooking at home, and it make the time go faster.
+
+I think pop music is good for my mood, especially after a long day.
+The lyrics are not too difficult, so I can understand some words and also learn new vocabulary.
+Sometimes I sing together with the song, but my pronunciation is not very good, so I try anyway.
+
+In the future, I want to listen more English music to improve my listening and speaking, because I think it is a fun way to learn English.`,
+
+  report: {
+    relevance:
+      "You answered the question clearly. You named a type of music, gave reasons you like it, and explained when you listen. Your answer is logical and easy to follow.",
+    summary:
+      "Your results suggest you are around CEFR B1. You communicate ideas smoothly and with good vocabulary, but your pronunciation score indicates that listeners may need extra effort to understand some words. Improving pronunciation accuracy will make your speaking clearer and will help your TOEFL/IELTS/PTE outcomes.",
+    strengths: [
+      "Strong fluency (you speak with good flow and little hesitation).",
+      "Good vocabulary range for a B1 learner (you can explain your ideas without getting stuck).",
+      "Clear organization (your answer has a beginning, middle, and end).",
+    ],
+    improvements: [
+      "Pronunciation (priority): work on vowel clarity, word stress, and final consonants so your speech is easier to understand.",
+      "Grammar accuracy: fix common patterns like verb agreement (“it make” → “it makes”), adjective forms (“more relax” → “more relaxed”), and missing articles (“listen pop music” → “listen to pop music”).",
+      "Sentence naturalness: simplify a few phrases and add linking words to sound more natural.",
+      "Precision in time expressions: small fixes like “the first time” and “helps me feel motivated” will improve clarity.",
+    ],
+    practice: [
+      "Daily (10 minutes): pick 5 sentences from your transcript and do ‘listen → repeat → record’ three times. Focus on stress and clear vowel sounds.",
+      "3x/week (15 minutes): final consonant drill (t/d/s/k/p). Read a short paragraph slowly, then repeat at normal speed while keeping endings clear.",
+      "3x/week (10 minutes): grammar micro-edits. Rewrite your transcript correcting 5 errors, then re-record the improved version.",
+      "Weekly (1 task): do one timed 45–60 second answer. Record it twice: first naturally, then again focusing only on pronunciation clarity.",
+    ],
+  },
+
+  teacherEmail: {
+    subject: "Your Speaking Results (CEFR B1) — Next Steps",
+    body: `Hello Achang,
+
+Thank you for completing your speaking assessment.
+
+Your current level is around CEFR B1, which means you can communicate clearly in everyday situations and explain your ideas, but you still need focused practice to sound more accurate and confident—especially with pronunciation.
+
+Because your fluency and vocabulary are already strong, working with a tutor can help you make faster progress by targeting pronunciation and common grammar patterns. This kind of coaching can make a big difference for job interviews, college admission requirements, and improving scores on TOEFL/IELTS/PTE.
+
+If you’d like, we can schedule a short consultation or a trial lesson to create a simple weekly plan and start improving your pronunciation right away.
+
+Warm regards,
+[Teacher Name]
+[School / Tutoring Program Name]
+ESL Success Club`,
+  },
+};
+
+function renderSampleIntoViewer() {
+  const reportEl = document.getElementById("tab-report");
+  const transcriptEl = document.getElementById("tab-transcript");
+  const emailEl = document.getElementById("tab-email");
+
+  // Report tab
+  reportEl.innerHTML = `
+    <div class="card" style="box-shadow:none;">
+      <div class="card-body">
+        <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; justify-content:space-between;">
+          <div style="min-width:280px;">
+            <div style="font-weight:800; letter-spacing:-.02em; font-size:16px;">
+              Sample Assessment Report
+            </div>
+            <div class="small" style="margin-top:6px; line-height:1.55;">
+              <strong>Student:</strong> ${escapeHtml(SAMPLE.studentEmail)}<br/>
+              <strong>Prompt:</strong> ${escapeHtml(SAMPLE.promptText)}
+            </div>
+          </div>
+
+          <div class="mini" style="min-width:300px;">
+            <h3 style="margin:0 0 8px;">Scoreboard</h3>
+            <div class="small" style="line-height:1.6;">
+              <strong>CEFR:</strong> ${escapeHtml(SAMPLE.scores.cefr)}<br/>
+              <strong>Fluency:</strong> ${escapeHtml(SAMPLE.scores.fluency)}<br/>
+              <strong>Pronunciation:</strong> ${escapeHtml(SAMPLE.scores.pronunciation)}<br/>
+              <strong>Grammar:</strong> ${escapeHtml(SAMPLE.scores.grammar)}<br/>
+              <strong>Vocabulary:</strong> ${escapeHtml(SAMPLE.scores.vocabulary)}<br/>
+              <strong>TOEFL (est):</strong> ${escapeHtml(SAMPLE.scores.toefl)}<br/>
+              <strong>IELTS (est):</strong> ${escapeHtml(SAMPLE.scores.ielts)}<br/>
+              <strong>PTE (est):</strong> ${escapeHtml(SAMPLE.scores.pte)}
+            </div>
+          </div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--line); margin:14px 0;" />
+
+        <h3 style="margin:0 0 6px;">Relevance & Conciseness</h3>
+        <p class="small" style="margin:0 0 12px;">${escapeHtml(SAMPLE.report.relevance)}</p>
+
+        <h3 style="margin:0 0 6px;">Overall Summary</h3>
+        <p class="small" style="margin:0 0 12px;">${escapeHtml(SAMPLE.report.summary)}</p>
+
+        <h3 style="margin:0 0 6px;">Strengths</h3>
+        <ul class="small" style="margin:0 0 12px; padding-left:18px;">
+          ${SAMPLE.report.strengths.map(s => `<li>${escapeHtml(s)}</li>`).join("")}
+        </ul>
+
+        <h3 style="margin:0 0 6px;">Key Areas for Improvement</h3>
+        <ul class="small" style="margin:0 0 12px; padding-left:18px;">
+          ${SAMPLE.report.improvements.map(s => `<li>${escapeHtml(s)}</li>`).join("")}
+        </ul>
+
+        <h3 style="margin:0 0 6px;">Practice Plan (Start This Week)</h3>
+        <ul class="small" style="margin:0; padding-left:18px;">
+          ${SAMPLE.report.practice.map(s => `<li>${escapeHtml(s)}</li>`).join("")}
+        </ul>
+
+        <p class="small" style="margin:14px 0 0;">
+          Teacher note: This is a sample. In production, the report can be generated automatically per submission and stored for review.
+        </p>
+      </div>
+    </div>
+  `;
+
+  // Transcript tab
+  transcriptEl.innerHTML = `
+    <div class="mini">
+      <h3 style="margin:0 0 8px;">Transcript (Sample B1)</h3>
+      <div class="small" style="white-space:pre-wrap; line-height:1.55;">
+${escapeHtml(SAMPLE.transcript)}
+      </div>
+      <p class="small" style="margin:10px 0 0;">
+        This transcript intentionally includes typical B1-level errors (agreement, articles, word forms) to illustrate feedback and coaching opportunities.
+      </p>
+    </div>
+  `;
+
+  // Email tab
+  emailEl.innerHTML = `
+    <div class="mini">
+      <h3 style="margin:0 0 10px;">Subject: ${escapeHtml(SAMPLE.teacherEmail.subject)}</h3>
+      <div class="small" style="white-space:pre-wrap; line-height:1.55;">
+${escapeHtml(SAMPLE.teacherEmail.body)}
+      </div>
+    </div>
+  `;
+}
+
+function openViewer() {
+  renderSampleIntoViewer();
+  setActiveTab("tab-report");
+  viewerOverlay.style.display = "block";
+  document.body.style.overflow = "hidden";
+}
+
+function closeViewer() {
+  viewerOverlay.style.display = "none";
+  document.body.style.overflow = "";
+}
+
+if (btnSampleReport) {
+  btnSampleReport.addEventListener("click", openViewer);
+}
+
+viewerCloseBtn.addEventListener("click", closeViewer);
+viewerOverlay.addEventListener("click", (e) => {
+  if (e.target === viewerOverlay) closeViewer();
+});
+
+// Tab switching
+viewerOverlay.querySelectorAll("[data-tab]").forEach((btn) => {
+  btn.addEventListener("click", () => setActiveTab(btn.getAttribute("data-tab")));
+});
+
+// ESC closes
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && viewerOverlay.style.display === "block") closeViewer();
+});
+  </script>
 </body>
 </html>

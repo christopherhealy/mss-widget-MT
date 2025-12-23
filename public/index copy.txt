@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ESL Success Club</title>
+  <meta name="description" content="Instant, data-driven ESL speaking assessment for teachers and schools." />
+
+  <style>
+    :root{
+      --bg: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --muted2:#64748b;
+      --line:#e2e8f0;
+      --soft:#f8fafc;
+      --blue:#1d4ed8;
+      --blue2:#2563eb;
+      --shadow: 0 20px 60px rgba(15,23,42,.10);
+      --radius: 18px;
+      --max: 1120px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--ink);
+      background:var(--bg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    a{ color:inherit; text-decoration:none; }
+    .wrap{ max-width:var(--max); margin:0 auto; padding:0 22px; }
+    .topbar{
+      position:sticky; top:0; z-index:50;
+      background:rgba(255,255,255,.86);
+      backdrop-filter:saturate(180%) blur(12px);
+      border-bottom:1px solid var(--line);
+    }
+    .topbar-inner{
+      display:flex; align-items:center; justify-content:space-between;
+      height:64px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:800; letter-spacing:-.02em;
+    }
+
+    /* -------------------------------------------------------
+       Brand mark: target + arrow "lands" once on page load
+       ------------------------------------------------------- */
+    .brand-mark{
+      width:18px;
+      height:18px;
+      display:block;
+      flex:0 0 auto;
+    }
+    .brand-arrow{
+      transform: translate(6px, -6px);
+      opacity: 0;
+      animation: arrow-land 700ms cubic-bezier(.22,.61,.36,1) forwards;
+      animation-delay: 1200ms;
+      transform-origin: 11px 11px;
+    }
+    @keyframes arrow-land {
+      0% { transform: translate(6px, -6px); opacity: 0; }
+      60% { opacity: 1; }
+      100% { transform: translate(0, 0); opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .brand-arrow { animation: none; opacity: 1; transform: none; }
+    }
+    /* ----------------------------------------------------- */
+
+    .nav{
+      display:flex; align-items:center; gap:10px;
+      font-size:14px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .nav a{
+      padding:10px 12px;
+      border-radius:12px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .nav a:hover{ background:var(--soft); color:var(--ink); }
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:10px 14px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:#fff;
+      font-weight:700;
+      font-size:14px;
+      cursor:pointer;
+    }
+    .btn-primary{
+      background:var(--blue);
+      color:#fff;
+      border:1px solid rgba(29,78,216,.25);
+    }
+    .btn-primary:hover{ background:var(--blue2); }
+
+    .hero{
+      padding:56px 0 26px;
+    }
+    .hero-grid{
+      display:grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap:22px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .hero-grid{ grid-template-columns: 1fr; }
+    }
+    h1{
+      margin:0 0 12px;
+      font-size:52px;
+      line-height:1.05;
+      letter-spacing:-.04em;
+    }
+    @media (max-width: 560px){
+      h1{ font-size:40px; }
+    }
+    .lead{
+      font-size:18px;
+      line-height:1.55;
+      color:var(--muted);
+      max-width:62ch;
+      margin:0 0 18px;
+    }
+    .hero-actions{
+      display:flex; gap:10px; flex-wrap:wrap;
+      margin-top:14px;
+    }
+    .pill-row{
+      display:flex; gap:8px; flex-wrap:wrap;
+      margin-top:18px;
+    }
+    .pill{
+      font-size:12px;
+      color:var(--muted2);
+      border:1px solid var(--line);
+      background:#fff;
+      padding:8px 10px;
+      border-radius:999px;
+    }
+
+    .card{
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:#fff;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding:16px 16px 12px;
+      border-bottom:1px solid var(--line);
+    }
+    .card-title{
+      font-weight:800;
+      letter-spacing:-.02em;
+      margin:0;
+      font-size:16px;
+    }
+    .card-sub{
+      margin:6px 0 0;
+      color:var(--muted2);
+      font-size:13px;
+      line-height:1.35;
+    }
+    .card-body{ padding:16px; }
+
+    .section{
+      padding:34px 0;
+      border-top:1px solid var(--line);
+    }
+    .sec-head{
+      display:flex; align-items:flex-end; justify-content:space-between;
+      gap:16px; flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .sec-title{
+      font-size:24px;
+      letter-spacing:-.02em;
+      margin:0;
+    }
+    .sec-desc{
+      margin:0;
+      color:var(--muted);
+      max-width:78ch;
+      line-height:1.55;
+      font-size:14px;
+    }
+
+    .grid-3{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:14px;
+    }
+    @media (max-width: 980px){
+      .grid-3{ grid-template-columns: 1fr; }
+    }
+
+    .mini{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:16px;
+      background:#fff;
+    }
+    .mini h3{ margin:0 0 6px; font-size:15px; letter-spacing:-.01em; }
+    .mini p{ margin:0; color:var(--muted); font-size:13px; line-height:1.45; }
+
+    footer{
+      border-top:1px solid var(--line);
+      background:var(--soft);
+      padding:28px 0;
+    }
+    .footer-grid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:18px;
+      align-items:start;
+    }
+    @media (max-width: 980px){ .footer-grid{ grid-template-columns:1fr; } }
+    .links{
+      display:flex; gap:10px; flex-wrap:wrap;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .links a{ padding:8px 10px; border-radius:10px; }
+    .links a:hover{ background:#fff; color:var(--ink); }
+    .small{ font-size:12px; color:var(--muted2); line-height:1.45; }
+  </style>
+</head>
+
+<body>
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="wrap">
+      <div class="topbar-inner">
+        <a class="brand" href="/">
+          <svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+            <circle cx="11" cy="11" r="9" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"/>
+            <circle cx="11" cy="11" r="5" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.55"/>
+            <circle cx="11" cy="11" r="2.5" fill="#ef4444"/>
+            <g class="brand-arrow">
+              <path d="M16.5 5.5 L20.5 1.5" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M18.8 1.5 L20.5 1.5 L20.5 3.2" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+            </g>
+          </svg>
+          <span>ESL Pathway to Success </span>
+        </a>
+
+        <nav class="nav">
+          <a href="#why">Why ESL Success</a>
+          <a href="#how">How it works</a>
+          <a href="#sponsors">Sponsors</a>
+          <a class="btn" href="/admin-login/AdminLogin.html">Teacher login</a>
+          <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start free</a>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <h1>Instant ESL speaking assessment for teachers.</h1>
+          <p class="lead">
+            ESL Success Club gives teachers a fast, data-driven speaking evaluation (CEFR-aligned and consistent)
+            so you can place students, show progress, and teach with confidence—without expensive institutional tools.
+          </p>
+
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start free (teachers & schools)</a>
+            <a class="btn" href="/admin-login/AdminLogin.html">Teacher login</a>
+            <a class="btn" href="/WidgetAcademy_home.html">Try the sample assessment</a>
+          </div>
+
+          <div class="pill-row">
+            <span class="pill">30–60 sec speaking tasks</span>
+            <span class="pill">Instant results</span>
+            <span class="pill">CEFR-aligned</span>
+            <span class="pill">Built for Zoom + tutoring</span>
+            <span class="pill">Low cost</span>
+          </div>
+        </div>
+
+        <!-- “What you get” card -->
+        <div class="card" id="why">
+          <div class="card-head">
+            <p class="card-title">What you get</p>
+            <p class="card-sub">
+              Assessment-first tooling designed for real teaching workflows.
+            </p>
+          </div>
+          <div class="card-body">
+            <div class="grid-3" style="grid-template-columns: 1fr; gap:10px;">
+              <div class="mini">
+                <h3>Placement in minutes</h3>
+                <p>Run a short speaking task and get a consistent level estimate you can use immediately.</p>
+              </div>
+              <div class="mini">
+                <h3>Progress you can show</h3>
+                <p>Repeat assessments over time to demonstrate improvement with objective signals.</p>
+              </div>
+              <div class="mini">
+                <h3>Teacher-first workflow</h3>
+                <p>Use a branded widget, collect submissions, and review results in a simple dashboard.</p>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+              <a class="btn btn-primary" href="/school-signup/SchoolSignUp.html">Start free</a>
+              <a class="btn" href="/WidgetAcademy_home.html">Run a sample</a>
+            </div>
+
+            <p class="small" style="margin:12px 0 0;">
+              Note: v1 is focused on assessment reliability and teacher workflow. We will add reporting and class features iteratively.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- How it works -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">How it works</h2>
+        <p class="sec-desc">
+          The goal is to get a teacher from “sign up” to “first student assessed” in under five minutes.
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <div class="mini">
+          <h3>1) Create your assessment widget</h3>
+          <p>Brand it for your tutoring practice or school program and share a link with students.</p>
+        </div>
+        <div class="mini">
+          <h3>2) Students submit a speaking response</h3>
+          <p>They record or upload a short answer. No complicated setup.</p>
+        </div>
+        <div class="mini">
+          <h3>3) You get instant results</h3>
+          <p>Review scores and supporting details in your dashboard and use them in your lesson plan.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<!-- Funnel -->
+<section class="section" id="funnel">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title">Build a success path right to your door</h2>
+      <p class="sec-desc">
+        ESL Success is not just a great teaching tool. It’s a practical sales funnel, too: a teacher-ready assessment experience that
+        turns anonymous interest into verified, trackable leads—without sacrificing trust.
+      </p>
+    </div>
+
+    <div class="grid-4">
+      <div class="mini">
+        <h3>1) Share your customized widget</h3>
+        <p>
+          Put your branded assessment link on your website, YouTube, Instagram bio, WhatsApp, QR code, or email signature.
+        </p>
+      </div>
+
+      <div class="mini">
+        <h3>2) Students submit a sample</h3>
+        <p>
+          They record or upload a short answer (30–60 seconds). The widget produces instant scores + transcript.
+        </p>
+      </div>
+
+      <div class="mini">
+        <h3>3) Verify and route</h3>
+        <p>
+          After verifying their email, their result is submitted to you. You instantly get notified with the result and get an AI-assisted report you can share - and build the trust you need to gain a new student.
+        </p>
+      </div>
+
+      <div class="mini">
+        <h3>4) You follow up confidently</h3>
+        <p>
+          You see submissions in your portal, send a teaching offer, and convert the right learners into lessons.
+        </p>
+      </div>
+    </div> 
+        
+    </div>
+  </div>
+</section>
+
+  <!-- What we measure (replaces Sponsors) -->
+<section class="section" id="measure">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title">What the widget measures</h2>
+      <p class="sec-desc">
+        ESL Success assessments are designed for teachers who need fast, consistent signals they can use for
+        placement, progress tracking, and lesson planning. Students record a short answer (30–60 seconds),
+        and the widget returns a compact report across core speaking dimensions.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+      <!-- TODO: point to your actual sample report page when ready -->
+      <a class="btn btn-primary" href="/sample-report.html">View sample report</a>
+      <button class="btn" id="btnShowPrompt" type="button">Generate sample answer (AI prompt)</button>
+    </div>
+
+    <!-- Prompt panel (hidden until button click) -->
+    <div class="card" id="promptCard" style="display:none; box-shadow:none; margin-bottom:14px;">
+      <div class="card-head">
+        <p class="card-title">AI prompt: generate a sample student answer</p>
+        <p class="card-sub">
+          Copy/paste this into your AI tool to generate a sample 45–60s answer for testing the widget and report.
+        </p>
+      </div>
+      <div class="card-body">
+        <textarea
+          id="samplePrompt"
+          style="width:100%; min-height:210px; padding:12px 14px; border-radius:12px; border:1px solid var(--line);
+                 font-size:13px; line-height:1.5; color:var(--ink); resize:vertical;"
+        ></textarea>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+          <button class="btn btn-primary" id="btnCopyPrompt" type="button">Copy prompt</button>
+          <button class="btn" id="btnHidePrompt" type="button">Hide</button>
+          <span class="small" id="promptMsg"></span>
+        </div>
+
+        <p class="small" style="margin:12px 0 0;">
+          Tip: After generating the sample answer, record yourself reading it aloud, or paste it into your own workflow
+          as a reference script for consistent A/B testing.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div class="mini">
+        <h3>CEFR level estimate</h3>
+        <p>A practical proficiency band to support placement and progress tracking.</p>
+      </div>
+      <div class="mini">
+        <h3>Overall speaking score</h3>
+        <p>A single headline score for quick comparisons across students and time.</p>
+      </div>
+      <div class="mini">
+        <h3>Fluency</h3>
+        <p>Flow, pausing, and speed—useful for identifying practice priorities.</p>
+      </div>
+
+      <div class="mini">
+        <h3>Pronunciation</h3>
+        <p>Clarity, intelligibility, and pronunciation accuracy signals.</p>
+      </div>
+      <div class="mini">
+        <h3>Grammar</h3>
+        <p>Sentence control, error frequency, and complexity indicators.</p>
+      </div>
+      <div class="mini">
+        <h3>Vocabulary</h3>
+        <p>Range and appropriateness of word choice for the task.</p>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:14px;">
+      <div class="mini">
+        <h3>Transcript</h3>
+        <p>Auto transcript for teacher review and student feedback loops.</p>
+      </div>
+      <div class="mini">
+        <h3>WPM (words per minute)</h3>
+        <p>A simple fluency companion metric that helps spot pacing issues.</p>
+      </div>
+      <div class="mini">
+        <h3>Task fit</h3>
+        <p>Teachers can align prompts to course goals (placement, interview, TOEFL-style, etc.).</p>
+      </div>
+    </div>
+
+    <p class="small" style="margin:14px 0 0;">
+      Notes: These signals are designed for teaching decisions (placement + progress). They are not a replacement for
+      high-stakes testing, but they are reliable enough to support instruction at a fraction of the cost.
+    </p>
+  </div>
+</section>
+
+  <!-- Subscribe (optional) -->
+  <section class="section" id="subscribe">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sec-title">Subscribe</h2>
+        <p class="sec-desc">
+          Product updates for teachers and schools (assessment features, workflow improvements, and templates).
+        </p>
+      </div>
+
+      <div class="card" style="box-shadow:none;">
+        <div class="card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input
+            id="subEmail"
+            type="email"
+            placeholder="your@email.com"
+            style="flex:1; min-width:240px; padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:14px;"
+          />
+          <button class="btn btn-primary" id="subBtn" type="button">Subscribe</button>
+          <span class="small" id="subMsg"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div>
+          <div class="brand" style="margin-bottom:10px;">
+            <svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+              <circle cx="11" cy="11" r="9" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"/>
+              <circle cx="11" cy="11" r="5" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.55"/>
+              <circle cx="11" cy="11" r="2.5" fill="#ef4444"/>
+              <g class="brand-arrow">
+                <path d="M16.5 5.5 L20.5 1.5" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M18.8 1.5 L20.5 1.5 L20.5 3.2" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+              </g>
+            </svg>
+            <span>ESL Success Club</span>
+          </div>
+          <p class="small" style="margin:0;">
+            Assessment-first tooling for ESL teachers and schools. v1 focuses on reliability and workflow.
+          </p>
+        </div>
+
+        <div>
+          <div class="links">
+            <a href="#why">Why ESL Success</a>
+            <a href="#how">How it works</a>
+            <a href="/WidgetAcademy_home.html">Sample assessment</a>
+            <a href="/admin-login/AdminLogin.html">Teacher login</a>
+            <a href="/school-signup/SchoolSignUp.html">Start free</a>
+          </div>
+          <p class="small" style="margin:10px 0 0;">
+            © <span id="year"></span> ESLSuccess.club · We're Canadian, eh? 🇨🇦
+          </p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+
+    // v1: discussion-ready subscribe handler. Later, wire to a real API endpoint.
+    const subBtn = document.getElementById("subBtn");
+    const subEmail = document.getElementById("subEmail");
+    const subMsg = document.getElementById("subMsg");
+
+    subBtn.addEventListener("click", () => {
+      const email = String(subEmail.value || "").trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        subMsg.textContent = "Please enter a valid email.";
+        return;
+      }
+      subMsg.textContent = "Thanks — subscription support is coming next.";
+      subEmail.value = "";
+    });
+  </script>
+</body>
+</html>
