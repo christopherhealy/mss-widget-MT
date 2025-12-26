@@ -57,6 +57,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+//const crypto = require("crypto");
+
+
 // ---------------------------------------------------------------------
 // ADMIN JWT AUTH (Dec 15)
 // ---------------------------------------------------------------------
@@ -82,6 +85,10 @@ function slugifyLocal(input) {
     .slice(0, 64) || "school";
 }
 
+// Dec 26 - hash the submission report 
+function sha256(text) {
+  return crypto.createHash("sha256").update(String(text || ""), "utf8").digest("hex");
+}
 
 //---------- end manage schools on Dec 19 ---------//
 
@@ -554,7 +561,7 @@ app.get("/api/admin/branding/:slug/logo", async (req, res) => {
 // Small helper: safely extract the final text Dec 26
 // ---- OpenAI (Responses API) -----------------------------------
 
-async function openAiGenerateReport({ promptText }) {
+async function openAiGenerateReport({ promptText, model = "gpt-4o-mini", temperature = 0.4, max_output_tokens = 900 }) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
   if (!promptText || !String(promptText).trim()) throw new Error("promptText is required");
 
@@ -563,17 +570,17 @@ async function openAiGenerateReport({ promptText }) {
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log("[AI] OpenAI request starting", { chars: String(promptText).length });
+    console.log("[AI] OpenAI request starting", { model, temperature, max_output_tokens, chars: String(promptText).length });
 
     const response = await openai.responses.create(
       {
-        model: "gpt-4o-mini",
+        model,
         input: promptText,
-        // max_output_tokens: 900,
-        // temperature: 0.4,
+        temperature,
+        max_output_tokens,
       },
       {
-        signal: controller.signal, // ✅ correct place
+        signal: controller.signal,
       }
     );
 
@@ -581,12 +588,20 @@ async function openAiGenerateReport({ promptText }) {
     console.log("[AI] OpenAI response received", { chars: text.length });
 
     if (!text) throw new Error("Empty response from OpenAI");
-    return text;
+
+    return {
+      text,
+      // Useful if you want it later:
+      // response_id: response.id,
+      // usage: response.usage,
+      model,
+      temperature,
+      max_output_tokens,
+    };
   } finally {
     clearTimeout(t);
   }
 }
-
 // Helper: normalize transcript text into a clean single-line string
 
 
@@ -1095,8 +1110,50 @@ The email should:
 
 Tone: warm, encouraging, and professional.
 `.trim();
+// Check - do we have this one already?
 
-    const reportText = await openAiGenerateReport({ promptText });
+   const promptHash = sha256(promptText);
+
+    // 1) If report already exists for this submission, return it (no API call)
+      const existing = await pool.query(
+       `SELECT report_text
+        FROM ai_reports
+        WHERE submission_id = $1
+        LIMIT 1`,
+       [submissionId]
+    );
+
+    if (existing.rowCount) {
+        console.log("[AI] cache hit", { submissionId });
+        return res.json({ ok: true, reportText: existing.rows[0].report_text, source: "cache" });
+      }
+
+     // 2) Otherwise generate + store
+      console.log("[AI] cache miss → generating", { submissionId });
+
+     const ai = await openAiGenerateReport({
+       promptText,
+       model: "gpt-4o-mini",
+       temperature: 0.4,
+       max_output_tokens: 900
+    });
+
+   const reportText = ai.text;
+
+    // save (create once)
+    await pool.query(
+      `INSERT INTO ai_reports (submission_id, prompt_hash, model, temperature, max_output_tokens, report_text)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [submissionId, promptHash, ai.model, ai.temperature, ai.max_output_tokens, reportText]
+    );
+
+     return res.json({ ok: true, reportText, source: "openai" });
+
+
+   
+
+    // and when saving:
+    model = ai.model; temperature = ai.temperature; max_output_tokens = ai.max_output_tokens;
 
     return res.json({
       ok: true,
