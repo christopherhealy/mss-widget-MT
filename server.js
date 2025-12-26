@@ -12,6 +12,9 @@ import multer from "multer";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import OpenAI from "openai";
+
+
 
 
 //Dec 10 using SPs
@@ -50,7 +53,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
-
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // ---------------------------------------------------------------------
 // ADMIN JWT AUTH (Dec 15)
@@ -226,13 +231,24 @@ const THEMES_DIR = path.join(ROOT, "themes");
 
 // ---------- CORS MIDDLEWARE (Render ↔ Vercel) ----------
 const allowedOrigins = [
-  "https://mss-widget-mt.vercel.app",   // Vercel front-end
-  "https://mss-widget-mt.onrender.com", // direct API calls (if any)
-  "http://localhost:3000",              // local dev (Next/Vite/etc.)
+  // --- Production domains ---
+  "https://mss-widget-mt.vercel.app",
+  "https://mss-widget-mt.onrender.com",
+
+  // ESL Success Club (prod)
+  "https://eslsuccess.club",
+  "https://www.eslsuccess.club",
+
+  // --- Local development ---
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
   "http://localhost:5173",
+
+  // --- Vercel preview deployments (wildcard) ---
+  /^https:\/\/mss-widget-mt-.*\.vercel\.app$/,
 ];
 // ---------------------------------------------------------------------
-// CORS (Dec 22) — supports exact + wildcard patterns from CORS_ORIGIN
+// CORS (Dec 24) — supports exact + wildcard patterns from CORS_ORIGIN
 // ---------------------------------------------------------------------
 function parseAllowedOrigins(raw) {
   return String(raw || "")
@@ -241,8 +257,19 @@ function parseAllowedOrigins(raw) {
     .filter(Boolean);
 }
 
-const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5173",
+  "https://mss-widget-mt.vercel.app",
+  "https://mss-widget-mt.onrender.com",
+  "https://eslsuccess.club",
+  "https://www.eslsuccess.club",
+];
 
+// If CORS_ORIGIN is set, it augments/overrides; if not set, defaults still apply.
+const ENV_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
+const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...ENV_ORIGINS])];
 function originMatches(allowed, origin) {
   if (!allowed || !origin) return false;
   if (allowed === origin) return true;
@@ -522,6 +549,44 @@ app.get("/api/admin/branding/:slug/logo", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+// OpenAI Helper
+// Small helper: safely extract the final text Dec 26
+// ---- OpenAI (Responses API) -----------------------------------
+
+async function openAiGenerateReport({ promptText }) {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
+  if (!promptText || !String(promptText).trim()) throw new Error("promptText is required");
+
+  const timeoutMs = 25000;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    console.log("[AI] OpenAI request starting", { chars: String(promptText).length });
+
+    const response = await openai.responses.create(
+      {
+        model: "gpt-4o-mini",
+        input: promptText,
+        // max_output_tokens: 900,
+        // temperature: 0.4,
+      },
+      {
+        signal: controller.signal, // ✅ correct place
+      }
+    );
+
+    const text = (response.output_text || "").trim();
+    console.log("[AI] OpenAI response received", { chars: text.length });
+
+    if (!text) throw new Error("Empty response from OpenAI");
+    return text;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // Helper: normalize transcript text into a clean single-line string
 
 
@@ -602,12 +667,9 @@ app.post("/api/widget/submit", async (req, res) => {
   try {
     // ------------------------------------------------------------
     // 0) Normalise incoming payload shape
-    //    - If MSS posts { submission: {...} }, use that
-    //    - If widget posts plain body / FormData fields, use req.body
     // ------------------------------------------------------------
     let payload = req.body?.submission || req.body || {};
 
-    // If someone sent a raw JSON string, try to parse
     if (typeof payload === "string") {
       try {
         payload = JSON.parse(payload);
@@ -630,7 +692,7 @@ app.post("/api/widget/submit", async (req, res) => {
     }
 
     // ------------------------------------------------------------
-    // 1) Resolve school (so we get school_id + settings)
+    // 1) Resolve school
     // ------------------------------------------------------------
     const schoolRes = await pool.query(
       `SELECT id, settings
@@ -654,7 +716,7 @@ app.post("/api/widget/submit", async (req, res) => {
     const schoolConfig = settings.config || settings.widgetConfig || {};
 
     // ------------------------------------------------------------
-    // 2) Extract widget-side metadata (all optional)
+    // 2) Extract widget-side metadata
     // ------------------------------------------------------------
     const studentId =
       payload.studentId ??
@@ -693,7 +755,7 @@ app.post("/api/widget/submit", async (req, res) => {
       null;
 
     // ------------------------------------------------------------
-    // 3) MSS / Vox results (now OPTIONAL)
+    // 3) MSS / Vox results (OPTIONAL)
     // ------------------------------------------------------------
     let mss =
       payload.mss ??
@@ -701,7 +763,6 @@ app.post("/api/widget/submit", async (req, res) => {
       payload.results ??
       null;
 
-    // Allow mss to be JSON string
     if (typeof mss === "string") {
       try {
         mss = JSON.parse(mss);
@@ -716,8 +777,14 @@ app.post("/api/widget/submit", async (req, res) => {
 
     // Initialise all scoring-related fields to null
     let voxScore         = null;
-    let transcriptRaw    = null;
-    let transcriptClean  = null;
+
+    // ✅ Always derive transcript from either MSS or payload
+    let transcriptRaw =
+      (mss && typeof mss === "object" ? (mss.transcript ?? null) : null) ??
+      payload.transcript ??
+      null;
+
+    let transcriptClean = cleanTranscriptText(transcriptRaw);
 
     let mss_fluency      = null;
     let mss_grammar      = null;
@@ -728,7 +795,6 @@ app.post("/api/widget/submit", async (req, res) => {
     let mss_ielts        = null;
     let mss_pte          = null;
 
-    // If we DO have MSS/Vox blob, derive values as before
     if (mss && typeof mss === "object") {
       voxScore =
         (typeof mss.score === "number" ? mss.score : null) ??
@@ -736,35 +802,13 @@ app.post("/api/widget/submit", async (req, res) => {
         (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
         null;
 
-      transcriptRaw =
-        mss.transcript ??
-        payload.transcript ??
-        null;
-
-      transcriptClean = cleanTranscriptText(transcriptRaw);
-
       const elsa   = mss.elsa_results || mss.elsa || {};
       const scores = mss.scores || mss.details || {};
 
-      mss_fluency =
-        elsa.fluency ??
-        scores.fluency ??
-        null;
-
-      mss_grammar =
-        elsa.grammar ??
-        scores.grammar ??
-        null;
-
-      mss_pron =
-        elsa.pronunciation ??
-        scores.pronunciation ??
-        null;
-
-      mss_vocab =
-        elsa.vocabulary ??
-        scores.vocabulary ??
-        null;
+      mss_fluency = elsa.fluency ?? scores.fluency ?? null;
+      mss_grammar = elsa.grammar ?? scores.grammar ?? null;
+      mss_pron    = elsa.pronunciation ?? scores.pronunciation ?? null;
+      mss_vocab   = elsa.vocabulary ?? scores.vocabulary ?? null;
 
       mss_cefr =
         elsa.cefr_level ??
@@ -785,10 +829,14 @@ app.post("/api/widget/submit", async (req, res) => {
     const pte   = mss_pte;
     const cefr  = mss_cefr;
 
-    const meta = mss || null; // raw MSS blob (or null if none)
+    const meta = mss || null;
+
+    // ✅ WPM: duration + compute
+    const length_sec = extractDurationSec(payload, mss);
+    const wpm = computeWpm(transcriptClean, length_sec);
 
     // ------------------------------------------------------------
-    // 4) INSERT submission row (⚠️ no slug column)
+    // 4) INSERT submission row
     // ------------------------------------------------------------
     const insertSql = `
       INSERT INTO submissions (
@@ -816,40 +864,46 @@ app.post("/api/widget/submit", async (req, res) => {
         help_surface,
         widget_variant,
         dashboard_variant,
-        question_id
+        question_id,
+        length_sec,
+        wpm
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+        $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+        $21,$22,$23,$24,$25,$26,$27
       )
       RETURNING id
     `;
 
     const insertParams = [
-      schoolId,
-      questionTxt,
-      studentId,
-      toefl,
-      ielts,
-      pte,
-      cefr,
-      transcriptRaw,
-      meta,
-      null,          // mss_overall not used yet
-      mss_fluency,
-      mss_grammar,
-      mss_pron,
-      mss_vocab,
-      mss_cefr,
-      mss_toefl,
-      mss_ielts,
-      mss_pte,
-      voxScore,
-      transcriptClean,
-      help_level,
-      help_surface,
-      widget_variant,
-      dashboard_variant,
-      questionId
+      schoolId,          // $1
+      questionTxt,       // $2
+      studentId,         // $3
+      toefl,             // $4
+      ielts,             // $5
+      pte,               // $6
+      cefr,              // $7
+      transcriptRaw,     // $8
+      meta,              // $9
+      null,              // $10 mss_overall not used yet
+      mss_fluency,       // $11
+      mss_grammar,       // $12
+      mss_pron,          // $13
+      mss_vocab,         // $14
+      mss_cefr,          // $15
+      mss_toefl,         // $16
+      mss_ielts,         // $17
+      mss_pte,           // $18
+      voxScore,          // $19
+      transcriptClean,   // $20
+      help_level,        // $21
+      help_surface,      // $22
+      widget_variant,    // $23
+      dashboard_variant, // $24
+      questionId,        // $25
+      length_sec,        // $26 ✅
+      wpm                // $27 ✅
     ];
 
     const insertRes    = await pool.query(insertSql, insertParams);
@@ -873,13 +927,18 @@ app.post("/api/widget/submit", async (req, res) => {
 
     console.log("✨ Submission created:", {
       submissionId,
+      length_sec,
+      wpm,
       dashboardUrl
     });
 
     return res.json({
       ok: true,
       submissionId,
-      dashboardUrl
+      dashboardUrl,
+      // Optional: return computed metrics for immediate UI/debug visibility
+      length_sec,
+      wpm
     });
 
   } catch (err) {
@@ -900,7 +959,30 @@ app.get("/api/admin/reports/:slug", async (req, res) => {
     const limit = Number(req.query.limit || 500);
 
     const sql = `
-      SELECT *
+      SELECT
+        submission_id AS id,
+        submitted_at,
+        school_slug,
+        school_name,
+        student_id,
+        student_email,
+        question,
+        wpm,
+        toefl,
+        ielts,
+        pte,
+        cefr,
+        vox_score,
+        mss_overall,
+        mss_fluency,
+        mss_grammar,
+        mss_pron,
+        mss_vocab,
+        mss_cefr,
+        mss_toefl,
+        mss_ielts,
+        mss_pte,
+        transcript_clean
       FROM vw_widget_reports
       WHERE school_slug = $1
       ORDER BY submitted_at DESC
@@ -911,18 +993,125 @@ app.get("/api/admin/reports/:slug", async (req, res) => {
 
     return res.json({
       ok: true,
-      tests: result.rows
+      tests: result.rows,
     });
-
   } catch (err) {
     console.error("❌ /api/admin/reports error:", err);
     return res.status(500).json({
       ok: false,
       error: "reports_failed",
-      message: err.message
+      message: err.message,
     });
   }
 });
+
+//================= API request handler =====================//
+
+app.post("/api/admin/ai-report/:id", async (req, res) => {
+  try {
+    const submissionId = Number(req.params.id);
+    if (!submissionId) {
+      return res.status(400).json({ ok: false, error: "bad_id" });
+    }
+
+    // Pull what you need to build a good prompt
+    const q = `
+      SELECT
+        submission_id AS id,
+        submitted_at,
+        school_slug,
+        school_name,
+        student_id,
+        student_email,
+        question,
+        wpm,
+        mss_fluency,
+        mss_grammar,
+        mss_pron,
+        mss_vocab,
+        mss_cefr,
+        mss_toefl,
+        mss_ielts,
+        mss_pte,
+        transcript_clean
+      FROM vw_widget_reports
+      WHERE submission_id = $1
+      LIMIT 1
+    `;
+    const r = await pool.query(q, [submissionId]);
+    if (!r.rowCount) {
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    const row = r.rows[0];
+
+    const safe = (v, fb = "N/A") =>
+      v === null || v === undefined || v === "" ? fb : v;
+
+    const defaultGoal =
+      "reach a level of English that is strong enough for full-time work, admission to a college or university program, and higher scores on tests like TOEFL, IELTS, or PTE.";
+
+    const promptText = `
+Act as an experienced English tutor speaking directly to a student who has just completed a speaking task on the topic:
+
+"${safe(row.question, "Not specified")}"
+
+Student: ${safe(row.student_email || row.student_id, "Unknown student")}
+
+Here are this student's MSS speaking results:
+- Speed: ${safe(row.wpm, "N/A")} words per minute
+- Fluency: ${safe(row.mss_fluency)} / 100
+- Pronunciation: ${safe(row.mss_pron)} / 100
+- Grammar: ${safe(row.mss_grammar)} / 100
+- Vocabulary: ${safe(row.mss_vocab)} / 100
+- Overall level: CEFR ${safe(row.mss_cefr)}
+- Estimated TOEFL Speaking: ${safe(row.mss_toefl)} / 30
+- Estimated IELTS Speaking: ${safe(row.mss_ielts)} / 9
+- Estimated PTE Speaking: ${safe(row.mss_pte)} / 100
+
+Transcript (what the student said):
+"${safe(row.transcript_clean, "")}"
+
+The student's general goal is to ${defaultGoal}
+
+Please do TWO things:
+
+1) FEEDBACK REPORT
+Write a structured feedback report directly to the student in the second person ("you"), in English.
+Include:
+- Relevance of the answer to the question - is it logical and concise?
+- A short overall summary (2–3 sentences) of what these results mean.
+- 2–3 clear strengths.
+- 3–5 key areas for improvement, focusing especially on the lowest scores.
+- Concrete practice suggestions the student can start this week.
+
+2) EMAIL TO THE STUDENT
+Write a separate email that a teacher at the school could send to this student.
+The email should:
+- Have a short, clear subject line.
+- Greet the student politely.
+- Briefly summarize their current level using simple language.
+- Invite them to sign up for lessons, a consultation, or a short trial.
+
+Tone: warm, encouraging, and professional.
+`.trim();
+
+    const reportText = await openAiGenerateReport({ promptText });
+
+    return res.json({
+      ok: true,
+      reportText,
+    });
+  } catch (err) {
+    console.error("❌ /api/admin/ai-report failed:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "ai_report_failed",
+      message: err.message || "AI report failed",
+    });
+  }
+});
+
 /* ------------------------------------------------------------------
    DEV: simple log endpoint for widget events
    ------------------------------------------------------------------ */
@@ -934,6 +1123,61 @@ app.post("/api/widget/log", (req, res) => {
   }
   res.json({ ok: true });
 });
+
+// ------------ WPM helper  ---------------------//
+
+function extractDurationSec(payload = {}) {
+  // Prefer explicit duration fields if present
+  const direct =
+    payload.length_sec ??
+    payload.lengthSec ??
+    payload.duration_sec ??
+    payload.durationSec ??
+    payload.audio_seconds ??
+    payload.audioSeconds ??
+    null;
+
+  if (direct != null && !Number.isNaN(Number(direct))) return Number(direct);
+
+  // Fall back to meta JSON
+  const m = payload.meta || payload.mss_json || payload.mss || {};
+  const metaVal =
+    m.length_sec ??
+    m.lengthSec ??
+    m.duration_sec ??
+    m.durationSec ??
+    m.audio_seconds ??
+    m.audioSeconds ??
+    null;
+
+  if (metaVal != null && !Number.isNaN(Number(metaVal))) return Number(metaVal);
+
+  return null;
+}
+
+//Dec 26 - allowing for spaces in our word count
+
+function computeWpm(transcript, durationSec) {
+  const dur = Number(durationSec);
+  if (!dur || dur <= 0) return null;
+
+  // Normalize text
+  let t = String(transcript || "");
+
+  // Remove zero-width/invisible chars that get tokenized as "words"
+  t = t.replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+  // Collapse whitespace
+  t = t.replace(/\s+/g, " ").trim();
+  if (!t) return null;
+
+  // Count words (Unicode letters/numbers, allowing apostrophes/hyphens inside a word)
+  const m = t.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu);
+  const words = m ? m.length : 0;
+  if (!words) return null;
+
+  return Math.round((words / dur) * 60);
+}
 
 // ---------- QUESTIONS SCHEMA HELPER ----------
 
@@ -3182,6 +3426,12 @@ app.get("/api/admin/my-schools", async (req, res) => {
 // POST /api/login (legacy)
 // Body: { email, password }
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// ADMIN LOGIN API (JWT session, bcrypt-aware)
+// POST /api/admin/login
+// POST /api/login (legacy)
+// Body: { email, password }
+// ---------------------------------------------------------------------
 async function handleAdminLogin(req, res) {
   const body = req.body || {};
   const email = String(body.email || "").trim().toLowerCase();
@@ -3196,6 +3446,7 @@ async function handleAdminLogin(req, res) {
   }
 
   try {
+    // 1) Look up admin
     const { rows, rowCount } = await pool.query(
       `
       SELECT
@@ -3225,6 +3476,7 @@ async function handleAdminLogin(req, res) {
 
     const a = rows[0];
 
+    // 2) Active check
     if (a.is_active === false) {
       return res.status(403).json({
         ok: false,
@@ -3233,7 +3485,9 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    const okPassword = await bcrypt.compare(password, a.password_hash || "");
+    // 3) Password check (bcrypt)
+    const hash = a.password_hash || "";
+    const okPassword = await bcrypt.compare(password, hash);
     if (!okPassword) {
       return res.status(401).json({
         ok: false,
@@ -3242,7 +3496,7 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    // Normalize admin object for token signing + client
+    // 4) Normalize admin payload for token + client
     const admin = {
       adminId: a.id,
       email: a.email,
@@ -3252,16 +3506,36 @@ async function handleAdminLogin(req, res) {
       isOwner: !!a.is_owner,
     };
 
-    // IMPORTANT: this will throw if MSS_ADMIN_JWT_SECRET is missing
-    const token = signAdminToken(admin);
+    // 5) Sign JWT (DIAGNOSTIC WRAP so we can see the actual failure)
+    let token = "";
+    try {
+      token = signAdminToken(admin);
+    } catch (jwtErr) {
+      console.error("❌ JWT SIGN FAILED in /api/admin/login", {
+        hasSecret: !!process.env.MSS_ADMIN_JWT_SECRET,
+        secretLen: process.env.MSS_ADMIN_JWT_SECRET
+          ? String(process.env.MSS_ADMIN_JWT_SECRET).length
+          : 0,
+        ttl: process.env.MSS_ADMIN_JWT_TTL || "(default)",
+        error: jwtErr?.message,
+        stack: jwtErr?.stack,
+      });
 
+      return res.status(500).json({
+        ok: false,
+        error: "jwt_failed",
+        message: jwtErr?.message || "JWT signing failed",
+      });
+    }
+
+    // 6) Success
     return res.json({
       ok: true,
       admin,
       token,
     });
   } catch (err) {
-    console.error("handleAdminLogin error:", err);
+    console.error("❌ handleAdminLogin error:", err);
     return res.status(500).json({
       ok: false,
       error: "server_error",

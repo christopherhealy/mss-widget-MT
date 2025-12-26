@@ -15,7 +15,7 @@ console.log("✅ SchoolPortal.js loaded");
   // Auth + config
   // -----------------------------------------------------------------------
 
- const ADMIN_API_BASE = ""; // same origin
+const ADMIN_API_BASE = ""; // same origin
 const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
 const ADMIN_KEY_STORAGE = "mss_admin_key";
 const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
@@ -902,6 +902,10 @@ function buildEmbedSnippet() {
       type: "string",
       get: (row) => row.question || "",
     },
+    wpm: {
+      type: "number",
+      get: (row) => (row.wpm == null ? null : Number(row.wpm)),
+    },
     toefl: {
       type: "number",
       get: (row) => row.mss_toefl ?? row.toefl,
@@ -1053,7 +1057,7 @@ function buildEmbedSnippet() {
 
     if (!tests || tests.length === 0) {
       testsTbody.innerHTML =
-        `<tr><td colspan="16" class="muted">No data for this period.</td></tr>`;
+        `<tr><td colspan="17" class="muted">No data for this period.</td></tr>`;
       testsCountLabel.textContent = "0 tests";
       return;
     }
@@ -1081,9 +1085,9 @@ function buildEmbedSnippet() {
           <!-- 2: Actions -->
           <td>
             <select class="row-action-select" data-id="${safe(t.id)}">
-              <option value="">Actions…</option>
+              <option value="">Actions…</option>           
               <option value="transcript">Transcript</option>
-              <option value="prompt">AI Prompt</option>
+              <option value="generate_report">Generate Report</option>
               <option value="dashboard">Dashboard view</option>
             </select>
           </td>
@@ -1102,19 +1106,22 @@ function buildEmbedSnippet() {
             ${truncate(t.question, 30)}
           </td>
 
-          <!-- 7–10: MSS scores -->
+          <!-- 7: Words Per Minute -->
+          <td>${safe(t.wpm)}</td>
+
+          <!-- 8–11: MSS scores -->
           <td>${safe(t.mss_toefl)}</td>
           <td>${safe(t.mss_ielts)}</td>
           <td>${safe(t.mss_pte)}</td>
           <td>${safe(t.mss_cefr)}</td>
 
-          <!-- 11: Help -->
+          <!-- 12: Help -->
           <td>${safe(helpText)}</td>
 
-          <!-- 12: Dash -->
+          <!-- 13: Dash -->
           <td>${safe(dashText)}</td>
 
-          <!-- 13–16: Subscores -->
+          <!-- 14–17: Subscores -->
           <td>${safe(t.mss_fluency)}</td>
           <td>${safe(t.mss_grammar)}</td>
           <td>${safe(t.mss_pron)}</td>
@@ -1154,14 +1161,13 @@ function buildEmbedSnippet() {
           return;
         }
 
-        if (value === "transcript") {
-          showTranscript(row);
-        } else if (value === "prompt") {
-          showPrompt(row);
-        } else if (value === "dashboard") {
-          openDashboardPickerForRow(row);
-        }
-
+       if (value === "generate_report") {
+         showAIReport(row);
+       } else if (value === "transcript") {
+        showTranscript(row);
+       } else if (value === "dashboard") {
+         openDashboardPickerForRow(row);
+       }
         select.value = "";
       });
     });
@@ -1700,6 +1706,7 @@ function buildEmbedSnippet() {
       "help_surface",
       "widget_variant",
       "dashboard_variant",
+      "wpm",
       "mss_fluency",
       "mss_grammar",
       "mss_pron",
@@ -1720,6 +1727,7 @@ function buildEmbedSnippet() {
         t.school_slug,
         t.submitted_at || t.created_at || "",
         t.question,
+        t.wpm,
         t.student_id,
         t.toefl,
         t.ielts,
@@ -1893,7 +1901,80 @@ function buildEmbedSnippet() {
 
     window.mssShowPrompt = openPrompt;
   })();
+//============== Show AI report =================//
+async function showAIReport(row) {
+  if (!row || !row.id) return;
 
+  const backdrop = document.getElementById("portal-transcript-backdrop");
+  const body = document.getElementById("portal-transcript-body");
+  const title = document.getElementById("portal-transcript-title");
+  const subtitle = document.getElementById("portal-transcript-subtitle");
+  const closeBtn = document.getElementById("portal-transcript-close");
+  const okBtn = document.getElementById("portal-transcript-ok");
+
+  if (!backdrop || !body) {
+    alert("Viewer modal not found.");
+    return;
+  }
+
+  LAST_ROW = row;
+
+  const submittedAt = row.submitted_at || row.created_at || "";
+
+  if (title) {
+    title.textContent = "AI Report – " + formatShortDateTime(submittedAt || "");
+  }
+
+  if (subtitle) {
+    subtitle.textContent = row.student_email
+      ? row.student_email
+      : row.student_id
+      ? "Student #" + row.student_id
+      : "";
+  }
+
+  body.textContent = "Generating report…";
+
+  backdrop.classList.remove("hidden");
+
+  const close = () => backdrop.classList.add("hidden");
+
+  if (closeBtn && !closeBtn._mssBound) {
+    closeBtn.addEventListener("click", close);
+    closeBtn._mssBound = true;
+  }
+  if (okBtn && !okBtn._mssBound) {
+    okBtn.addEventListener("click", close);
+    okBtn._mssBound = true;
+  }
+
+  try {
+    const res = await adminFetch(
+      `/api/admin/ai-report/${encodeURIComponent(row.id)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}), // reserved for future options
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data.ok === false) {
+      const msg =
+        data.message ||
+        data.error ||
+        `AI report failed (HTTP ${res.status})`;
+      body.textContent = "Error: " + msg;
+      return;
+    }
+
+    body.textContent = data.reportText || "(No report text returned.)";
+  } catch (err) {
+    console.error("showAIReport failed:", err);
+    body.textContent = "Error: " + (err.message || "AI report failed.");
+  }
+}
   // -----------------------------------------------------------------------
   // AI Prompt builder for a single submission row
   // -----------------------------------------------------------------------
@@ -1903,7 +1984,10 @@ function buildEmbedSnippet() {
       v === null || v === undefined || v === "" ? fallback : v;
 
     const question = safe(row.question, "Not specified");
-    const studentId = safe(row.student_id, "Unknown student");
+    const studentId = safe(
+      row.student_email || row.studentEmail || row.student_name || row.studentName ||row.student_id,
+      "Unknown student"
+     );
 
     const taskScore = safe(row.task_score ?? row.task, "N/A");
     const speedWpm = safe(row.speed_wpm ?? row.speed ?? row.wpm, "N/A");
@@ -1930,7 +2014,6 @@ The submission belongs to: ${studentId}.
 
 Here are this student's MSS speaking results:
 
-- Task Score: ${taskScore} / 4
 - Speed: ${speedWpm} words per minute
 - Fluency: ${fluency} / 100
 - Pronunciation: ${pron} / 100

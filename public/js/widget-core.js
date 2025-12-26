@@ -46,6 +46,10 @@ let blob = null;
 let blobName = null;
 let objectUrl = null;
 
+// Duration tracking (seconds) for WPM
+let LAST_AUDIO_LENGTH_SEC = null;   // number | null
+let LAST_AUDIO_SOURCE = null; // "recording" | "upload_wav" | "upload_mp3" | null
+
 // Per-question help cache for WidgetMin + WidgetMax / READMAX
 // questionId -> { min: string, max: string }
 const HELP_CACHE = {};
@@ -604,6 +608,26 @@ function bootstrapWidget() {
       console.error("Bootstrap error:", err);
       setStatus("We could not load this widget. Please contact your school.");
     });
+}
+//Dec 25
+async function getAudioDurationSecFromFile(fileOrBlob) {
+  // Uses <audio> metadata; works well for wav/mp3.
+  const url = URL.createObjectURL(fileOrBlob);
+  try {
+    const a = new Audio();
+    a.preload = "metadata";
+    a.src = url;
+
+    await new Promise((resolve, reject) => {
+      a.onloadedmetadata = () => resolve();
+      a.onerror = () => reject(new Error("audio metadata load failed"));
+    });
+
+    const d = Number(a.duration);
+    return Number.isFinite(d) && d > 0 ? Number(d.toFixed(3)) : null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 //Dec 6
 // Helper: accept either a Blob/File or a blob: URL string
@@ -1347,7 +1371,7 @@ function onStopClick() {
     }
 
     const durationMs = performance.now() - t0;
-    const durationSec = Math.round(durationMs / 1000);
+    const durationSec = Number((durationMs / 1000).toFixed(3));
 
     if (!recordingChunks.length) {
       setStatus("No audio captured. Please try again.");
@@ -1518,7 +1542,9 @@ async function onUploadChange(evt) {
         size: file.size,
       });
 
-      setNewBlob(file, file.name, null);
+      const dur = await getAudioDurationSecFromFile(file);
+      LAST_AUDIO_SOURCE = "upload_wav";
+      setNewBlob(file, file.name, dur);
       setStatus(`File selected: ${file.name}. You can listen and submit it.`);
     } else if (looksMp3) {
       // ✅ MP3 → decode → re-encode as WAV using existing encodeWav()
@@ -1549,6 +1575,8 @@ async function onUploadChange(evt) {
         }
       });
 
+      const dur = Number.isFinite(audioBuffer.duration) ?  Number(audioBuffer.duration.toFixed(3)) : null;
+
       const channelData = audioBuffer.getChannelData(0); // mono
       const pcm = new Float32Array(channelData.length);
       pcm.set(channelData);
@@ -1564,8 +1592,9 @@ async function onUploadChange(evt) {
         size: wavBlob.size,
       });
 
-      setNewBlob(wavBlob, wavName, null);
-      setStatus(
+      LAST_AUDIO_SOURCE = "upload_mp3";
+       setNewBlob(wavBlob, wavName, dur);
+       setStatus(
         `File processed: ${wavName}. You can listen and submit it.`
       );
     } else {
@@ -1612,6 +1641,22 @@ async function onSubmitClick() {
     setStatus("Please record or upload an answer before submitting.");
     return;
   }
+
+   // ✅ duration in seconds captured at Stop Recording (recording) or upload decode
+   // Expect this to be set globally by setNewBlob(..., durationSec)
+   const lengthSecForSubmit =
+     (typeof LAST_AUDIO_LENGTH_SEC === "number" &&
+      Number.isFinite(LAST_AUDIO_LENGTH_SEC) &&
+     LAST_AUDIO_LENGTH_SEC > 0)
+      ? Math.round(LAST_AUDIO_LENGTH_SEC)
+      : null;
+
+   console.log("⏱️ length_sec for submit:", lengthSecForSubmit, {
+  raw: LAST_AUDIO_LENGTH_SEC,
+  source: LAST_AUDIO_SOURCE || null,
+});
+
+     console.log("⏱️ length_sec for submit:", lengthSecForSubmit);
 
   if (CONFIG && CONFIG.widgetEnabled === false) {
     const msg =
@@ -1693,6 +1738,11 @@ async function onSubmitClick() {
   });
 
   fd.append("file", fileForUpload, fileForUpload.name);
+
+  // ✅ Send recording/upload duration to backend (for /api/widget/submit)
+    if (lengthSecForSubmit != null) {
+     fd.append("length_sec", String(lengthSecForSubmit));
+    }
 
   // 🔹 NEW: derive a canonical question text + ID once
   const questionId = q.id ?? q.question_id ?? null;
@@ -1792,18 +1842,26 @@ async function onSubmitClick() {
           // (re-use the same canonical text)
           const questionTextForDb = questionText;
 
-          const dbPayload = {
-            slug: CURRENT_SLUG,
-            question: questionTextForDb,
-            question_id: questionId ?? null,  // 🔹 NEW: DB-style ID
-            questionId: questionId ?? null,   // 🔹 Keep camelCase for legacy server
-            studentId: null,                  // can wire up later
-            mss: body,                        // full MSS result payload
-            help_level,
-            help_surface,
-            widget_variant,
-            dashboard_variant,
-          };
+         const dbPayload = {
+             slug: CURRENT_SLUG,
+
+            // ✅ restore question text
+           question: questionText,
+
+           // ids
+          question_id: questionId ?? null,
+          questionId: questionId ?? null,
+
+         // ✅ duration for WPM
+         length_sec: lengthSecForSubmit,
+
+         studentId: null,
+         mss: body,
+         help_level,
+         help_surface,
+         widget_variant,
+         dashboard_variant,
+       };
 
           console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
 
@@ -2047,6 +2105,13 @@ function setNewBlob(newBlob, name, durationSec) {
   blobName = name || "answer.wav";
   objectUrl = URL.createObjectURL(newBlob);
 
+  // ✅ Persist duration (seconds) globally for submit/WPM
+  if (typeof durationSec === "number" && Number.isFinite(durationSec) && durationSec > 0) {
+    LAST_AUDIO_LENGTH_SEC = durationSec;
+  } else {
+    LAST_AUDIO_LENGTH_SEC = null;
+  }
+
   const playerWrap = $("playerWrap");
   const player = $("player");
   const lengthHint = $("lengthHint");
@@ -2055,8 +2120,8 @@ function setNewBlob(newBlob, name, durationSec) {
   if (playerWrap) playerWrap.style.display = "block";
 
   if (lengthHint) {
-    if (durationSec != null) {
-      lengthHint.textContent = `Approximate length: ${durationSec}s. Aim for 30–60 seconds.`;
+    if (LAST_AUDIO_LENGTH_SEC != null) {
+      lengthHint.textContent = `Approximate length: ${Math.round(LAST_AUDIO_LENGTH_SEC)}s. Aim for 30–60 seconds.`;
     } else {
       const sec = Math.round(newBlob.size / 16000); // rough guess
       lengthHint.textContent = `Approximate length: ~${sec}s. Aim for 30–60 seconds.`;
@@ -2071,7 +2136,6 @@ function setNewBlob(newBlob, name, durationSec) {
   const submitBtn = $("submitBtn");
   if (submitBtn) submitBtn.disabled = false;
 }
-
 /* -----------------------------------------------------------------------
    MISC HELPERS
    ----------------------------------------------------------------------- */
