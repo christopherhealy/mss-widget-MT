@@ -1,0 +1,298 @@
+<!-- /public/admin-prompt/AIPromptManager.html -->
+<!-- Build: 2025-12-28 AIPromptManager v0.3 (List + Viewer + Editor + MSS Modal) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MSS – AI Prompt Manager</title>
+
+  <!-- =========================================================
+       (A) Shared MSS Design System
+       ========================================================= -->
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <!-- =========================================================
+       (B) Page + Modal Styles (local for now; can be moved later)
+       ========================================================= -->
+  <style>
+    :root{
+      --bg:#f5f7fb; --card:#fff; --edge:#e5e7eb; --text:#0f172a; --muted:#64748b;
+      --blue:#1a5cff; --shadow:0 10px 30px rgba(15,23,42,.08);
+      --radius:16px;
+    }
+    body{ background:var(--bg); margin:0; padding:24px; color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    .shell{ max-width:1100px; margin:0 auto; }
+    .topbar{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    h1{ margin:0; font-size:28px; letter-spacing:-.02em; }
+    .meta{ color:var(--muted); font-size:13px; margin-top:6px; }
+    .actions{ display:flex; gap:10px; align-items:center; }
+
+    .btn{
+      border-radius:999px; padding:10px 14px; border:1px solid var(--edge);
+      background:#fff; cursor:pointer; font-weight:800; font-size:13px;
+    }
+    .btn.primary{ background:var(--blue); border-color:transparent; color:#fff; }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .status{ margin:8px 0 14px; color:var(--muted); font-size:13px; }
+    .status.error{ color:#b91c1c; }
+
+    .card{
+      background:var(--card); border:1px solid var(--edge); border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+    .list{ padding:12px; }
+    .row{
+      border:1px solid var(--edge); border-radius:14px; padding:12px 12px;
+      display:flex; justify-content:space-between; gap:12px; align-items:flex-start;
+      background:#fff; margin-bottom:10px;
+    }
+    .row:last-child{ margin-bottom:0; }
+    .row h3{ margin:0; font-size:15px; }
+    .preview{ margin-top:6px; color:#334155; font-size:13px; white-space:pre-wrap; line-height:1.35; }
+
+    .badges{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .pill{
+      font-size:12px; font-weight:800; padding:3px 10px; border-radius:999px;
+      border:1px solid var(--edge); background:#f8fafc; color:#475569;
+    }
+    .pill.on{ background:#ecfeff; border-color:#a5f3fc; color:#0e7490; }
+    .pill.default{ background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+
+    .rowBtns{ display:flex; gap:8px; align-items:center; }
+    .rowBtns .btn{ padding:8px 12px; font-weight:900; }
+
+    /* =========================
+       Modal Shell
+       ========================= */
+    .overlay{
+      position:fixed; inset:0; background:rgba(15,23,42,.55);
+      display:none; align-items:center; justify-content:center; padding:18px; z-index:9999;
+    }
+    .overlay.show{ display:flex; }
+    .modal{
+      width:min(1040px, 96vw); max-height:90vh; overflow:auto;
+      background:#fff; border-radius:18px; box-shadow:0 30px 80px rgba(0,0,0,.35);
+      border:1px solid rgba(226,232,240,.9);
+    }
+    .mHead{
+      display:flex; justify-content:space-between; align-items:center; gap:12px;
+      padding:14px 16px; border-bottom:1px solid var(--edge);
+    }
+    .mTitle{ font-weight:950; font-size:16px; }
+
+    .xBtn{
+      width:38px;height:38px;border-radius:12px;border:1px solid var(--edge);
+      background:#fff; cursor:pointer; font-size:18px; font-weight:900;
+      display:flex; align-items:center; justify-content:center;
+    }
+
+    .mBody{ padding:14px 16px; }
+    .grid{ display:grid; grid-template-columns: 1.3fr .9fr; gap:14px; }
+    @media (max-width: 980px){ .grid{ grid-template-columns:1fr; } }
+
+    .field label{ display:block; font-weight:900; font-size:13px; margin:0 0 6px; }
+    .input, .textarea, .select{
+      width:100%; border:1px solid var(--edge); border-radius:12px;
+      padding:10px 12px; font-size:13px; outline:none; background:#fff;
+    }
+    .textarea{
+      min-height:220px; resize:vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+    }
+    .hint{ color:var(--muted); font-size:12px; margin-top:6px; }
+
+    .side{
+      border:1px solid var(--edge); border-radius:14px; padding:12px; background:#f8fafc;
+    }
+    .side h4{ margin:0 0 8px; font-size:13px; font-weight:950; }
+    .checklist{ display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
+    .check{ display:flex; gap:8px; align-items:center; font-size:13px; color:#334155; }
+
+    .toolbar{ display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-top:12px; }
+
+    .errBox{
+      display:none; margin-top:10px; padding:10px 12px; border-radius:12px;
+      background:#fff1f2; border:1px solid #fecdd3; color:#9f1239; font-size:13px;
+    }
+    .errBox.show{ display:block; }
+
+    /* Viewer modal text */
+    .viewerText{ white-space:pre-wrap; font-size:13px; color:#0f172a; line-height:1.45; }
+  </style>
+</head>
+
+<body>
+
+  <!-- =========================================================
+       (C) Main Page Shell (Topbar + Status + List)
+       ========================================================= -->
+  <div class="shell">
+    <div class="topbar">
+      <div>
+        <h1>AI Prompt Manager</h1>
+        <div class="meta" id="meta">slug=—</div>
+      </div>
+
+      <div class="actions">
+        <button id="btnCloseX" class="xBtn" type="button" aria-label="Close">✕</button>
+        <button id="btnClose" class="btn" type="button">Close</button>
+        <button id="btnAdd" class="btn primary" type="button">＋ Add Prompt</button>
+      </div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="card">
+      <div id="list" class="list"></div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       (D) Viewer Modal (read-only prompt view)
+       ========================================================= -->
+  <div id="viewerOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Prompt Viewer">
+      <div class="mHead">
+        <div>
+          <div class="mTitle" id="viewerTitle">Prompt</div>
+          <div class="meta" id="viewerMeta"></div>
+        </div>
+        <button class="xBtn" id="viewerClose" type="button">✕</button>
+      </div>
+      <div class="mBody">
+        <div id="viewerText" class="viewerText"></div>
+        <div class="toolbar">
+          <button class="btn" id="viewerEdit" type="button">Edit</button>
+          <button class="btn" id="viewerClose2" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       (E) Editor Modal (Add/Edit prompt + Suggest + Variables panel)
+       ========================================================= -->
+  <div id="editOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Prompt Editor">
+      <div class="mHead">
+        <div>
+          <div class="mTitle" id="editTitle">Add Prompt</div>
+          <div class="meta" id="editMeta"></div>
+        </div>
+        <button class="xBtn" id="editClose" type="button">✕</button>
+      </div>
+
+      <div class="mBody">
+        <div class="grid">
+
+          <!-- (E1) Editor Left Column -->
+          <div>
+
+            <div class="field" style="margin-bottom:12px;">
+              <label for="promptName">Prompt Name</label>
+              <input id="promptName" class="input" placeholder="e.g., Spanish Instruction - General" />
+              <div class="hint">Short, descriptive, teacher-friendly. This is what staff will choose later.</div>
+            </div>
+
+            <div class="field" style="margin-bottom:12px;">
+              <label for="helperLanguage">Helper Language</label>
+              <select id="helperLanguage" class="select">
+                <option value="">None (English only)</option>
+                <option>Arabic</option>
+                <option>Hindi</option>
+                <option>French</option>
+                <option>Spanish</option>
+                <option>Italian</option>
+                <option>Portuguese</option>
+                <option>Korean</option>
+                <option>Japanese</option>
+                <option>Mandarin</option>
+              </select>
+              <div class="hint">Optional: the prompt can instruct the assistant to explain key points in this language.</div>
+            </div>
+
+            <!-- IMPORTANT: Suggest Notes exists here -->
+            <div class="field" style="margin-bottom:12px;">
+              <label for="suggestNotes">Admin Notes for Suggest</label>
+              <textarea id="suggestNotes" class="input" style="min-height:90px; resize:vertical;"
+                placeholder="Optional: goals, exercise style, target level, common errors, tone…"></textarea>
+              <div class="hint">Used only for Suggest. Not stored in the prompt.</div>
+            </div>
+
+            <div class="field">
+              <label for="promptText">Prompt Text</label>
+              <textarea id="promptText" class="textarea" placeholder="Write the prompt here…"></textarea>
+
+              <div id="editError" class="errBox"></div>
+
+              <div class="toolbar">
+                <button id="btnSuggest" class="btn" type="button">Suggest AI Prompt</button>
+                <div style="flex:1"></div>
+                <button id="btnCancel" class="btn" type="button">Cancel</button>
+                <button id="btnSave" class="btn primary" type="button">Save</button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- (E2) Editor Right Column (Suggest Inputs + Insert Variables) -->
+          <div class="side">
+
+            <div style="margin-bottom:12px;">
+              <h4>Suggest Inputs</h4>
+              <div class="hint" style="margin-bottom:10px;">
+                Select the metrics the suggested prompt must use. Must include at least one MSS metric.
+              </div>
+
+              <div style="font-weight:900; font-size:12px; margin:10px 0 6px;">MSS metrics (pick 1+)</div>
+              <div class="checklist" id="mssChecklist"></div>
+
+              <div style="font-weight:900; font-size:12px; margin:12px 0 6px;">Optional</div>
+              <div class="checklist" id="optChecklist"></div>
+            </div>
+
+            <h4>Insert Variables</h4>
+            <div class="hint" style="margin-bottom:10px;">
+              Click items to insert placeholders (e.g., <code>{{wpm}}</code>) into the prompt.
+            </div>
+
+            <div class="checklist" id="varChecklist"></div>
+
+            <div class="hint" style="margin-top:10px;">
+              Standard placeholders: <code>{{question}}</code>, <code>{{transcript}}</code>, <code>{{student}}</code>, plus MSS scores and WPM.
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       (F) MSS Modal (replace browser alerts; for validation/messages)
+       ========================================================= -->
+  <div id="mssModalOverlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Message">
+      <div class="mHead">
+        <div class="mTitle" id="mssModalTitle">Notice</div>
+        <button class="xBtn" id="mssModalCloseX" type="button">✕</button>
+      </div>
+      <div class="mBody">
+        <div id="mssModalBody" class="viewerText"></div>
+        <div class="toolbar">
+          <button class="btn primary" id="mssModalOk" type="button">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       (G) Page Script
+       ========================================================= -->
+  <script src="/admin-prompt/AIPromptManager.js"></script>
+
+</body>
+</html>

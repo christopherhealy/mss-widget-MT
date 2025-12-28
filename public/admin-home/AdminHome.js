@@ -1,21 +1,19 @@
 // /public/admin-home/AdminHome.js
-// v1.3 — JWT token version + MSSViewer modal
+// v1.4 — stable wiring + token/legacy fallback
 console.log("✅ AdminHome.js loaded");
 
 (function () {
   "use strict";
 
   const LS_SESSION_KEY = "mssAdminSession";
-  const LS_TOKEN_KEY = "mss_admin_token";
-  const LOGIN_URL = "/admin-login/AdminLogin.html";
-  const SCHOOL_SIGNUP_URL = "/signup/SchoolSignUp.html"; 
+  const LS_TOKEN_KEY   = "mss_admin_token";
+  const LS_LEGACY_KEY  = "mss_admin_key";
 
-  // ✅ adjust if your file lives elsewhere
+  const LOGIN_URL = "/admin-login/AdminLogin.html";
+  const SCHOOL_SIGNUP_URL = "/signup/SchoolSignUp.html";
   const MANAGE_SCHOOLS_URL = "/admin/ManageSchools.html";
 
-  function $(id) {
-    return document.getElementById(id);
-  }
+  function $(id) { return document.getElementById(id); }
 
   function readSession() {
     try {
@@ -27,12 +25,19 @@ console.log("✅ AdminHome.js loaded");
     }
   }
 
-  function readToken() {
+  // Prefer JWT token; fallback to legacy key (so older pages keep working)
+  function readAuthArtifact() {
     try {
-      return (localStorage.getItem(LS_TOKEN_KEY) || "").trim();
+      const token = (localStorage.getItem(LS_TOKEN_KEY) || "").trim();
+      if (token) return { type: "token", value: token };
+
+      const legacy = (localStorage.getItem(LS_LEGACY_KEY) || "").trim();
+      if (legacy) return { type: "legacy", value: legacy };
+
+      return { type: "none", value: "" };
     } catch (e) {
-      console.warn("[AdminHome] Failed to read token:", e);
-      return "";
+      console.warn("[AdminHome] Failed to read token/key:", e);
+      return { type: "none", value: "" };
     }
   }
 
@@ -45,8 +50,6 @@ console.log("✅ AdminHome.js loaded");
 
   function isSuperAdmin(session) {
     if (!session) return false;
-
-    // tolerate a few variants
     const flag =
       session.isSuperAdmin ??
       session.isSuperadmin ??
@@ -55,21 +58,24 @@ console.log("✅ AdminHome.js loaded");
 
     if (flag === true) return true;
 
-    // optional fallback heuristic (keep or remove)
+    // Optional heuristic fallback (keep if you like)
     const email = String(session.email || "");
     return /@mss\.com$/i.test(email);
   }
 
-  function populateMeta(session, token) {
+  function populateMeta(session, auth) {
     $("admin-email").textContent = session.email || "—";
-    $("admin-id").textContent =
-      session.adminId != null ? String(session.adminId) : "—";
+    $("admin-id").textContent = session.adminId != null ? String(session.adminId) : "—";
 
     const superAdmin = isSuperAdmin(session);
     $("admin-role").textContent = superAdmin ? "Super admin" : "Admin";
 
     const badge = $("admin-key-badge");
-    if (badge) badge.textContent = token ? "token: present" : "token: missing";
+    if (badge) {
+      if (auth.type === "token") badge.textContent = "token: present";
+      else if (auth.type === "legacy") badge.textContent = "key: present";
+      else badge.textContent = "token: none";
+    }
 
     const superBadge = $("admin-super-badge");
     if (superBadge) superBadge.style.display = superAdmin ? "inline-flex" : "none";
@@ -79,6 +85,7 @@ console.log("✅ AdminHome.js loaded");
     try {
       localStorage.removeItem(LS_SESSION_KEY);
       localStorage.removeItem(LS_TOKEN_KEY);
+      localStorage.removeItem(LS_LEGACY_KEY);
     } catch (e) {
       console.warn("[AdminHome] Error clearing admin storage:", e);
     }
@@ -86,8 +93,9 @@ console.log("✅ AdminHome.js loaded");
   }
 
   function openInViewer(title, src) {
+    // If you decide to stop using the viewer, you can replace this
+    // with: window.location.href = src;
     if (!window.MSSViewer || typeof window.MSSViewer.open !== "function") {
-      console.warn("[AdminHome] MSSViewer not available; navigating:", src);
       window.location.href = src;
       return;
     }
@@ -96,7 +104,7 @@ console.log("✅ AdminHome.js loaded");
 
   function init() {
     const session = readSession();
-    const token = readToken();
+    const auth = readAuthArtifact();
 
     if (!session || !session.email || session.adminId == null) {
       logout();
@@ -104,33 +112,39 @@ console.log("✅ AdminHome.js loaded");
     }
 
     const superAdmin = isSuperAdmin(session);
-    populateMeta(session, token);
+    populateMeta(session, auth);
 
     setStatus(
-      token
+      auth.type !== "none"
         ? "You are signed in. Use the buttons below to open each tool."
-        : "You are signed in, but your admin token is missing. Please log in again to restore it.",
-      !token
+        : "You are signed in, but your admin token/key is missing. Please log in again.",
+      auth.type === "none"
     );
 
     const btnPortal = $("btn-portal");
     const btnConfig = $("btn-config");
     const btnQuestions = $("btn-questions");
+    const btnPrompts = $("btn-prompts");
     const btnInviteSchoolSignup = $("btn-invite-school-signup");
     const btnManageSchools = $("btn-manage-schools");
     const btnSchoolSignup = $("btn-school-signup");
     const btnLogout = $("btn-logout");
 
-    if (btnPortal) btnPortal.addEventListener("click", () => {
+    btnPortal?.addEventListener("click", () => {
       window.location.href = "/admin/SchoolPortal.html";
     });
 
-    if (btnConfig) btnConfig.addEventListener("click", () => {
+    btnConfig?.addEventListener("click", () => {
       window.location.href = "/config-admin/ConfigAdmin.html";
     });
 
-    if (btnQuestions) btnQuestions.addEventListener("click", () => {
+    btnQuestions?.addEventListener("click", () => {
       window.location.href = "/questions-admin/WidgetSurvey.html";
+    });
+
+    btnPrompts?.addEventListener("click", () => {
+      // keep it simple for now (viewer + fixed slug)
+      window.location.href = "/admin-prompt/PromptAdmin.html?slug=demo";
     });
 
     // Super admin only — Invite School Signup
@@ -148,26 +162,26 @@ console.log("✅ AdminHome.js loaded");
       btnManageSchools.style.display = superAdmin ? "inline-flex" : "none";
       if (superAdmin) {
         btnManageSchools.addEventListener("click", () => {
+          // If you don't want viewer: window.location.href = MANAGE_SCHOOLS_URL;
           openInViewer("Manage Schools", MANAGE_SCHOOLS_URL);
         });
       }
     }
 
-   // Super admin only — School Sign Up
-if (btnSchoolSignup) {
-  btnSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
-  if (superAdmin) {
-    btnSchoolSignup.addEventListener("click", () => {
-      openInViewer("School Sign Up", SCHOOL_SIGNUP_URL);
-    });
-  }
-}
-    if (btnLogout) {
-      btnLogout.addEventListener("click", (e) => {
-        e.preventDefault();
-        logout();
-      });
+    // Super admin only — School Sign Up
+    if (btnSchoolSignup) {
+      btnSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
+      if (superAdmin) {
+        btnSchoolSignup.addEventListener("click", () => {
+          openInViewer("School Sign Up", SCHOOL_SIGNUP_URL);
+        });
+      }
     }
+
+    btnLogout?.addEventListener("click", (e) => {
+      e.preventDefault();
+      logout();
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);

@@ -402,6 +402,8 @@ async function loadAdminSession() {
   const embedSnippetEl = $("embed-snippet");
   const btnAdminHome = $("btn-admin-home");
 
+  const btnPromptManager = $("btnPromptManager");
+
   const statsLoadingEl = $("stats-loading");
   const statsContentEl = $("stats-content");
   const statsRangeLabelEl = $("stats-range-label");
@@ -2175,6 +2177,32 @@ if (btnAdminHome && !btnAdminHome._mssBound) {
         window.open(url, "_blank");
       });
     }
+
+
+//Dec 28 
+  // Open the AI Prompt Manager
+     // Dec 28 — Open the AI Prompt Manager (NEW)
+   if (btnPromptManager) {
+      btnPromptManager.addEventListener("click", () => {
+      if (!CURRENT_SLUG) return;
+
+      
+       const url = `/admin-prompt/AIPromptManager.html?slug=${encodeURIComponent(CURRENT_SLUG)}`;
+       window.open(url, "_blank");
+       });
+    }
+
+    // Open Config Admin
+    if (btnConfigAdmin) {
+      btnConfigAdmin.addEventListener("click", () => {
+        if (!CURRENT_SLUG) return;
+        const url = `/config-admin/ConfigAdmin.html?slug=${encodeURIComponent(
+          CURRENT_SLUG
+        )}`;
+        window.open(url, "_blank");
+      });
+    }
+
 
     // Open Config Admin
     if (btnConfigAdmin) {

@@ -1212,6 +1212,22 @@ function extractDurationSec(payload = {}) {
   return null;
 }
 
+// API Log helper
+
+async function logApiUsage({ schoolId, submissionId = null, studentId = null, apiType, apiAction = null, meta = {} }) {
+  try {
+    await pool.query(
+      `
+      INSERT INTO api_usage_log (school_id, submission_id, student_id, api_type, api_action, meta)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [schoolId, submissionId, studentId, apiType, apiAction, meta]
+    );
+  } catch (e) {
+    console.warn("[api-usage] log failed (non-fatal):", e);
+  }
+}
+
 //Dec 26 - allowing for spaces in our word count
 
 function computeWpm(transcript, durationSec) {
@@ -3334,6 +3350,8 @@ app.post("/api/widget/help", async (req, res) => {
 //  - Normal admin → only their own school (admins.school_id)
 // Called by SchoolPortal.js with ?email=&adminId=
 // ---------------------------------------------------------------------
+
+// DEPRECATE MY-SCHOOLS 
 app.get("/api/admin/my-schools", async (req, res) => {
   const emailRaw = (req.query.email || "").toString().trim().toLowerCase();
   const adminIdRaw = (req.query.adminId ?? "").toString().trim();
@@ -3477,12 +3495,7 @@ app.get("/api/admin/my-schools", async (req, res) => {
 });
 
 
-// ---------------------------------------------------------------------
-// ADMIN LOGIN API (JWT session, bcrypt-aware)
-// POST /api/admin/login
-// POST /api/login (legacy)
-// Body: { email, password }
-// ---------------------------------------------------------------------
+
 // ---------------------------------------------------------------------
 // ADMIN LOGIN API (JWT session, bcrypt-aware)
 // POST /api/admin/login
@@ -3603,141 +3616,6 @@ async function handleAdminLogin(req, res) {
 
 app.post("/api/admin/login", handleAdminLogin);
 app.post("/api/login", handleAdminLogin); // legacy
-//Dec 22 Reddit community 
-
-// ---------------------------------------------------------------------
-// Reddit token cache + helpers
-// ---------------------------------------------------------------------
-const redditTokenCache = {
-  token: null,
-  expMs: 0, // epoch ms
-};
-
-function redditUA() {
-  return process.env.REDDIT_USER_AGENT || "web:eslsuccess.club:0.1 (by /u/Puzzled_Reality4549)";
-}
-
-async function fetchRedditTokenClientCredentials() {
-  const clientId = process.env.REDDIT_CLIENT_ID;
-  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error("Missing REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET");
-  }
-
-  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-  const r = await fetch("https://www.reddit.com/api/v1/access_token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": redditUA(),
-      Accept: "application/json",
-    },
-    body: new URLSearchParams({ grant_type: "client_credentials" }),
-  });
-
-  const ct = (r.headers.get("content-type") || "").toLowerCase();
-  const body = await r.text();
-
-  if (!r.ok) {
-    console.warn("[RedditToken] HTTP", r.status, body.slice(0, 300));
-    throw new Error(`Reddit token failed: ${r.status}`);
-  }
-
-  if (!ct.includes("application/json")) {
-    console.warn("[RedditToken] Non-JSON token response:", body.slice(0, 300));
-    throw new Error("Reddit token non-JSON response");
-  }
-
-  const json = JSON.parse(body);
-  if (!json.access_token) throw new Error("Reddit token missing access_token");
-
-  // expires_in is seconds; refresh 60s early; floor to 30s minimum
-  const ttlSec = Math.max(30, Number(json.expires_in || 3600) - 60);
-  redditTokenCache.token = json.access_token;
-  redditTokenCache.expMs = Date.now() + ttlSec * 1000;
-
-  return redditTokenCache.token;
-}
-
-async function getRedditToken() {
-  const now = Date.now();
-  if (redditTokenCache.token && now < redditTokenCache.expMs) return redditTokenCache.token;
-  return fetchRedditTokenClientCredentials();
-}
-
-// ---------------------------------------------------------------------
-// Reddit posts route
-// ---------------------------------------------------------------------
-app.get("/api/reddit/posts", async (req, res) => {
-  const subreddit = String(req.query.subreddit || "EnglishLearning").trim();
-
-  try {
-    // 1) get token
-    let token = await getRedditToken();
-
-    // 2) attempt fetch (retry once on 401)
-    async function fetchListing(t) {
-      const url = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/hot?limit=5&raw_json=1`;
-      return fetch(url, {
-        headers: {
-          Authorization: `Bearer ${t}`,
-          "User-Agent": redditUA(),
-          Accept: "application/json",
-        },
-      });
-    }
-
-    let r = await fetchListing(token);
-
-    if (r.status === 401) {
-      // token rejected; clear cache and retry once
-      redditTokenCache.token = null;
-      redditTokenCache.expMs = 0;
-      token = await getRedditToken();
-      r = await fetchListing(token);
-    }
-
-    const ct = (r.headers.get("content-type") || "").toLowerCase();
-    const body = await r.text();
-
-    if (!r.ok) {
-      console.warn("[Reddit] HTTP", r.status, body.slice(0, 300));
-      return res.status(502).json({
-        ok: false,
-        error: "reddit_http",
-        status: r.status,
-        sample: body.slice(0, 200),
-      });
-    }
-
-    if (!ct.includes("application/json")) {
-      console.warn("[Reddit] Non-JSON body:", body.slice(0, 300));
-      return res.status(502).json({
-        ok: false,
-        error: "reddit_non_json",
-        status: 502,
-        sample: body.slice(0, 200),
-      });
-    }
-
-    const json = JSON.parse(body);
-
-    const posts = (json?.data?.children || []).map((c) => ({
-      title: c?.data?.title,
-      url: "https://reddit.com" + c?.data?.permalink,
-      score: c?.data?.score,
-      subreddit: c?.data?.subreddit,
-    }));
-
-    return res.json({ ok: true, posts });
-  } catch (err) {
-    console.error("Reddit API error", err);
-    return res.status(500).json({ ok: false, error: "reddit_failed", message: err.message });
-  }
-});
 
 // ---------------------------------------------------------------------
 // Invite School Sign-up (Super Admin only) — JWT
@@ -6154,5 +6032,242 @@ app.get("/api/funnel/verify", async (req, res) => {
         </body>
       </html>
     `;
+  }
+});
+
+
+// ---------------------------------------------------------------------
+// AI Prompts - list by school slug
+// GET /api/admin/ai-prompts/:slug
+// ---------------------------------------------------------------------
+app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+
+    if (!slug) {
+      return res.status(400).json({ ok: false, error: "missing_slug" });
+    }
+
+    // Optional: log who is calling (helps confirm token decode is OK)
+    // console.log("[ai-prompts] list slug=", slug, "adminAuth=", req.adminAuth);
+
+    // 1) Resolve school_id from slug (matches your working query)
+    const { rows: srows, rowCount: scount } = await pool.query(
+      `
+      SELECT id
+      FROM schools
+      WHERE slug = $1
+      LIMIT 1
+      `,
+      [slug]
+    );
+
+    if (!scount) {
+      return res.status(404).json({ ok: false, error: "school_not_found" });
+    }
+
+    const schoolId = Number(srows[0].id);
+
+    // 2) Load prompts (matches your working query)
+    const { rows: prows } = await pool.query(
+      `
+      SELECT id, school_id, name, prompt_text, is_default, is_active, sort_order,
+             created_at, updated_at
+      FROM ai_prompts
+      WHERE school_id = $1
+      ORDER BY
+        COALESCE(sort_order, 2147483647) ASC,
+        is_default DESC,
+        id ASC
+      `,
+      [schoolId]
+    );
+
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      prompts: prows,
+    });
+  } catch (err) {
+    console.error("[ai-prompts] list failed:", err);
+    return res.status(500).json({ ok: false, error: "prompts_list_failed" });
+  }
+});
+// ---------------------------------------------------------------------
+// AI Prompts - create by school slug
+// POST /api/admin/ai-prompts/:slug
+// body: { name, prompt_text, is_active?, is_default?, sort_order? }
+// ---------------------------------------------------------------------
+app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const name = String(req.body?.name || "").trim();
+    const promptText = String(req.body?.prompt_text || "").trim();
+
+    if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
+    if (!promptText) return res.status(400).json({ ok: false, error: "missing_prompt_text" });
+
+    const isActive = req.body?.is_active === false ? false : true;
+    const isDefault = req.body?.is_default === true ? true : false;
+
+    // Optional, allow null
+    const sortOrder =
+      req.body?.sort_order === null || req.body?.sort_order === undefined || req.body?.sort_order === ""
+        ? null
+        : Number(req.body.sort_order);
+
+    // 1) Resolve school_id from slug
+    const { rows: srows, rowCount: scount } = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!scount) return res.status(404).json({ ok: false, error: "school_not_found" });
+
+    const schoolId = Number(srows[0].id);
+
+    // 2) Insert prompt
+    const { rows: irows, rowCount: icount } = await pool.query(
+      `
+      INSERT INTO ai_prompts (school_id, name, prompt_text, is_default, is_active, sort_order)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, created_at, updated_at
+      `,
+      [schoolId, name, promptText, isDefault, isActive, sortOrder]
+    );
+
+    if (!icount) return res.status(500).json({ ok: false, error: "insert_failed" });
+
+    return res.json({ ok: true, slug, schoolId, prompt: irows[0] });
+  } catch (err) {
+    console.error("[ai-prompts] create failed:", err);
+    return res.status(500).json({ ok: false, error: "prompts_create_failed" });
+  }
+});
+
+// ---------------------------------------------------------------------
+// AI Prompts - update by slug + id
+// PUT /api/admin/ai-prompts/:slug/:id
+// body: { name?, prompt_text?, is_active?, is_default?, sort_order? }
+// ---------------------------------------------------------------------
+app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    const id = Number(req.params.id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
+
+    // Resolve school_id from slug
+    const { rows: srows, rowCount: scount } = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!scount) return res.status(404).json({ ok: false, error: "school_not_found" });
+
+    const schoolId = Number(srows[0].id);
+
+    // Ensure prompt belongs to this school
+    const { rowCount: pcount } = await pool.query(
+      `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
+      [id, schoolId]
+    );
+    if (!pcount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+
+    // Build a safe partial update
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (req.body?.name !== undefined) {
+      const name = String(req.body.name || "").trim();
+      if (!name) return res.status(400).json({ ok: false, error: "invalid_name" });
+      fields.push(`name = $${idx++}`);
+      values.push(name);
+    }
+
+    if (req.body?.prompt_text !== undefined) {
+      const text = String(req.body.prompt_text || "").trim();
+      if (!text) return res.status(400).json({ ok: false, error: "invalid_prompt_text" });
+      fields.push(`prompt_text = $${idx++}`);
+      values.push(text);
+    }
+
+    if (req.body?.is_active !== undefined) {
+      fields.push(`is_active = $${idx++}`);
+      values.push(req.body.is_active === false ? false : true);
+    }
+
+    if (req.body?.is_default !== undefined) {
+      fields.push(`is_default = $${idx++}`);
+      values.push(req.body.is_default === true ? true : false);
+    }
+
+    if (req.body?.sort_order !== undefined) {
+      const sortOrder =
+        req.body.sort_order === null || req.body.sort_order === "" ? null : Number(req.body.sort_order);
+      fields.push(`sort_order = $${idx++}`);
+      values.push(sortOrder);
+    }
+
+    if (!fields.length) {
+      return res.status(400).json({ ok: false, error: "no_fields_to_update" });
+    }
+
+    fields.push(`updated_at = NOW()`);
+
+    // id and schoolId constraints
+    values.push(id);
+    values.push(schoolId);
+
+    const sql = `
+      UPDATE ai_prompts
+      SET ${fields.join(", ")}
+      WHERE id = $${idx++} AND school_id = $${idx++}
+      RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, created_at, updated_at
+    `;
+
+    const { rows: urows, rowCount: ucount } = await pool.query(sql, values);
+    if (!ucount) return res.status(500).json({ ok: false, error: "update_failed" });
+
+    return res.json({ ok: true, slug, schoolId, prompt: urows[0] });
+  } catch (err) {
+    console.error("[ai-prompts] update failed:", err);
+    return res.status(500).json({ ok: false, error: "prompts_update_failed" });
+  }
+});
+// ---------------------------------------------------------------------
+// AI Prompts - delete by slug + id
+// DELETE /api/admin/ai-prompts/:slug/:id
+// ---------------------------------------------------------------------
+app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    const id = Number(req.params.id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
+
+    const { rows: srows, rowCount: scount } = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!scount) return res.status(404).json({ ok: false, error: "school_not_found" });
+
+    const schoolId = Number(srows[0].id);
+
+    const { rowCount: dcount } = await pool.query(
+      `DELETE FROM ai_prompts WHERE id = $1 AND school_id = $2`,
+      [id, schoolId]
+    );
+
+    if (!dcount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+
+    return res.json({ ok: true, slug, schoolId, deletedId: id });
+  } catch (err) {
+    console.error("[ai-prompts] delete failed:", err);
+    return res.status(500).json({ ok: false, error: "prompts_delete_failed" });
   }
 });
