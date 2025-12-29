@@ -3121,119 +3121,6 @@ app.put("/api/admin/help/:slug/:questionId", async (req, res) => {
   }
 });
 
-/* ---------------------------------------------------------------
-   Public Reddit proxy (v1, no OAuth)
-   GET /api/public/reddit/:sub?sort=new|hot|top&t=day|week|month|year|all&limit=10..50
-   --------------------------------------------------------------- */
-app.get("/api/public/reddit/:sub", async (req, res) => {
-  try {
-    const sub = String(req.params.sub || "").trim();
-
-    // Allow-list (expand as desired)
-    const ALLOWED = new Set([
-      "EnglishLearning",
-      "ESL",
-      "IELTS",
-      "TOEFL",
-      "languagelearning",
-      "pronunciation",
-    ]);
-
-    if (!ALLOWED.has(sub)) {
-      return res.status(400).json({
-        ok: false,
-        error: "subreddit_not_allowed",
-        message: `Subreddit not allowed: ${sub}`,
-        allowed: Array.from(ALLOWED),
-      });
-    }
-
-    // Query params
-    const sort = String(req.query.sort || "hot").toLowerCase();
-    const validSort = new Set(["hot", "new", "top"]);
-    const safeSort = validSort.has(sort) ? sort : "hot";
-
-    // "top" supports `t=` timeframe; others ignore it
-    const t = String(req.query.t || "week").toLowerCase();
-    const validT = new Set(["hour", "day", "week", "month", "year", "all"]);
-    const safeT = validT.has(t) ? t : "week";
-
-    const limitRaw = Number(req.query.limit || 25);
-    const limit = Math.max(10, Math.min(50, Number.isFinite(limitRaw) ? limitRaw : 25));
-
-    const qs = new URLSearchParams({
-      limit: String(limit),
-      raw_json: "1",
-    });
-    if (safeSort === "top") qs.set("t", safeT);
-
-    const redditUrl = `https://www.reddit.com/r/${encodeURIComponent(sub)}/${safeSort}.json?${qs.toString()}`;
-
-    // IMPORTANT: Reddit expects a real User-Agent
-    const ua =
-      process.env.REDDIT_USER_AGENT ||
-      "eslsuccess.club/1.0 (public reddit proxy; contact: admin@eslsuccess.club)";
-
-    const r = await fetch(redditUrl, {
-      headers: {
-        "User-Agent": ua,
-        "Accept": "application/json",
-      },
-    });
-
-    if (!r.ok) {
-      const text = await r.text().catch(() => "");
-      return res.status(502).json({
-        ok: false,
-        error: "reddit_fetch_failed",
-        status: r.status,
-        message: "Reddit returned a non-OK response.",
-        detail: text.slice(0, 400),
-      });
-    }
-
-    const data = await r.json();
-
-    // Normalize into a stable shape for your UI
-    const posts = (data?.data?.children || [])
-      .map((c) => c?.data)
-      .filter(Boolean)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        title: p.title,
-        author: p.author,
-        subreddit: p.subreddit,
-        created_utc: p.created_utc,
-        permalink: p.permalink ? `https://www.reddit.com${p.permalink}` : null,
-        url: p.url || null,
-        score: p.score ?? null,
-        num_comments: p.num_comments ?? null,
-        selftext: p.selftext || "",
-        thumbnail: (p.thumbnail && typeof p.thumbnail === "string") ? p.thumbnail : null,
-        is_self: !!p.is_self,
-      }));
-
-    // Light caching (edge/CDN can respect this)
-    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300");
-
-    return res.json({
-      ok: true,
-      subreddit: sub,
-      sort: safeSort,
-      t: safeSort === "top" ? safeT : undefined,
-      limit,
-      posts,
-    });
-  } catch (err) {
-    console.error("❌ /api/public/reddit error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "reddit_proxy_failed",
-      message: err.message,
-    });
-  }
-});
 
 // ---------------------------------------------------------------------------
 // HELP: return min/max help text for a question
@@ -6040,58 +5927,37 @@ app.get("/api/funnel/verify", async (req, res) => {
 // AI Prompts - list by school slug
 // GET /api/admin/ai-prompts/:slug
 // ---------------------------------------------------------------------
-app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
+app.get("/api/admin/ai-prompts/:slug", async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    if (!slug) {
-      return res.status(400).json({ ok: false, error: "missing_slug" });
-    }
-
-    // Optional: log who is calling (helps confirm token decode is OK)
-    // console.log("[ai-prompts] list slug=", slug, "adminAuth=", req.adminAuth);
-
-    // 1) Resolve school_id from slug (matches your working query)
-    const { rows: srows, rowCount: scount } = await pool.query(
-      `
-      SELECT id
-      FROM schools
-      WHERE slug = $1
-      LIMIT 1
-      `,
+    const s = await pool.query(
+      `SELECT id, slug, name
+       FROM schools
+       WHERE slug = $1
+       LIMIT 1`,
       [slug]
     );
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
 
-    if (!scount) {
-      return res.status(404).json({ ok: false, error: "school_not_found" });
-    }
+    const schoolId = s.rows[0].id;
 
-    const schoolId = Number(srows[0].id);
-
-    // 2) Load prompts (matches your working query)
-    const { rows: prows } = await pool.query(
-      `
-      SELECT id, school_id, name, prompt_text, is_default, is_active, sort_order,
-             created_at, updated_at
-      FROM ai_prompts
-      WHERE school_id = $1
-      ORDER BY
-        COALESCE(sort_order, 2147483647) ASC,
-        is_default DESC,
-        id ASC
-      `,
+    const r = await pool.query(
+      `SELECT id, name, prompt_text, is_default, is_active, sort_order, updated_at
+       FROM ai_prompts
+       WHERE school_id = $1
+       ORDER BY
+         COALESCE(sort_order, 999999) ASC,
+         is_default DESC,
+         name ASC`,
       [schoolId]
     );
 
-    return res.json({
-      ok: true,
-      slug,
-      schoolId,
-      prompts: prows,
-    });
+    return res.json({ ok: true, prompts: r.rows });
   } catch (err) {
-    console.error("[ai-prompts] list failed:", err);
-    return res.status(500).json({ ok: false, error: "prompts_list_failed" });
+    console.error("❌ /api/admin/ai-prompts/:slug failed:", err);
+    return res.status(500).json({ ok: false, error: "ai_prompts_failed", message: err.message });
   }
 });
 // ---------------------------------------------------------------------
@@ -6269,5 +6135,108 @@ app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res)
   } catch (err) {
     console.error("[ai-prompts] delete failed:", err);
     return res.status(500).json({ ok: false, error: "prompts_delete_failed" });
+  }
+});
+
+app.get("/api/admin/reports/existing", async (req, res) => {
+  try {
+    const submissionId = Number(req.query.submission_id || 0);
+    const promptId = Number(req.query.ai_prompt_id || 0);
+
+    if (!submissionId) return res.status(400).json({ ok: false, error: "missing_submission_id" });
+    if (!promptId) return res.status(400).json({ ok: false, error: "missing_ai_prompt_id" });
+
+    const r = await pool.query(
+      `SELECT report_text, created_at, model, temperature, max_output_tokens
+       FROM ai_reports
+       WHERE submission_id = $1 AND prompt_id = $2
+       LIMIT 1`,
+      [submissionId, promptId]
+    );
+
+    if (!r.rowCount) return res.json({ ok: true, exists: false });
+
+    return res.json({
+      ok: true,
+      exists: true,
+      report_text: r.rows[0].report_text,
+      meta: {
+        created_at: r.rows[0].created_at,
+        model: r.rows[0].model,
+        temperature: r.rows[0].temperature,
+        max_output_tokens: r.rows[0].max_output_tokens,
+      },
+      source: "cache",
+    });
+  } catch (err) {
+    console.error("❌ /api/admin/reports/existing failed:", err);
+    return res.status(500).json({ ok: false, error: "existing_failed", message: err.message });
+  }
+});
+
+app.post("/api/admin/reports/generate", async (req, res) => {
+  try {
+    const slug = String(req.body.slug || "");
+    const submissionId = Number(req.body.submission_id || 0);
+    const promptId = Number(req.body.ai_prompt_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!submissionId) return res.status(400).json({ ok: false, error: "bad_submission_id" });
+    if (!promptId) return res.status(400).json({ ok: false, error: "bad_prompt_id" });
+
+    // 1) Resolve school_id from slug
+    const s = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = s.rows[0].id;
+
+    // 2) Load prompt (must belong to school + be active)
+    const p = await pool.query(
+      `SELECT id, prompt_text
+       FROM ai_prompts
+       WHERE id = $1 AND school_id = $2 AND is_active = true
+       LIMIT 1`,
+      [promptId, schoolId]
+    );
+    if (!p.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    const promptText = p.rows[0].prompt_text;
+
+    const promptHash = sha256(promptText);
+
+    // 3) Cache check: same submission + same prompt_id
+    const existing = await pool.query(
+      `SELECT report_text
+       FROM ai_reports
+       WHERE submission_id = $1 AND prompt_id = $2
+       LIMIT 1`,
+      [submissionId, promptId]
+    );
+    if (existing.rowCount) {
+      return res.json({ ok: true, report_text: existing.rows[0].report_text, source: "cache" });
+    }
+
+    // 4) Generate
+    const ai = await openAiGenerateReport({
+      promptText,
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      max_output_tokens: 900,
+    });
+
+    const reportText = ai.text || "";
+
+    // 5) Store
+    await pool.query(
+      `INSERT INTO ai_reports (submission_id, prompt_id, prompt_hash, model, temperature, max_output_tokens, report_text)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [submissionId, promptId, promptHash, ai.model, ai.temperature, ai.max_output_tokens, reportText]
+    );
+
+    return res.json({ ok: true, report_text: reportText, source: "openai" });
+  } catch (err) {
+    console.error("❌ /api/admin/reports/generate error:", err);
+    return res.status(500).json({ ok: false, error: "generate_failed", message: err.message });
   }
 });

@@ -38,16 +38,26 @@ function maskKey(key) {
 
 function getAdminKey() {
   try {
+    // 1) Prefer URL param if present (supports new tabs / deep links)
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("adminKey") || params.get("adminkey");
+    if (fromUrl && String(fromUrl).trim()) {
+      const k = String(fromUrl).trim();
+      // Persist for subsequent calls
+      window.localStorage.setItem(ADMIN_KEY_STORAGE, k);
+      console.log("[SchoolPortal] getAdminKey → (from URL)", maskKey(k));
+      return k;
+    }
+
+    // 2) Fall back to localStorage
     const key = window.localStorage.getItem(ADMIN_KEY_STORAGE);
-    // Avoid logging full key
-    console.log("[SchoolPortal] getAdminKey →", maskKey(key));
+    console.log("[SchoolPortal] getAdminKey → (from LS)", maskKey(key));
     return key;
   } catch (e) {
     console.warn("[SchoolPortal] getAdminKey error:", e);
     return null;
   }
 }
-
 // Dec 16 — upgraded to allow Cancel + revert school selector cleanly
 function confirmSchoolChange(nextLabel) {
   return new Promise((resolve) => {
@@ -178,19 +188,45 @@ function confirmSchoolChange(nextLabel) {
 }
 async function adminFetch(url, options = {}) {
   const key = getAdminKey();
-  const headers = new Headers(options.headers || {});
-  if (key) {
-    headers.set("x-mss-admin-key", key);
-    headers.set("x-admin-key", key); // harmless if unused server-side
-  }
-  return fetch(url, {
+  const finalUrl = url;
+
+  const mergedHeaders = new Headers(options.headers || {});
+  if (key) mergedHeaders.set("x-mss-admin-key", key);
+
+  const fetchOptions = {
     ...options,
-    headers,
+    headers: mergedHeaders,
     credentials: "include",
     cache: "no-store",
-  });
-}
+  };
 
+  console.log("[adminFetch] →", {
+    url: finalUrl,
+    method: fetchOptions.method || "GET",
+    hasKey: !!key,
+  });
+
+  const controller = new AbortController();
+  const timeoutMs = Number(options.timeoutMs || 15000);
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  fetchOptions.signal = controller.signal;
+  delete fetchOptions.timeoutMs;
+
+  try {
+    const res = await fetch(finalUrl, fetchOptions);
+    console.log("[adminFetch] ←", res.status, res.statusText, finalUrl);
+    return res;
+  } catch (err) {
+    const msg =
+      err?.name === "AbortError"
+        ? `Fetch timeout after ${timeoutMs}ms`
+        : (err?.message || String(err));
+    console.error("[adminFetch] ✖", msg, finalUrl);
+    throw new Error(msg);
+  } finally {
+    clearTimeout(t);
+  }
+}
   function getLegacySession() {
     try {
       const raw = window.localStorage.getItem("mssAdminSession");
@@ -318,7 +354,15 @@ async function ensureSlugFromSingleSchoolOrThrow() {
  // ✅ New: load admin session directly from localStorage.mssAdminSession
 async function loadAdminSession() {
   const legacy = getLegacySession(); // reads mssAdminSession
-  ADMIN_KEY = getAdminKey(); // may be null; ok
+
+  // If adminKey is stored in session, persist it
+if (!ADMIN_KEY && legacy && legacy.adminKey) {
+  try {
+    window.localStorage.setItem(ADMIN_KEY_STORAGE, String(legacy.adminKey));
+    ADMIN_KEY = String(legacy.adminKey);
+  } catch {}
+}
+ 
 
   if (!legacy) {
     console.warn("[SchoolPortal] No mssAdminSession – redirecting to login");
@@ -541,6 +585,57 @@ async function loadAdminSession() {
       linkReportsEl.href = `/admin/Reports.html?${slugParam}`;
     }
   }
+
+let aiPromptsCache = [];     // prompts for CURRENT_SLUG
+let currentSubmissionId = null;
+
+
+function setReportStatus(msg="", isError=false){
+  const el = $("reportStatus");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.classList.toggle("error", !!isError);
+}
+
+async function loadAiPromptsForSchool() {
+  const res = await adminFetch(`/api/admin/ai-prompts/${encodeURIComponent(CURRENT_SLUG)}`, { method: "GET" });
+  const data = await res.json().catch(() => ({}));
+
+  if (res.status === 401) {
+    window.location.href = "/admin-login/AdminLogin.html";
+    return [];
+  }
+  if (!res.ok || data.ok === false) throw new Error(data.error || `http_${res.status}`);
+
+  aiPromptsCache = Array.isArray(data.prompts) ? data.prompts : [];
+  return aiPromptsCache;
+}
+
+function populateAiPromptSelect() {
+  const sel = $("aiPromptSelect");
+  const hint = $("aiPromptHint");
+  if (!sel) return;
+
+  // show only active prompts in dropdown (recommended)
+  const active = (aiPromptsCache || []).filter(p => p.is_active !== false);
+
+  sel.innerHTML = active.length
+    ? active.map(p => {
+        const label = `${p.name}${p.is_default ? " (Default)" : ""}`;
+        return `<option value="${p.id}">${label}</option>`;
+      }).join("")
+    : `<option value="">No prompts found (create one in AI Prompt Manager)</option>`;
+
+  // preselect default if present
+  const def = active.find(p => !!p.is_default) || active[0] || null;
+  if (def) sel.value = String(def.id);
+
+  if (hint) {
+    hint.textContent = active.length
+      ? "Choose a prompt template for this report."
+      : "No active prompts. Open AI Prompt Manager and add one.";
+  }
+}
 
   // -----------------------------------------------------------------------
   // Schools API
@@ -780,6 +875,42 @@ function buildEmbedSnippet() {
       alert("Copy failed. Please select the text and copy manually.");
     }
   }
+
+async function refreshReportForSelection() {
+  const promptId = Number(($("aiPromptSelect")?.value || 0));
+  if (!currentSubmissionId) return;
+  if (!promptId) return;
+
+  setReportStatus("Checking existing…");
+  $("reportOutput").textContent = "";
+
+  try {
+    const qs = new URLSearchParams({
+      submission_id: String(currentSubmissionId),
+      ai_prompt_id: String(promptId),
+    });
+
+    const res = await adminFetch(`/api/admin/reports/existing?${qs.toString()}`, { method: "GET" });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 401) return clearAdminSessionAndRedirect();
+    if (!res.ok || data.ok === false) throw new Error(data.error || `http_${res.status}`);
+
+    if (data.exists) {
+      $("reportOutput").textContent = data.report_text || "(Empty cached report)";
+      setReportStatus("Loaded (cached).");
+      $("btnRunReport").textContent = "Regenerate (disabled)";
+      $("btnRunReport").disabled = true; // enforce use-once
+    } else {
+      setReportStatus("Not generated yet. Click Generate.");
+      $("btnRunReport").textContent = "Generate";
+      $("btnRunReport").disabled = false;
+    }
+  } catch (e) {
+    setReportStatus(`Check failed: ${e.message || "unknown"}`, true);
+    $("btnRunReport").disabled = false;
+  }
+}
 
   // -----------------------------------------------------------------------
   // Small formatting helpers
@@ -1143,38 +1274,188 @@ function buildEmbedSnippet() {
   }
 
   function wireRowActionSelects() {
-    const selects = testsTbody.querySelectorAll(".row-action-select");
-    if (!selects.length) return;
+  const selects = testsTbody.querySelectorAll(".row-action-select");
+  if (!selects.length) return;
 
-    selects.forEach((select) => {
-      select.addEventListener("change", () => {
-        const value = select.value;
-        if (!value) return;
+  selects.forEach((select) => {
+    if (select._mssBound) return; // prevent double-binding
+    select._mssBound = true;
 
-        const id = select.dataset.id;
-        if (!id) {
-          select.value = "";
-          return;
-        }
+    select.addEventListener("change", () => {
+      const value = select.value;
+      const id = select.dataset.id;
+
+      console.log("🧪 Row action changed:", { value, id });
+
+      if (!value) return;
+
+      try {
+        if (!id) throw new Error("missing_row_id");
 
         const row = tests.find((t) => String(t.id) === String(id));
-        if (!row) {
-          select.value = "";
-          return;
-        }
+        if (!row) throw new Error("row_not_found");
 
-       if (value === "generate_report") {
-         showAIReport(row);
-       } else if (value === "transcript") {
-        showTranscript(row);
-       } else if (value === "dashboard") {
-         openDashboardPickerForRow(row);
-       }
-        select.value = "";
-      });
+        if (value === "generate_report") {
+          console.log("🧪 Calling openReportViewerForSubmission:", row.id);
+          if (typeof openReportViewerForSubmission !== "function") {
+            throw new Error("openReportViewerForSubmission_not_defined");
+          }
+          openReportViewerForSubmission(row.id);
+        } else if (value === "transcript") {
+          showTranscript(row);
+        } else if (value === "dashboard") {
+          openDashboardPickerForRow(row);
+        }
+      } catch (e) {
+        console.error("❌ Row action handler failed:", e);
+        showWarning(`Action failed: ${e.message || e}`);
+      } finally {
+        select.value = ""; // reset menu no matter what
+      }
     });
+  });
+}
+// -----------------------------------------------------------------------
+// Report Viewer (Generate Report) — inside IIFE
+// -----------------------------------------------------------------------
+
+function wireReportViewerEvents() {
+  const btnRun = $("btnRunReport");
+  const btnClose = $("btnReportClose");
+  const btnX = $("reportCloseX");
+  const ov = $("reportOverlay");
+
+  const modal = ov?.querySelector(".modal");
+  if (modal && !modal._mssBound) {
+     modal.addEventListener("click", (e) => e.stopPropagation());
+     modal._mssBound = true;
+   }
+
+  if (btnRun && !btnRun._mssBound) {
+    btnRun.addEventListener("click", generateReport);
+    btnRun._mssBound = true;
   }
 
+  if (btnClose && !btnClose._mssBound) {
+    btnClose.addEventListener("click", closeReportViewer);
+    btnClose._mssBound = true;
+  }
+
+  if (btnX && !btnX._mssBound) {
+    btnX.addEventListener("click", closeReportViewer);
+    btnX._mssBound = true;
+  }
+
+  if (ov && !ov._mssBound) {
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov) closeReportViewer();
+    });
+    ov._mssBound = true;
+  }
+
+  document.addEventListener("keydown", (e) => {
+    const visible = ov && ov.style.display === "flex";
+    if (visible && e.key === "Escape") closeReportViewer();
+  });
+}
+
+// ---- globals (ensure these exist once in the IIFE scope) ----
+
+function openReportViewerForSubmission(submissionId) {
+  currentSubmissionId = Number(submissionId || 0);
+  if (!currentSubmissionId) {
+    showWarning("Missing submission id.");
+    return;
+  }
+
+  // Reset UI
+  $("reportTitle").textContent = "Generate Report";
+  $("reportMeta").textContent =
+    `submission_id=${currentSubmissionId} • slug=${CURRENT_SLUG || "—"}`;
+  $("reportOutput").textContent = "";
+  setReportStatus("");
+
+  const ov = $("reportOverlay");
+  if (!ov) return;
+
+  // Show modal
+  ov.classList.remove("hidden");
+  ov.setAttribute("aria-hidden", "false");
+
+  // Load prompts (once per session) then STOP — let user choose
+  (async () => {
+    try {
+      setReportStatus("Loading prompts…");
+      if (!aiPromptsCache.length) {
+        await loadAiPromptsForSchool();
+      }
+      populateAiPromptSelect();
+
+      // Bind change handler ONCE (avoid stacking listeners)
+      const sel = $("aiPromptSelect");
+      if (sel && !sel._mssBound) {
+        sel.addEventListener("change", () => {
+          // Optional: show existing report for selected prompt (nice UX)
+          refreshReportForSelection().catch(() => {});
+        });
+        sel._mssBound = true;
+      }
+
+      // Do not auto-refresh on open (this is the “flash then viewer” bug)
+      setReportStatus("");
+    } catch (e) {
+      setReportStatus(`Unable to load prompts: ${e.message || "unknown"}`, true);
+    }
+  })();
+}
+function closeReportViewer() {
+  const ov = $("reportOverlay");
+  if (!ov) return;
+  ov.classList.add("hidden");
+  ov.setAttribute("aria-hidden", "true");
+  currentSubmissionId = null;
+}
+
+async function generateReport() {
+  const btnRun = $("btnRunReport");
+  const promptId = Number(($("aiPromptSelect")?.value || 0));
+
+  if (!CURRENT_SLUG) return setReportStatus("Missing slug.", true);
+  if (!currentSubmissionId) return setReportStatus("Missing submission id.", true);
+  if (!promptId) return setReportStatus("Please choose an AI prompt.", true);
+
+  setReportStatus("Generating report…");
+  if (btnRun) btnRun.disabled = true;
+
+  try {
+    const res = await adminFetch(`/api/admin/reports/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: CURRENT_SLUG,
+        submission_id: currentSubmissionId,
+        ai_prompt_id: promptId,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 401) {
+      clearAdminSessionAndRedirect();
+      return;
+    }
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || `http_${res.status}`);
+    }
+
+    $("reportOutput").textContent = data.report_text || "(No report returned)";
+    setReportStatus("");
+  } catch (e) {
+    setReportStatus(`Generate failed: ${e.message || "unknown"}`, true);
+  } finally {
+    if (btnRun) btnRun.disabled = false;
+  }
+}
   // -----------------------------------------------------------------------
   // Transcript + AI Prompt modals
   // -----------------------------------------------------------------------
@@ -2120,12 +2401,63 @@ async function onSchoolChanged(event) {
   await fetchStats("today");
   await fetchTests();
 }
+
+// -------------------------------------------------------------------------
+// Global handler: any button with data-copy-modal copies current modal text
+// -------------------------------------------------------------------------
+
+document.addEventListener("click", async function (e) {
+  const btn = e.target.closest("[data-copy-modal]");
+  if (!btn) return;
+
+  console.log("🔥 COPY BUTTON CLICKED");
+
+ const activeModal =
+  document.querySelector(".sp-modal-backdrop:not(.hidden) .sp-modal") ||
+  document.querySelector("#mssPromptModal:not([hidden])") ||
+  document.querySelector("#reportOverlay[style*='display: flex'] .modal") ||
+  document.querySelector("#reportOverlay:not([aria-hidden='true']) .modal");
+
+  if (!activeModal) {
+    console.warn("No visible modal.");
+    return;
+  }
+
+ const textEl =
+  activeModal.querySelector("[data-copy-target]") ||
+  activeModal.querySelector("#portal-transcript-body") ||
+  activeModal.querySelector("#mssPromptText") ||
+  activeModal.querySelector("#reportOutput");
+  if (!textEl) {
+    console.warn("No text element found in modal.");
+    return;
+  }
+
+  const text = textEl.value || textEl.innerText || textEl.textContent || "";
+  if (!text.trim()) {
+    alert("Nothing to copy.");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    console.log("✅ Copied modal content");
+    btn.textContent = "Copied!";
+    setTimeout(() => (btn.textContent = "Copy to Clipboard"), 1500);
+  } catch (err) {
+    console.error("Clipboard error:", err);
+    alert("Unable to copy—please copy manually.");
+  }
+});
+
   // -----------------------------------------------------------------------
   // Event wiring
   // -----------------------------------------------------------------------
 
   function wireEvents() {
    
+    //Dec 29 
+    //wireReportViewerEvents();
 
     // Embed snippet copy
     if (btnCopyEmbed && !btnCopyEmbed._mssBound) {
@@ -2193,7 +2525,7 @@ if (btnAdminHome && !btnAdminHome._mssBound) {
     }
 
     // Open Config Admin
-    if (btnConfigAdmin) {
+    if (btnConfigAdmin && !btnConfigAdmin._mssBound) {
       btnConfigAdmin.addEventListener("click", () => {
         if (!CURRENT_SLUG) return;
         const url = `/config-admin/ConfigAdmin.html?slug=${encodeURIComponent(
@@ -2203,17 +2535,6 @@ if (btnAdminHome && !btnAdminHome._mssBound) {
       });
     }
 
-
-    // Open Config Admin
-    if (btnConfigAdmin) {
-      btnConfigAdmin.addEventListener("click", () => {
-        if (!CURRENT_SLUG) return;
-        const url = `/config-admin/ConfigAdmin.html?slug=${encodeURIComponent(
-          CURRENT_SLUG
-        )}`;
-        window.open(url, "_blank");
-      });
-    }
 
     // Timeframe toggle
     if (timeframeToggleEl) {
@@ -2303,9 +2624,10 @@ if (btnAdminHome && !btnAdminHome._mssBound) {
     if (filterFromEl) filterFromEl.value = `${yyyy2}-${mm2}-${dd2}`;
   }
 
-  async function init() {
+async function init() {
     console.log("🔧 SchoolPortal init()");
     wireEvents();
+    wireReportViewerEvents();
     initDefaultDateFilters();
 
     // ✅ Load admin session first; redirects to login if invalid
@@ -2340,48 +2662,3 @@ if (btnAdminHome && !btnAdminHome._mssBound) {
 
   document.addEventListener("DOMContentLoaded", init);
 })();
-
-// -------------------------------------------------------------------------
-// Global handler: any button with data-copy-modal copies current modal text
-// -------------------------------------------------------------------------
-
-document.addEventListener("click", async function (e) {
-  const btn = e.target.closest("[data-copy-modal]");
-  if (!btn) return;
-
-  console.log("🔥 COPY BUTTON CLICKED");
-
-  const activeModal =
-    document.querySelector(".sp-modal:not(.hidden)") ||
-    document.querySelector("#mssPromptModal:not([hidden])");
-
-  if (!activeModal) {
-    console.warn("No visible modal.");
-    return;
-  }
-
-  let textEl =
-    activeModal.querySelector("#portal-transcript-body") ||
-    activeModal.querySelector("#mssPromptText");
-
-  if (!textEl) {
-    console.warn("No text element found in modal.");
-    return;
-  }
-
-  const text = textEl.value || textEl.innerText || textEl.textContent || "";
-  if (!text.trim()) {
-    alert("Nothing to copy.");
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(text);
-    console.log("✅ Copied modal content");
-    btn.textContent = "Copied!";
-    setTimeout(() => (btn.textContent = "Copy to Clipboard"), 1500);
-  } catch (err) {
-    console.error("Clipboard error:", err);
-    alert("Unable to copy—please copy manually.");
-  }
-});

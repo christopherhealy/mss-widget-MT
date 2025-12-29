@@ -1044,3 +1044,189 @@ table.tests-table td:nth-child(16) {
     align-items: flex-start;
   }
 }
+
+.sp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.sp-modal {
+  width: min(980px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+
+.hidden { display: none !important; }
+
+/* Optional: keep your layout tidy */
+.report-controls {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.report-prompt { min-width: 260px; flex: 1; }
+.report-label { display:block; font-weight:900; font-size:13px; margin:0 0 6px; }
+.report-card { padding: 12px; }
+.report-output { min-height: 240px; white-space: pre-wrap; }
+
+/* ---------- Report Modal: Ive-pass ---------- */
+
+#reportOverlay.sp-modal-backdrop {
+  background: rgba(0, 0, 0, 0.40);
+  backdrop-filter: blur(6px);
+}
+
+#reportOverlay .sp-modal {
+  width: min(980px, 96vw);
+  max-height: 88vh;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.28);
+}
+
+/* Header */
+#reportOverlay .report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+#reportOverlay .report-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+#reportOverlay .mTitle {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+#reportOverlay .report-meta {
+  font-size: 12px;
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Close button: no box, just a soft control */
+#reportOverlay .iconBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.10);
+  background: rgba(255,255,255,0.90);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+}
+#reportOverlay .iconBtn:hover { background: rgba(0,0,0,0.04); }
+#reportOverlay .iconBtn:active { transform: translateY(1px); }
+
+/* Body */
+#reportOverlay .report-body {
+  padding: 16px 18px 18px;
+}
+
+#reportOverlay .report-controls {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+#reportOverlay .report-field {
+  min-width: 320px;
+  flex: 1;
+}
+
+#reportOverlay .report-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+  margin: 0 0 6px;
+}
+
+#reportOverlay .report-select {
+  width: 100%;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.14);
+  padding: 0 12px;
+  background: #fff;
+}
+
+#reportOverlay .hint {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+/* Actions block */
+#reportOverlay .report-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Status */
+#reportOverlay .report-status {
+  margin: 10px 0 12px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+/* Output card */
+#reportOverlay .report-card {
+  border-radius: 16px;
+  padding: 14px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.015);
+}
+
+#reportOverlay .report-output {
+  min-height: 280px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Make primary button less “bulky” */
+#reportOverlay .btn {
+  height: 38px;
+  border-radius: 12px;
+}
+
+/* Optional: keep modal scroll tasteful */
+#reportOverlay .sp-modal::-webkit-scrollbar { width: 10px; }
+#reportOverlay .sp-modal::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  background: rgba(0,0,0,0.18);
+  border: 2px solid rgba(255,255,255,0.8);
+}
