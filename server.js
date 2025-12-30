@@ -610,53 +610,6 @@ app.get("/api/admin/branding/:slug/logo", async (req, res) => {
   }
 });
 
-// OpenAI Helper
-// Small helper: safely extract the final text Dec 26
-// ---- OpenAI (Responses API) -----------------------------------
-
-async function openAiGenerateReport({ promptText, model = "gpt-4o-mini", temperature = 0.4, max_output_tokens = 900 }) {
-  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
-  if (!promptText || !String(promptText).trim()) throw new Error("promptText is required");
-
-  const timeoutMs = 25000;
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    console.log("[AI] OpenAI request starting", { model, temperature, max_output_tokens, chars: String(promptText).length });
-
-    const response = await openai.responses.create(
-      {
-        model,
-        input: promptText,
-        temperature,
-        max_output_tokens,
-      },
-      {
-        signal: controller.signal,
-      }
-    );
-
-    const text = (response.output_text || "").trim();
-    console.log("[AI] OpenAI response received", { chars: text.length });
-
-    if (!text) throw new Error("Empty response from OpenAI");
-
-    return {
-      text,
-      // Useful if you want it later:
-      // response_id: response.id,
-      // usage: response.usage,
-      model,
-      temperature,
-      max_output_tokens,
-    };
-  } finally {
-    clearTimeout(t);
-  }
-}
-// Helper: normalize transcript text into a clean single-line string
-
 
 // ---------------------------------------------------------------------
 // Helper: cleanTranscriptText
