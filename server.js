@@ -35,34 +35,26 @@ console.log("[env] OPENAI_API_KEY present:", !!process.env.OPENAI_API_KEY);
 // --------------------------------------------------
 // OpenAI (Vercel-safe: no client created at import time)
 // --------------------------------------------------
+//Open AI
 import OpenAI from "openai";
 
+let _openai = null;
+
 function getOpenAIClientOrNull() {
+  if (_openai) return _openai;
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
-  return new OpenAI({ apiKey });
+
+  _openai = new OpenAI({ apiKey });
+  return _openai;
 }
 
-/**
- * Generate an AI report using the OpenAI Responses API.
- * Returns a normalized object: { text, model, temperature, max_output_tokens }
- */
-async function openAiGenerateReport({
-  promptText,
-  model = "gpt-4o-mini",
-  temperature = 0.4,
-  max_output_tokens = 900,
-}) {
+async function openAiGenerateReport({ promptText, model, temperature, max_output_tokens }) {
   const client = getOpenAIClientOrNull();
   if (!client) {
     const err = new Error("OPENAI_API_KEY is not configured");
     err.code = "openai_not_configured";
-    throw err;
-  }
-
-  if (!promptText || typeof promptText !== "string") {
-    const err = new Error("promptText is required");
-    err.code = "bad_prompt";
     throw err;
   }
 
@@ -73,14 +65,14 @@ async function openAiGenerateReport({
     max_output_tokens,
   });
 
-  // Normalize across SDK response shapes
   const text =
-    resp?.output_text ||
-    (resp?.output?.[0]?.content?.[0]?.text ?? "") ||
+    resp.output_text ||
+    (resp.output?.[0]?.content?.[0]?.text ?? "") ||
     "";
 
   return { text, model, temperature, max_output_tokens };
 }
+
 // ---------------------------------------------------------------------
 // Public base URL for email links - Nov 29
 // ---------------------------------------------------------------------
