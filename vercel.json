@@ -5,7 +5,7 @@
       "destination": "https://mss-widget-mt.onrender.com/api/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/:path((?!api/)(?!.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
