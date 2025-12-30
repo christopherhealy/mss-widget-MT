@@ -1,5 +1,9 @@
-// server.js — ESM version for "type": "module" (Nov 25 update for Vercel)
+// server.js — ESM version for "type": "module" (Vercel-safe bootstrap)
+// top section regen on Dec 30 2025
 
+// --------------------------------------------------
+// Core imports
+// --------------------------------------------------
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -12,22 +16,71 @@ import multer from "multer";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
-import OpenAI from "openai";
 
-
-
-
-//Dec 10 using SPs
+// Dec 10 using SPs
 import bcrypt from "bcryptjs";
 import slugifyPkg from "slugify";
 
+// --------------------------------------------------
+// Load environment FIRST (before any env-dependent work)
+// --------------------------------------------------
 dotenv.config();
-// just to be sure
+
+// Minimal env diagnostics (safe for logs; do NOT print secrets)
 console.log("[env] DATABASE_URL present:", !!process.env.DATABASE_URL);
 console.log("[env] MSS_ADMIN_JWT_SECRET present:", !!process.env.MSS_ADMIN_JWT_SECRET);
 console.log("[env] MSS_ADMIN_JWT_TTL:", process.env.MSS_ADMIN_JWT_TTL || "(default)");
+console.log("[env] OPENAI_API_KEY present:", !!process.env.OPENAI_API_KEY);
 
+// --------------------------------------------------
+// OpenAI (Vercel-safe: no client created at import time)
+// --------------------------------------------------
+import OpenAI from "openai";
 
+function getOpenAIClientOrNull() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+  return new OpenAI({ apiKey });
+}
+
+/**
+ * Generate an AI report using the OpenAI Responses API.
+ * Returns a normalized object: { text, model, temperature, max_output_tokens }
+ */
+async function openAiGenerateReport({
+  promptText,
+  model = "gpt-4o-mini",
+  temperature = 0.4,
+  max_output_tokens = 900,
+}) {
+  const client = getOpenAIClientOrNull();
+  if (!client) {
+    const err = new Error("OPENAI_API_KEY is not configured");
+    err.code = "openai_not_configured";
+    throw err;
+  }
+
+  if (!promptText || typeof promptText !== "string") {
+    const err = new Error("promptText is required");
+    err.code = "bad_prompt";
+    throw err;
+  }
+
+  const resp = await client.responses.create({
+    model,
+    input: promptText,
+    temperature,
+    max_output_tokens,
+  });
+
+  // Normalize across SDK response shapes
+  const text =
+    resp?.output_text ||
+    (resp?.output?.[0]?.content?.[0]?.text ?? "") ||
+    "";
+
+  return { text, model, temperature, max_output_tokens };
+}
 // ---------------------------------------------------------------------
 // Public base URL for email links - Nov 29
 // ---------------------------------------------------------------------
@@ -6174,58 +6227,58 @@ app.get("/api/admin/reports/existing", async (req, res) => {
   }
 });
 
-app.post("/api/admin/reports/generate", async (req, res) => {
+app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
   try {
-    const slug = String(req.body.slug || "");
-    const submissionId = Number(req.body.submission_id || 0);
-    const promptId = Number(req.body.ai_prompt_id || 0);
+    const slug = String(req.body?.slug || "").trim();
+    const submissionId = Number(req.body?.submission_id || 0);
+    const promptId = Number(req.body?.ai_prompt_id || 0);
 
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!submissionId) return res.status(400).json({ ok: false, error: "bad_submission_id" });
     if (!promptId) return res.status(400).json({ ok: false, error: "bad_prompt_id" });
 
-    // 1) Resolve school_id from slug
-    const s = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
+    // 1) Resolve school
+    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
     if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
-    const schoolId = s.rows[0].id;
+    const schoolId = Number(s.rows[0].id);
 
-    // 2) Load prompt (must belong to school + be active)
+    // 2) Load prompt (belongs to school + active)
     const p = await pool.query(
-      `SELECT id, prompt_text
+      `SELECT id, name, prompt_text
        FROM ai_prompts
        WHERE id = $1 AND school_id = $2 AND is_active = true
        LIMIT 1`,
       [promptId, schoolId]
     );
     if (!p.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
-    const promptText = p.rows[0].prompt_text;
 
+    const promptText = String(p.rows[0].prompt_text || "");
     const promptHash = sha256(promptText);
 
-    // 3) Cache check: same submission + same prompt_id
+    // 3) Cache check (per submission + prompt)
     const existing = await pool.query(
-     `SELECT report_text
+      `SELECT report_text, created_at, model, temperature, max_output_tokens
        FROM ai_reports
        WHERE submission_id = $1 AND prompt_id = $2
        LIMIT 1`,
-     [submissionId, promptId]
+      [submissionId, promptId]
     );
 
-if (existing.rowCount) {
-  return res.json({
-    ok: true,
-    report_text: existing.rows[0].report_text,
-    source: "cache",
-  });
-}
     if (existing.rowCount) {
-      return res.json({ ok: true, report_text: existing.rows[0].report_text, source: "cache" });
+      return res.json({
+        ok: true,
+        report_text: existing.rows[0].report_text,
+        meta: {
+          created_at: existing.rows[0].created_at,
+          model: existing.rows[0].model,
+          temperature: existing.rows[0].temperature,
+          max_output_tokens: existing.rows[0].max_output_tokens,
+        },
+        source: "cache",
+      });
     }
 
-    // 4) Generate
+    // 4) Generate (OpenAI guarded inside openAiGenerateReport)
     const ai = await openAiGenerateReport({
       promptText,
       model: "gpt-4o-mini",
@@ -6233,18 +6286,35 @@ if (existing.rowCount) {
       max_output_tokens: 900,
     });
 
-    const reportText = ai.text || "";
+    const reportText = String(ai.text || "");
 
-    // 5) Store
+    // 5) Store (supports multiple prompts per submission)
     await pool.query(
       `INSERT INTO ai_reports (submission_id, prompt_id, prompt_hash, model, temperature, max_output_tokens, report_text)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (submission_id, prompt_id)
+       DO UPDATE SET
+         report_text = EXCLUDED.report_text,
+         prompt_hash = EXCLUDED.prompt_hash,
+         model = EXCLUDED.model,
+         temperature = EXCLUDED.temperature,
+         max_output_tokens = EXCLUDED.max_output_tokens,
+         updated_at = now()`,
       [submissionId, promptId, promptHash, ai.model, ai.temperature, ai.max_output_tokens, reportText]
     );
 
     return res.json({ ok: true, report_text: reportText, source: "openai" });
   } catch (err) {
     console.error("❌ /api/admin/reports/generate error:", err);
+
+    if (err?.code === "openai_not_configured") {
+      return res.status(503).json({
+        ok: false,
+        error: "openai_not_configured",
+        message: "OPENAI_API_KEY is not configured on this server.",
+      });
+    }
+
     return res.status(500).json({ ok: false, error: "generate_failed", message: err.message });
   }
 });
