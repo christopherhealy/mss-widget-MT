@@ -6207,12 +6207,20 @@ app.post("/api/admin/reports/generate", async (req, res) => {
 
     // 3) Cache check: same submission + same prompt_id
     const existing = await pool.query(
-      `SELECT report_text
+     `SELECT report_text
        FROM ai_reports
        WHERE submission_id = $1 AND prompt_id = $2
        LIMIT 1`,
-      [submissionId, promptId]
+     [submissionId, promptId]
     );
+
+if (existing.rowCount) {
+  return res.json({
+    ok: true,
+    report_text: existing.rows[0].report_text,
+    source: "cache",
+  });
+}
     if (existing.rowCount) {
       return res.json({ ok: true, report_text: existing.rows[0].report_text, source: "cache" });
     }
