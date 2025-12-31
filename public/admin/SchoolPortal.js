@@ -186,48 +186,74 @@ function confirmSchoolChange(nextLabel) {
     document.addEventListener("keydown", onKey);
   });
 }
-async function adminFetch(url, options = {}) {
-  const key = getAdminKey();
-  const finalUrl = url;
 
-  const mergedHeaders = new Headers(options.headers || {});
-  if (key) mergedHeaders.set("x-mss-admin-key", key);
+function getAdminToken() {
+  // Primary: token stored directly (this is what you have)
+  const t1 = localStorage.getItem("mss_admin_token");
+  if (t1 && String(t1).trim()) return String(t1).trim();
 
-  const fetchOptions = {
-    ...options,
-    headers: mergedHeaders,
-    credentials: "include",
-    cache: "no-store",
+  // Fallback: if you ever store it under mss_admin_jwt
+  const t2 = localStorage.getItem("mss_admin_jwt");
+  if (t2 && String(t2).trim()) return String(t2).trim();
+
+  // Fallback: if you later embed it in mssAdminSession
+  try {
+    const raw = localStorage.getItem("mssAdminSession");
+    if (raw) {
+      const sess = JSON.parse(raw);
+      const t =
+        sess?.token ||
+        sess?.jwt ||
+        sess?.admin_token ||
+        sess?.access_token ||
+        sess?.data?.token ||
+        sess?.data?.jwt;
+      if (t && String(t).trim()) return String(t).trim();
+    }
+  } catch (_) {}
+
+  return "";
+}
+
+async function adminFetch(url, opts = {}) {
+  const token = getAdminToken();
+
+  // Merge headers safely: caller headers first, then enforce auth and defaults.
+  const callerHeaders = (opts && opts.headers) ? opts.headers : {};
+  const headers = new Headers(callerHeaders);
+
+  // Ensure JSON content-type when sending a body and caller didnâ€™t set one
+  if (opts.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  // Enforce Authorization last so it cannot be accidentally overridden
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  // Optional: cache-busting / clarity
+  headers.set("Accept", "application/json");
+
+  const finalOpts = {
+    ...opts,
+    headers,
+    // If you ever switch to cookies, you can uncomment:
+    // credentials: "include",
   };
 
-  console.log("[adminFetch] →", {
-    url: finalUrl,
-    method: fetchOptions.method || "GET",
-    hasKey: !!key,
-  });
-
-  const controller = new AbortController();
-  const timeoutMs = Number(options.timeoutMs || 15000);
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  fetchOptions.signal = controller.signal;
-  delete fetchOptions.timeoutMs;
-
+  // Helpful QA logging (leave on during QA; you can remove later)
   try {
-    const res = await fetch(finalUrl, fetchOptions);
-    console.log("[adminFetch] ←", res.status, res.statusText, finalUrl);
-    return res;
-  } catch (err) {
-    const msg =
-      err?.name === "AbortError"
-        ? `Fetch timeout after ${timeoutMs}ms`
-        : (err?.message || String(err));
-    console.error("[adminFetch] ✖", msg, finalUrl);
-    throw new Error(msg);
-  } finally {
-    clearTimeout(t);
-  }
+    console.log("[adminFetch]", opts.method || "GET", url, {
+      hasToken: !!token,
+      hasAuthHeader: headers.has("Authorization"),
+    });
+  } catch (_) {}
+
+  return fetch(url, finalOpts);
 }
-  function getLegacySession() {
+  
+function getLegacySession() {
     try {
       const raw = window.localStorage.getItem("mssAdminSession");
       console.log("[SchoolPortal] raw mssAdminSession:", raw);
@@ -637,6 +663,112 @@ function populateAiPromptSelect() {
   }
 }
 
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function showModalHtml(title, html) {
+  const ov = document.getElementById("mssModalOverlay");
+  const t  = document.getElementById("mssModalTitle");
+  const b  = document.getElementById("mssModalBody");
+  const x  = document.getElementById("mssModalCloseX");
+
+  if (!ov || !t || !b) {
+    console.warn("[Portal] MSS modal missing; falling back to console only.");
+    return;
+  }
+
+  t.textContent = title || "Notice";
+  b.innerHTML = html || "";
+  ov.classList.add("show");
+  ov.setAttribute("aria-hidden", "false");
+
+  const close = () => {
+    ov.classList.remove("show");
+    ov.setAttribute("aria-hidden", "true");
+  };
+
+  if (x) x.onclick = close;
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+
+  const onKey = (ev) => {
+    if (ev.key === "Escape") {
+      close();
+      document.removeEventListener("keydown", onKey);
+    }
+  };
+  document.addEventListener("keydown", onKey);
+
+  return { close };
+}
+
+// Stylish confirm using MSS modal
+// - Relies on escHtml(...) and showModalHtml(...)
+// - Resolves TRUE on OK, FALSE on cancel, X, Escape, or backdrop click
+function confirmModal(
+  title,
+  bodyText,
+  { okText = "Delete", cancelText = "Cancel", danger = true } = {}
+) {
+  return new Promise((resolve) => {
+    const body = `
+      <div class="viewerText">${escHtml(bodyText || "")}</div>
+      <div class="toolbar" style="margin-top:12px; display:flex; gap:10px; justify-content:flex-end;">
+        <button class="btn" id="mssConfirmCancel" type="button">${escHtml(cancelText)}</button>
+        <button class="btn ${danger ? "danger" : "primary"}" id="mssConfirmOk" type="button">${escHtml(okText)}</button>
+      </div>
+    `;
+
+    const modal = showModalHtml(title, body);
+    if (!modal) return resolve(false);
+
+    const ov = document.getElementById("mssModalOverlay");
+    const okBtn = document.getElementById("mssConfirmOk");
+    const cancelBtn = document.getElementById("mssConfirmCancel");
+
+    let done = false;
+    const finish = (val) => {
+      if (done) return;
+      done = true;
+
+      // cleanup
+      if (ov) ov.removeEventListener("click", onBackdrop);
+      document.removeEventListener("keydown", onKey);
+
+      try { modal.close(); } catch (_) {}
+      resolve(val);
+    };
+
+    const onBackdrop = (e) => {
+      // Backdrop click (not inside modal)
+      if (e.target === ov) finish(false);
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Escape") finish(false);
+    };
+
+    if (okBtn) okBtn.onclick = () => finish(true);
+    if (cancelBtn) cancelBtn.onclick = () => finish(false);
+
+    // Treat backdrop + Escape as cancel
+    if (ov) ov.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onKey);
+
+    // IMPORTANT: also resolve false if the user clicks the X that showModalHtml wires
+    // We can’t rely on polling; instead hook the close button directly if it exists.
+    // (If showModalHtml uses a different id, adjust this selector.)
+    const closeX = document.getElementById("mssModalCloseX");
+    if (closeX) {
+      closeX.onclick = () => finish(false);
+    }
+
+    // If showModalHtml returns a DOM node reference for the overlay, prefer using that.
+    // But with the current contract we defensively hook by id above.
+  });
+}
   // -----------------------------------------------------------------------
   // Schools API
   // -----------------------------------------------------------------------
@@ -912,6 +1044,57 @@ async function refreshReportForSelection() {
   }
 }
 
+function confirmPortalModal({ title = "Confirm", body = "", okText = "OK", cancelText = "Cancel" } = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.getElementById("portal-delete-backdrop");
+    const btnCancel = document.getElementById("portal-delete-cancel");
+    const btnOk = document.getElementById("portal-delete-confirm");
+
+    // If your portal confirm modal also has a title/body node, set them here.
+    const titleEl = document.getElementById("portal-delete-title");
+    const bodyEl  = document.getElementById("portal-delete-body");
+
+    if (!backdrop || !btnCancel || !btnOk) {
+      console.warn("[confirmPortalModal] Missing portal delete modal DOM; falling back to window.confirm");
+      resolve(window.confirm(body));
+      return;
+    }
+
+    if (titleEl) titleEl.textContent = title;
+    if (bodyEl) bodyEl.textContent = body;
+
+    // Set button labels if those nodes are normal buttons
+    if (btnOk) btnOk.textContent = okText;
+    if (btnCancel) btnCancel.textContent = cancelText;
+
+    const cleanup = () => {
+      btnCancel.onclick = null;
+      btnOk.onclick = null;
+      backdrop.onclick = null;
+      backdrop.classList.add("hidden");
+      resolve(false);
+    };
+
+    btnCancel.onclick = () => {
+      backdrop.classList.add("hidden");
+      resolve(false);
+    };
+
+    btnOk.onclick = () => {
+      backdrop.classList.add("hidden");
+      resolve(true);
+    };
+
+    backdrop.onclick = (e) => {
+      if (e.target === backdrop) {
+        backdrop.classList.add("hidden");
+        resolve(false);
+      }
+    };
+
+    backdrop.classList.remove("hidden");
+  });
+}
   // -----------------------------------------------------------------------
   // Small formatting helpers
   // -----------------------------------------------------------------------
@@ -1318,18 +1501,24 @@ async function refreshReportForSelection() {
 // -----------------------------------------------------------------------
 // Report Viewer (Generate Report) — inside IIFE
 // -----------------------------------------------------------------------
-
 function wireReportViewerEvents() {
-  const btnRun = $("btnRunReport");
-  const btnClose = $("btnReportClose");
-  const btnX = $("reportCloseX");
-  const ov = $("reportOverlay");
+  const btnRun    = $("btnRunReport");
+  const btnClose  = $("btnReportClose");
+  const btnX      = $("reportCloseX");
+  const btnDelete = $("btnReportDelete");
+  const ov        = $("reportOverlay");
 
-  const modal = ov?.querySelector(".modal");
+  if (!ov) {
+    console.warn("[ReportViewer] reportOverlay not found");
+    return;
+  }
+
+  // Stop backdrop clicks from closing when clicking inside the modal
+  const modal = ov.querySelector(".sp-modal"); // IMPORTANT: matches your HTML
   if (modal && !modal._mssBound) {
-     modal.addEventListener("click", (e) => e.stopPropagation());
-     modal._mssBound = true;
-   }
+    modal.addEventListener("click", (e) => e.stopPropagation());
+    modal._mssBound = true;
+  }
 
   if (btnRun && !btnRun._mssBound) {
     btnRun.addEventListener("click", generateReport);
@@ -1346,20 +1535,56 @@ function wireReportViewerEvents() {
     btnX._mssBound = true;
   }
 
-  if (ov && !ov._mssBound) {
+  // Delete cached report (bind ONCE; resolve function at click-time)
+  if (btnDelete && !btnDelete._mssBound) {
+    btnDelete.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Helpful QA log (remove later if desired)
+      console.log("[ReportViewer] Delete clicked");
+
+      const fn =
+        (window && window.deleteCurrentReportFromViewer) ||
+        (typeof deleteCurrentReportFromViewer === "function" ? deleteCurrentReportFromViewer : null);
+
+      if (typeof fn !== "function") {
+        setReportStatus("Delete is not implemented yet.", true);
+        return;
+      }
+
+      await fn();
+    });
+    btnDelete._mssBound = true;
+  }
+
+  // Click outside modal closes
+  if (!ov._mssBound) {
     ov.addEventListener("click", (e) => {
       if (e.target === ov) closeReportViewer();
     });
     ov._mssBound = true;
   }
 
-  document.addEventListener("keydown", (e) => {
-    const visible = ov && ov.style.display === "flex";
-    if (visible && e.key === "Escape") closeReportViewer();
-  });
+  // Escape closes (bind only once globally)
+  if (!document._mssReportEscBound) {
+    document.addEventListener("keydown", (e) => {
+      const visible = !ov.classList.contains("hidden");
+      if (visible && e.key === "Escape") closeReportViewer();
+    });
+    document._mssReportEscBound = true;
+  }
 }
-
 // ---- globals (ensure these exist once in the IIFE scope) ----
+
+function safeBlurActiveElementIfInside(containerEl) {
+  try {
+    const ae = document.activeElement;
+    if (containerEl && ae && containerEl.contains(ae)) {
+      ae.blur();
+    }
+  } catch (_) {}
+}
 
 function openReportViewerForSubmission(submissionId) {
   currentSubmissionId = Number(submissionId || 0);
@@ -1368,12 +1593,24 @@ function openReportViewerForSubmission(submissionId) {
     return;
   }
 
-  // Reset UI
+  // Reset viewer state/UI
   $("reportTitle").textContent = "Generate Report";
   $("reportMeta").textContent =
     `submission_id=${currentSubmissionId} • slug=${CURRENT_SLUG || "—"}`;
   $("reportOutput").textContent = "";
   setReportStatus("");
+
+  // Reset report-specific state (prevents stale prompt/report flags)
+  reportViewerPromptId = 0;
+  reportViewerHasCachedReport = false;
+
+  // Hide delete button until we confirm a cached report exists
+  const btnDelete = $("btnReportDelete");
+  if (btnDelete) btnDelete.style.display = "none";
+
+  // Ensure Generate is enabled on open
+  const btnRun = $("btnRunReport");
+  if (btnRun) btnRun.disabled = false;
 
   const ov = $("reportOverlay");
   if (!ov) return;
@@ -1382,13 +1619,29 @@ function openReportViewerForSubmission(submissionId) {
   ov.classList.remove("hidden");
   ov.setAttribute("aria-hidden", "false");
 
+  // Re-bind report viewer events every open (safe + avoids “stub bound once”)
+  const btnClose = $("btnReportClose");
+  const btnX = $("reportCloseX");
+  if (btnRun) btnRun._mssBound = false;
+  if (btnClose) btnClose._mssBound = false;
+  if (btnX) btnX._mssBound = false;
+  if (btnDelete) btnDelete._mssBound = false;
+  wireReportViewerEvents();
+
+  // Optional (recommended): move focus into the modal for accessibility
+  setTimeout(() => {
+    $("btnRunReport")?.focus?.();
+  }, 0);
+
   // Load prompts (once per session) then STOP — let user choose
   (async () => {
     try {
       setReportStatus("Loading prompts…");
+
       if (!aiPromptsCache.length) {
         await loadAiPromptsForSchool();
       }
+
       populateAiPromptSelect();
 
       // Bind change handler ONCE (avoid stacking listeners)
@@ -1401,36 +1654,64 @@ function openReportViewerForSubmission(submissionId) {
         sel._mssBound = true;
       }
 
-      // Do not auto-refresh on open (this is the “flash then viewer” bug)
       setReportStatus("");
     } catch (e) {
       setReportStatus(`Unable to load prompts: ${e.message || "unknown"}`, true);
     }
   })();
 }
+
 function closeReportViewer() {
   const ov = $("reportOverlay");
   if (!ov) return;
+
+  // IMPORTANT: prevent aria-hidden warning (focused descendant)
+  safeBlurActiveElementIfInside(ov);
+
   ov.classList.add("hidden");
   ov.setAttribute("aria-hidden", "true");
   currentSubmissionId = null;
+
+  // Optional: return focus to something sensible on the main page
+  setTimeout(() => {
+    $("btnRefreshTests")?.focus?.();
+  }, 0);
 }
+// -----------------------------------------------------------------------
+// Generate Report (Report Viewer)
+// - Calls POST /api/admin/reports/generate
+// - If response is cached, show Delete button and disable Generate until deleted
+// -----------------------------------------------------------------------
+
+let reportViewerHasCachedReport = false;
+let reportViewerPromptId = null;
 
 async function generateReport() {
   const btnRun = $("btnRunReport");
+  const btnDelete = $("btnReportDelete");
   const promptId = Number(($("aiPromptSelect")?.value || 0));
 
   if (!CURRENT_SLUG) return setReportStatus("Missing slug.", true);
   if (!currentSubmissionId) return setReportStatus("Missing submission id.", true);
   if (!promptId) return setReportStatus("Please choose an AI prompt.", true);
 
+  // Reset viewer state for this run
+  reportViewerPromptId = promptId;
+  reportViewerHasCachedReport = false;
+
+  // Hide delete button until we know it's cache
+  if (btnDelete) {
+    btnDelete.style.display = "none";
+    btnDelete.disabled = false;
+  }
+
   setReportStatus("Generating report…");
   if (btnRun) btnRun.disabled = true;
 
   try {
-    const res = await adminFetch(`/api/admin/reports/generate`, {
+    // adminFetch injects Authorization; we provide JSON body.
+    const res = await adminFetch("/api/admin/reports/generate", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         slug: CURRENT_SLUG,
         submission_id: currentSubmissionId,
@@ -1438,22 +1719,99 @@ async function generateReport() {
       }),
     });
 
-    const data = await res.json().catch(() => ({}));
-
-    if (res.status === 401) {
+    // Handle auth first (avoid JSON parsing issues on auth failures)
+    if (res.status === 401 || res.status === 403) {
       clearAdminSessionAndRedirect();
       return;
     }
+
+    const data = await res.json().catch(() => ({}));
+
     if (!res.ok || data.ok === false) {
-      throw new Error(data.error || `http_${res.status}`);
+      throw new Error(data.error || data.message || `http_${res.status}`);
     }
 
     $("reportOutput").textContent = data.report_text || "(No report returned)";
     setReportStatus("");
+
+    // If this is cached, show Delete and disable Generate until deleted
+    reportViewerHasCachedReport = (data.source === "cache");
+
+    if (btnDelete) {
+      btnDelete.style.display = reportViewerHasCachedReport ? "inline-block" : "none";
+    }
+
+    if (btnRun) {
+      btnRun.disabled = reportViewerHasCachedReport;
+    }
   } catch (e) {
-    setReportStatus(`Generate failed: ${e.message || "unknown"}`, true);
-  } finally {
+    setReportStatus(`Generate failed: ${e?.message || "unknown"}`, true);
     if (btnRun) btnRun.disabled = false;
+  }
+}
+
+// -----------------------------------------------------------------------
+// Delete currently displayed cached report (ai_reports row only)
+// Calls: DELETE /api/admin/reports/:slug/:submission_id/:prompt_id
+// Behavior:
+// - deletes cached report for (submission_id, prompt_id)
+// - clears viewer output
+// - hides Delete button
+// - re-enables Generate
+// -----------------------------------------------------------------------
+
+async function deleteCurrentReportFromViewer() {
+  const btnRun = $("btnRunReport");
+  const btnDelete = $("btnReportDelete");
+
+  if (!CURRENT_SLUG) return setReportStatus("Missing slug.", true);
+  if (!currentSubmissionId) return setReportStatus("Missing submission id.", true);
+  if (!reportViewerPromptId) return setReportStatus("Missing prompt id.", true);
+
+  if (!reportViewerHasCachedReport) {
+    setReportStatus("Nothing to delete (this report is not cached).", true);
+    return;
+  }
+
+  const ok = await confirmModal(
+    "Delete cached report",
+    "Delete the cached report text for this submission/prompt?\n\nThis will not delete the prompt.",
+    { okText: "Delete", cancelText: "Cancel", danger: true }
+  );
+  if (!ok) return;
+
+  setReportStatus("Deleting cached report…");
+  if (btnDelete) btnDelete.disabled = true;
+
+  try {
+    const url =
+      `/api/admin/reports/${encodeURIComponent(CURRENT_SLUG)}` +
+      `/${encodeURIComponent(String(currentSubmissionId))}` +
+      `/${encodeURIComponent(String(reportViewerPromptId))}`;
+
+    const res = await adminFetch(url, { method: "DELETE" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAdminSessionAndRedirect();
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || data.message || `http_${res.status}`);
+    }
+
+    $("reportOutput").textContent = "";
+    reportViewerHasCachedReport = false;
+
+    if (btnDelete) btnDelete.style.display = "none";
+    if (btnRun) btnRun.disabled = false;
+
+    setReportStatus("Deleted cached report ✓");
+  } catch (e) {
+    setReportStatus(`Delete failed: ${e?.message || "unknown"}`, true);
+  } finally {
+    if (btnDelete) btnDelete.disabled = false;
   }
 }
   // -----------------------------------------------------------------------
@@ -2457,7 +2815,7 @@ document.addEventListener("click", async function (e) {
   function wireEvents() {
    
     //Dec 29 
-    //wireReportViewerEvents();
+    wireReportViewerEvents();
 
     // Embed snippet copy
     if (btnCopyEmbed && !btnCopyEmbed._mssBound) {
@@ -2603,6 +2961,69 @@ if (btnAdminHome && !btnAdminHome._mssBound) {
     wireTableSorting();
   }
 
+
+function wireReportViewerEvents() {
+  const btnRun = document.getElementById("btnRunReport");
+  const btnClose = document.getElementById("btnReportClose");
+  const btnX = document.getElementById("reportCloseX");
+  console.log("✅ wireReportViewerEvents running");
+  const btnDelete = document.getElementById("btnReportDelete");
+  console.log("btnReportDelete exists?", !!btnDelete);
+  const ov = document.getElementById("reportOverlay");
+
+  // Stop backdrop clicks from closing when clicking inside the modal
+  const modal = ov?.querySelector(".sp-modal"); // IMPORTANT: .sp-modal, not .modal
+  if (modal && !modal._mssBound) {
+    modal.addEventListener("click", (e) => e.stopPropagation());
+    modal._mssBound = true;
+  }
+
+  if (btnRun && !btnRun._mssBound) {
+    btnRun.addEventListener("click", generateReport);
+    btnRun._mssBound = true;
+  }
+
+  if (btnClose && !btnClose._mssBound) {
+    btnClose.addEventListener("click", closeReportViewer);
+    btnClose._mssBound = true;
+  }
+
+  if (btnX && !btnX._mssBound) {
+    btnX.addEventListener("click", closeReportViewer);
+    btnX._mssBound = true;
+  }
+
+  // Optional: wire delete button once you implement delete endpoint
+  if (btnDelete && !btnDelete._mssBound) {
+  if (typeof deleteCurrentReportFromViewer === "function") {
+    btnDelete.addEventListener("click", deleteCurrentReportFromViewer);
+  } else {
+    btnDelete.addEventListener("click", () => {
+      setReportStatus("Delete is not implemented yet.", true);
+    });
+  }
+  btnDelete._mssBound = true;
+}
+
+  // Click outside modal closes
+  if (ov && !ov._mssBound) {
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov) closeReportViewer();
+    });
+    ov._mssBound = true;
+  }
+
+ 
+
+  // Escape closes (use hidden class, not style.display)
+  if (!document._mssReportEscBound) {
+    document.addEventListener("keydown", (e) => {
+      const visible = ov && !ov.classList.contains("hidden");
+      if (visible && e.key === "Escape") closeReportViewer();
+    });
+    document._mssReportEscBound = true;
+  }
+}
   // -----------------------------------------------------------------------
   // Init
   // -----------------------------------------------------------------------

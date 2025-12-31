@@ -350,7 +350,7 @@
 <!-- REPORT VIEWER (Generate Report) -->
 <div id="reportOverlay" class="sp-modal-backdrop hidden" aria-hidden="true">
   <div class="sp-modal report-modal" role="dialog" aria-modal="true" aria-label="Report Viewer">
-    
+
     <!-- Header -->
     <div class="mHead report-head">
       <div class="report-head-left">
@@ -365,7 +365,7 @@
 
     <!-- Body -->
     <div class="mBody report-body">
-      
+
       <!-- Controls -->
       <div class="report-controls">
         <div class="report-field">
@@ -377,7 +377,11 @@
         <div class="report-actions">
           <button id="btnRunReport" class="btn primary" type="button">Generate</button>
           <button id="btnReportClose" class="btn" type="button">Close</button>
-          <button class="btn" type="button" data-copy-modal>Copy</button>
+          <button id="btnReportCopy" class="btn" type="button" data-copy-modal>Copy</button>
+
+          <button id="btnReportDelete" class="btn danger" type="button" style="display:none;">
+            Delete this report
+          </button>
         </div>
       </div>
 
@@ -389,6 +393,22 @@
         <div id="reportOutput" class="viewerText report-output"></div>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- MSS MODAL (Stylish alert/confirm used across admin pages) -->
+<div id="mssModalOverlay" class="overlay" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Notice" onclick="event.stopPropagation()">
+    <div class="mHead">
+      <div class="mTitle" id="mssModalTitle">Notice</div>
+      <button class="iconBtn" id="mssModalCloseX" type="button" aria-label="Close">✕</button>
+    </div>
+
+    <div class="mBody" id="mssModalBody"></div>
+
+    <div class="mFoot">
+      <button class="btn primary" id="mssModalOk" type="button">OK</button>
     </div>
   </div>
 </div>

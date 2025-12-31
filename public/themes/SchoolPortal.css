@@ -1230,3 +1230,7 @@ table.tests-table td:nth-child(16) {
   background: rgba(0,0,0,0.18);
   border: 2px solid rgba(255,255,255,0.8);
 }
+/* just to hide the Delete button for a report for now (Dec 31( */
+#btnReportDelete {
+  display: none !important;
+}

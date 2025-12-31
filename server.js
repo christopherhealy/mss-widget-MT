@@ -1,9 +1,5 @@
-// server.js — ESM version for "type": "module" (Vercel-safe bootstrap)
-// top section regen on Dec 30 2025
+// server.js — ESM version for "type": "module" (Nov 25 update for Vercel)
 
-// --------------------------------------------------
-// Core imports
-// --------------------------------------------------
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -16,62 +12,21 @@ import multer from "multer";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import OpenAI from "openai";
 
-// Dec 10 using SPs
+
+
+
+//Dec 10 using SPs
 import bcrypt from "bcryptjs";
 import slugifyPkg from "slugify";
 
-// --------------------------------------------------
-// Load environment FIRST (before any env-dependent work)
-// --------------------------------------------------
 dotenv.config();
-
-// Minimal env diagnostics (safe for logs; do NOT print secrets)
+// just to be sure
 console.log("[env] DATABASE_URL present:", !!process.env.DATABASE_URL);
 console.log("[env] MSS_ADMIN_JWT_SECRET present:", !!process.env.MSS_ADMIN_JWT_SECRET);
 console.log("[env] MSS_ADMIN_JWT_TTL:", process.env.MSS_ADMIN_JWT_TTL || "(default)");
-console.log("[env] OPENAI_API_KEY present:", !!process.env.OPENAI_API_KEY);
 
-// --------------------------------------------------
-// OpenAI (Vercel-safe: no client created at import time)
-// --------------------------------------------------
-//Open AI
-import OpenAI from "openai";
-
-let _openai = null;
-
-function getOpenAIClientOrNull() {
-  if (_openai) return _openai;
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-
-  _openai = new OpenAI({ apiKey });
-  return _openai;
-}
-
-async function openAiGenerateReport({ promptText, model, temperature, max_output_tokens }) {
-  const client = getOpenAIClientOrNull();
-  if (!client) {
-    const err = new Error("OPENAI_API_KEY is not configured");
-    err.code = "openai_not_configured";
-    throw err;
-  }
-
-  const resp = await client.responses.create({
-    model,
-    input: promptText,
-    temperature,
-    max_output_tokens,
-  });
-
-  const text =
-    resp.output_text ||
-    (resp.output?.[0]?.content?.[0]?.text ?? "") ||
-    "";
-
-  return { text, model, temperature, max_output_tokens };
-}
 
 // ---------------------------------------------------------------------
 // Public base URL for email links - Nov 29
@@ -185,10 +140,20 @@ function requireSuperAdmin(req, res, next) {
 }
 
 function requireAdminAuth(req, res, next) {
-  try {
+console.log(
+  "[AuthCheck]",
+  req.path,
+  "auth:",
+  req.headers.authorization,
+  "x-mss:",
+  req.headers["x-mss-admin-key"]
+);  
+
+try {
     requireAdminJwtSecret();
 
     const token = readAdminTokenFromRequest(req);
+    console.log("[requireAdminAuth]", req.method, req.path, "token?", !!token);
     if (!token) {
       return res.status(401).json({
         ok: false,
@@ -602,6 +567,62 @@ app.get("/api/admin/branding/:slug/logo", async (req, res) => {
   }
 });
 
+// OpenAI Helper
+// Small helper: safely extract the final text Dec 26
+// ---- OpenAI (Responses API) -----------------------------------
+
+async function openAiGenerateReport({ promptText, model = "gpt-4o-mini", temperature = 0.4, max_output_tokens = 900 }) {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
+  if (!promptText || !String(promptText).trim()) throw new Error("promptText is required");
+
+  const timeoutMs = 25000;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+
+
+
+  try {
+    console.log("[AI] OpenAI request starting", { model, temperature, max_output_tokens, chars: String(promptText).length });
+
+    const response = await openai.responses.create(
+      {
+        model,
+        input: promptText,
+        temperature,
+        max_output_tokens,
+      },
+      {
+        signal: controller.signal,
+      }
+    );
+
+    const text = (response.output_text || "").trim();
+    console.log("[AI] OpenAI response received", { chars: text.length });
+
+    if (!text) throw new Error("Empty response from OpenAI");
+
+    return {
+      text,
+      // Useful if you want it later:
+      // response_id: response.id,
+      // usage: response.usage,
+      model,
+      temperature,
+      max_output_tokens,
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+// Helper: normalize transcript text into a clean single-line string
+function renderPromptTemplate(template, vars = {}) {
+  const t = String(template || "");
+  return t.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const v = Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : "";
+    if (v === null || v === undefined) return "";
+    return String(v);
+  });
+}
 
 // ---------------------------------------------------------------------
 // Helper: cleanTranscriptText
@@ -5921,11 +5942,15 @@ app.get("/api/funnel/verify", async (req, res) => {
 });
 
 
+// =====================================================================
+// AI PROMPTS + AI REPORTS
+// =====================================================================
+
 // ---------------------------------------------------------------------
 // AI Prompts - list by school slug
 // GET /api/admin/ai-prompts/:slug
 // ---------------------------------------------------------------------
-app.get("/api/admin/ai-prompts/:slug", async (req, res) => {
+app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
@@ -5939,10 +5964,10 @@ app.get("/api/admin/ai-prompts/:slug", async (req, res) => {
     );
     if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
 
-    const schoolId = s.rows[0].id;
+    const schoolId = Number(s.rows[0].id);
 
     const r = await pool.query(
-      `SELECT id, name, prompt_text, is_default, is_active, sort_order, updated_at
+      `SELECT id, name, prompt_text, notes, language, is_default, is_active, sort_order, updated_at
        FROM ai_prompts
        WHERE school_id = $1
        ORDER BY
@@ -5958,10 +5983,11 @@ app.get("/api/admin/ai-prompts/:slug", async (req, res) => {
     return res.status(500).json({ ok: false, error: "ai_prompts_failed", message: err.message });
   }
 });
+
 // ---------------------------------------------------------------------
 // AI Prompts - create by school slug
 // POST /api/admin/ai-prompts/:slug
-// body: { name, prompt_text, is_active?, is_default?, sort_order? }
+// body: { name, prompt_text, notes?, is_active?, is_default?, sort_order? }
 // ---------------------------------------------------------------------
 app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
   try {
@@ -5970,6 +5996,7 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
 
     const name = String(req.body?.name || "").trim();
     const promptText = String(req.body?.prompt_text || "").trim();
+    const notes = String(req.body?.notes || "").trim(); // optional
 
     if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
     if (!promptText) return res.status(400).json({ ok: false, error: "missing_prompt_text" });
@@ -5977,44 +6004,41 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
     const isActive = req.body?.is_active === false ? false : true;
     const isDefault = req.body?.is_default === true ? true : false;
 
-    // Optional, allow null
     const sortOrder =
       req.body?.sort_order === null || req.body?.sort_order === undefined || req.body?.sort_order === ""
         ? null
         : Number(req.body.sort_order);
 
     // 1) Resolve school_id from slug
-    const { rows: srows, rowCount: scount } = await pool.query(
+    const s = await pool.query(
       `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
       [slug]
     );
-    if (!scount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
 
-    const schoolId = Number(srows[0].id);
+    const schoolId = Number(s.rows[0].id);
 
     // 2) Insert prompt
-    const { rows: irows, rowCount: icount } = await pool.query(
+    const ins = await pool.query(
       `
-      INSERT INTO ai_prompts (school_id, name, prompt_text, is_default, is_active, sort_order)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, created_at, updated_at
+      INSERT INTO ai_prompts (school_id, name, prompt_text, notes, is_default, is_active, sort_order)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, school_id, name, prompt_text, notes, is_default, is_active, sort_order, created_at, updated_at
       `,
-      [schoolId, name, promptText, isDefault, isActive, sortOrder]
+      [schoolId, name, promptText, notes, isDefault, isActive, sortOrder]
     );
 
-    if (!icount) return res.status(500).json({ ok: false, error: "insert_failed" });
-
-    return res.json({ ok: true, slug, schoolId, prompt: irows[0] });
+    return res.json({ ok: true, slug, schoolId, prompt: ins.rows[0] });
   } catch (err) {
-    console.error("[ai-prompts] create failed:", err);
-    return res.status(500).json({ ok: false, error: "prompts_create_failed" });
+    console.error("❌ [ai-prompts] create failed:", err);
+    return res.status(500).json({ ok: false, error: "prompts_create_failed", message: err.message });
   }
 });
 
 // ---------------------------------------------------------------------
 // AI Prompts - update by slug + id
 // PUT /api/admin/ai-prompts/:slug/:id
-// body: { name?, prompt_text?, is_active?, is_default?, sort_order? }
+// body: { name?, prompt_text?, notes?, language?, is_active?, is_default?, sort_order? }
 // ---------------------------------------------------------------------
 app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
   try {
@@ -6025,22 +6049,22 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
 
     // Resolve school_id from slug
-    const { rows: srows, rowCount: scount } = await pool.query(
+    const s = await pool.query(
       `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
       [slug]
     );
-    if (!scount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
 
-    const schoolId = Number(srows[0].id);
+    const schoolId = Number(s.rows[0].id);
 
     // Ensure prompt belongs to this school
-    const { rowCount: pcount } = await pool.query(
+    const owned = await pool.query(
       `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
       [id, schoolId]
     );
-    if (!pcount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    if (!owned.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
 
-    // Build a safe partial update
+    // Build partial update
     const fields = [];
     const values = [];
     let idx = 1;
@@ -6059,6 +6083,28 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
       values.push(text);
     }
 
+    if (req.body?.notes !== undefined) {
+      const notes = String(req.body.notes || "").trim();
+      // notes optional; allow empty string
+      fields.push(`notes = $${idx++}`);
+      values.push(notes);
+    }
+
+    if (req.body?.language !== undefined) {
+      // language optional; allow empty -> NULL
+      // Accept values like "en", "en-CA", "fr", etc. Keep flexible.
+      const langRaw = String(req.body.language || "").trim();
+      const language = langRaw === "" ? null : langRaw;
+
+      // Optional: basic sanity check (comment out if you want fully free-form)
+      // if (language && language.length > 20) {
+      //   return res.status(400).json({ ok: false, error: "invalid_language" });
+      // }
+
+      fields.push(`language = $${idx++}`);
+      values.push(language);
+    }
+
     if (req.body?.is_active !== undefined) {
       fields.push(`is_active = $${idx++}`);
       values.push(req.body.is_active === false ? false : true);
@@ -6071,7 +6117,9 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
 
     if (req.body?.sort_order !== undefined) {
       const sortOrder =
-        req.body.sort_order === null || req.body.sort_order === "" ? null : Number(req.body.sort_order);
+        req.body.sort_order === null || req.body.sort_order === ""
+          ? null
+          : Number(req.body.sort_order);
       fields.push(`sort_order = $${idx++}`);
       values.push(sortOrder);
     }
@@ -6082,7 +6130,6 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
 
     fields.push(`updated_at = NOW()`);
 
-    // id and schoolId constraints
     values.push(id);
     values.push(schoolId);
 
@@ -6090,18 +6137,21 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
       UPDATE ai_prompts
       SET ${fields.join(", ")}
       WHERE id = $${idx++} AND school_id = $${idx++}
-      RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, created_at, updated_at
+      RETURNING
+        id, school_id, name, prompt_text, notes, language,
+        is_default, is_active, sort_order, created_at, updated_at
     `;
 
-    const { rows: urows, rowCount: ucount } = await pool.query(sql, values);
-    if (!ucount) return res.status(500).json({ ok: false, error: "update_failed" });
+    const upd = await pool.query(sql, values);
+    if (!upd.rowCount) return res.status(500).json({ ok: false, error: "update_failed" });
 
-    return res.json({ ok: true, slug, schoolId, prompt: urows[0] });
+    return res.json({ ok: true, slug, schoolId, prompt: upd.rows[0] });
   } catch (err) {
-    console.error("[ai-prompts] update failed:", err);
-    return res.status(500).json({ ok: false, error: "prompts_update_failed" });
+    console.error("❌ [ai-prompts] update failed:", err);
+    return res.status(500).json({ ok: false, error: "prompts_update_failed", message: err.message });
   }
 });
+
 // ---------------------------------------------------------------------
 // AI Prompts - delete by slug + id
 // DELETE /api/admin/ai-prompts/:slug/:id
@@ -6114,29 +6164,30 @@ app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res)
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
 
-    const { rows: srows, rowCount: scount } = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
-    if (!scount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = Number(s.rows[0].id);
 
-    const schoolId = Number(srows[0].id);
-
-    const { rowCount: dcount } = await pool.query(
-      `DELETE FROM ai_prompts WHERE id = $1 AND school_id = $2`,
+    // Ensure prompt belongs to this school
+    const owned = await pool.query(
+      `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
       [id, schoolId]
     );
+    if (!owned.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
 
-    if (!dcount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    await pool.query(`DELETE FROM ai_prompts WHERE id = $1 AND school_id = $2`, [id, schoolId]);
 
-    return res.json({ ok: true, slug, schoolId, deletedId: id });
+    return res.json({ ok: true });
   } catch (err) {
-    console.error("[ai-prompts] delete failed:", err);
-    return res.status(500).json({ ok: false, error: "prompts_delete_failed" });
+    console.error("❌ [ai-prompts] delete failed:", err);
+    return res.status(500).json({ ok: false, error: "prompts_delete_failed", message: err.message });
   }
 });
-
-app.get("/api/admin/reports/existing", async (req, res) => {
+// ---------------------------------------------------------------------
+// AI Reports - existing (cache check)
+// GET /api/admin/reports/existing?submission_id=123&ai_prompt_id=456
+// ---------------------------------------------------------------------
+app.get("/api/admin/reports/existing", requireAdminAuth, async (req, res) => {
   try {
     const submissionId = Number(req.query.submission_id || 0);
     const promptId = Number(req.query.ai_prompt_id || 0);
@@ -6172,6 +6223,11 @@ app.get("/api/admin/reports/existing", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------
+// AI Reports - generate (cache + OpenAI + store)
+// POST /api/admin/reports/generate
+// body: { slug, submission_id, ai_prompt_id }
+// ---------------------------------------------------------------------
 app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
   try {
     const slug = String(req.body?.slug || "").trim();
@@ -6182,14 +6238,17 @@ app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
     if (!submissionId) return res.status(400).json({ ok: false, error: "bad_submission_id" });
     if (!promptId) return res.status(400).json({ ok: false, error: "bad_prompt_id" });
 
-    // 1) Resolve school
-    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
+    // 1) Resolve school_id from slug
+    const s = await pool.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
     if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
     const schoolId = Number(s.rows[0].id);
 
-    // 2) Load prompt (belongs to school + active)
+    // 2) Load prompt (must belong to school + be active)
     const p = await pool.query(
-      `SELECT id, name, prompt_text
+      `SELECT id, prompt_text, notes, language
        FROM ai_prompts
        WHERE id = $1 AND school_id = $2 AND is_active = true
        LIMIT 1`,
@@ -6197,12 +6256,82 @@ app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
     );
     if (!p.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
 
-    const promptText = String(p.rows[0].prompt_text || "");
-    const promptHash = sha256(promptText);
+    const promptText = String(p.rows[0].prompt_text || "").trim();
+    const notes = String(p.rows[0].notes || "").trim();
+    const languageRaw =
+      p.rows[0].language === null || p.rows[0].language === undefined
+        ? ""
+        : String(p.rows[0].language || "").trim();
+    const language = languageRaw || null;
 
-    // 3) Cache check (per submission + prompt)
+    if (!promptText) return res.status(400).json({ ok: false, error: "empty_prompt_text" });
+
+    // 2b) Load submission (must belong to same school, not deleted)
+    const sub = await pool.query(
+      `SELECT *
+       FROM submissions
+       WHERE id = $1
+         AND school_id = $2
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [submissionId, schoolId]
+    );
+    if (!sub.rowCount) return res.status(404).json({ ok: false, error: "submission_not_found" });
+
+    const row = sub.rows[0];
+
+    // Build variables (add as many as you support)
+    const vars = {
+      // core
+      question: row.question || "",
+      transcript: row.transcript_clean || row.transcript || "",
+      student: row.student_name || row.student_email || row.student_id || "",
+
+      // speed
+      wpm: row.wpm ?? "",
+
+      // MSS
+      mss_fluency: row.mss_fluency ?? "",
+      mss_grammar: row.mss_grammar ?? "",
+      mss_pron: row.mss_pron ?? "",
+      mss_vocab: row.mss_vocab ?? "",
+      mss_cefr: row.mss_cefr ?? "",
+      mss_toefl: row.mss_toefl ?? "",
+      mss_ielts: row.mss_ielts ?? "",
+      mss_pte: row.mss_pte ?? "",
+
+      // Vox (optional)
+      vox_score: row.vox_score ?? "",
+    };
+
+    // 3) Render template using submission vars BEFORE calling OpenAI
+    const renderedPromptText = renderPromptTemplate(promptText, vars).trim();
+    if (!renderedPromptText) {
+      return res.status(400).json({ ok: false, error: "rendered_prompt_empty" });
+    }
+
+    // Notes/language add-ons should be appended to the RENDERED prompt
+    const parts = [renderedPromptText];
+    if (notes) parts.push(`\n\n---\nNotes / Guidance:\n${notes}\n`);
+    if (language) parts.push(`\n\n---\nOutput language:\n${language}\n`);
+
+    const finalPrompt = parts.join("");
+    const promptHash = sha256(finalPrompt);
+
+// 🔍 DEBUG: inspect final prompt BEFORE cache / OpenAI
+
+const unreplaced =
+  (finalPrompt.match(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g) || []);
+
+console.log("[AI] finalPrompt preview:");
+console.log(finalPrompt.slice(0, 400));
+console.log("[AI] finalPrompt length:", finalPrompt.length);
+console.log("[AI] unreplaced placeholders:", unreplaced.length, unreplaced.slice(0, 10));
+
+    // 4) Cache check (submission + prompt_id)
+    //    Rule: one report per (submission, prompt). If present, return it.
     const existing = await pool.query(
-      `SELECT report_text, created_at, model, temperature, max_output_tokens
+      `SELECT report_text
        FROM ai_reports
        WHERE submission_id = $1 AND prompt_id = $2
        LIMIT 1`,
@@ -6213,27 +6342,23 @@ app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
       return res.json({
         ok: true,
         report_text: existing.rows[0].report_text,
-        meta: {
-          created_at: existing.rows[0].created_at,
-          model: existing.rows[0].model,
-          temperature: existing.rows[0].temperature,
-          max_output_tokens: existing.rows[0].max_output_tokens,
-        },
         source: "cache",
+        prompt_language: language,
       });
     }
 
-    // 4) Generate (OpenAI guarded inside openAiGenerateReport)
+    // 5) Generate
     const ai = await openAiGenerateReport({
-      promptText,
+      promptText: finalPrompt,
+      language, // pass-through for downstream handling (optional)
       model: "gpt-4o-mini",
       temperature: 0.4,
       max_output_tokens: 900,
     });
 
-    const reportText = String(ai.text || "");
+    const reportText = String(ai.text || "").trim();
 
-    // 5) Store (supports multiple prompts per submission)
+    // 6) Store (UPSERT so repeated generations don't crash)
     await pool.query(
       `INSERT INTO ai_reports (submission_id, prompt_id, prompt_hash, model, temperature, max_output_tokens, report_text)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -6244,22 +6369,173 @@ app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
          model = EXCLUDED.model,
          temperature = EXCLUDED.temperature,
          max_output_tokens = EXCLUDED.max_output_tokens,
-         updated_at = now()`,
+         updated_at = NOW()`,
       [submissionId, promptId, promptHash, ai.model, ai.temperature, ai.max_output_tokens, reportText]
     );
 
-    return res.json({ ok: true, report_text: reportText, source: "openai" });
+    return res.json({
+      ok: true,
+      report_text: reportText,
+      source: "openai",
+      prompt_language: language,
+    });
   } catch (err) {
     console.error("❌ /api/admin/reports/generate error:", err);
+    return res.status(500).json({ ok: false, error: "generate_failed", message: err.message });
+  }
+});
 
-    if (err?.code === "openai_not_configured") {
-      return res.status(503).json({
-        ok: false,
-        error: "openai_not_configured",
-        message: "OPENAI_API_KEY is not configured on this server.",
-      });
+// ---------------------------------------------------------------------
+// AI Prompts - suggest a prompt template (OpenAI)
+// POST /api/admin/ai-prompts/:slug/suggest
+// body: { slug?, name, helperLanguage?, mss_metrics[], opt_metrics[], admin_notes? }
+// Returns: { ok:true, prompt_text }
+// ---------------------------------------------------------------------
+app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const name = String(req.body?.name || "").trim();
+    const helperLanguage = String(req.body?.helperLanguage || "").trim() || null;
+    const mss = Array.isArray(req.body?.mss_metrics) ? req.body.mss_metrics : [];
+    const opt = Array.isArray(req.body?.opt_metrics) ? req.body.opt_metrics : [];
+    const adminNotes = String(req.body?.admin_notes || "").trim(); // for teacher only; do not send verbatim unless you intend to
+
+    if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
+    if (!mss.length && !opt.length) {
+      return res.status(400).json({ ok: false, error: "missing_metrics" });
     }
 
-    return res.status(500).json({ ok: false, error: "generate_failed", message: err.message });
+    // Resolve school_id (optional but good for validation/logging)
+    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+
+    // Build the prompt that asks OpenAI to CREATE A TEMPLATE (not a report)
+    // This is similar to your buildSuggestPreamble(), but server-side.
+    // IMPORTANT: include placeholders to be used later at runtime.
+    const runtimeVars = [
+      "{{question}}",
+      "{{transcript}}",
+      "{{student}}",
+      "{{wpm}}",
+      "{{mss_fluency}}",
+      "{{mss_pron}}",
+      "{{mss_grammar}}",
+      "{{mss_vocab}}",
+      "{{mss_cefr}}",
+      "{{mss_toefl}}",
+      "{{mss_ielts}}",
+      "{{mss_pte}}",
+    ];
+
+    const selectedVars = [
+      // Always include question/transcript; include others if selected (your call)
+      "{{question}}",
+      "{{transcript}}",
+      ...(opt.includes("wpm") ? ["{{wpm}}"] : []),
+      ...mss.map((k) => `{{${k}}}`),
+    ];
+
+    const systemPreamble = [
+      "SYSTEM ROLE:",
+      "You are an expert instructional designer for MySpeakingScore (MSS).",
+      "",
+      "TASK:",
+      "Generate a teacher-usable AI prompt TEMPLATE for feedback on a student's spoken response.",
+      "This template will be stored in ai_prompts.prompt_text and later used with real submission data.",
+      "",
+      "CONSTRAINTS:",
+      "- Use ONLY the metrics the admin selected.",
+      "- Do NOT invent scores or facts.",
+      "- Be practical: actionable exercises, encouraging, teacher-friendly.",
+      "- Output must be a single prompt template (not JSON).",
+      "",
+      "AVAILABLE RUNTIME VARIABLES (placeholders):",
+      selectedVars.map(v => `- ${v}`).join("\n"),
+      "",
+      "REQUIRED OUTPUT STRUCTURE (Markdown):",
+      "1) Quick Summary (2–3 bullets)",
+      "2) Strengths (2–4 bullets)",
+      "3) Priority Improvements (2–4 bullets)",
+      "4) Exercises (3–6 items) tied to selected metrics",
+      "5) Next Attempt Plan (short checklist)",
+      "",
+      "TONE:",
+      "Supportive, specific, teacher-friendly.",
+      "",
+      "ADMIN SELECTIONS:",
+      `- Prompt name: ${name}`,
+      `- Helper language: ${helperLanguage || "None (English only)"}`,
+      `- MSS metrics: ${mss.join(", ") || "None"}`,
+      `- Optional metrics: ${opt.join(", ") || "None"}`,
+      // Admin notes are teacher-only; if you want them to shape the suggestion without being stored elsewhere,
+      // you MAY include them here. If you do, I'd label them as "private guidance" and avoid re-output.
+      adminNotes ? `- Private guidance (do not repeat): ${adminNotes}` : `- Private guidance (do not repeat): None`,
+      "",
+      "OUTPUT RULE:",
+      "Return ONLY the prompt template. Do not add explanations.",
+    ].join("\n");
+
+    const ai = await openAiGenerateReport({
+      promptText: systemPreamble,
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_output_tokens: 900,
+    });
+
+    const prompt_text = String(ai.text || "").trim();
+    if (!prompt_text) {
+      return res.status(500).json({ ok: false, error: "suggest_empty" });
+    }
+
+    return res.json({ ok: true, prompt_text });
+  } catch (err) {
+    console.error("❌ /api/admin/ai-prompts/:slug/suggest error:", err);
+    return res.status(500).json({ ok: false, error: "suggest_failed", message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------
+// AI Reports - delete one cached report
+// DELETE /api/admin/reports/:slug/:submission_id/:prompt_id
+// ---------------------------------------------------------------------
+app.delete("/api/admin/reports/:slug/:submission_id/:prompt_id", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    const submissionId = Number(req.params.submission_id || 0);
+    const promptId = Number(req.params.prompt_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!submissionId) return res.status(400).json({ ok: false, error: "bad_submission_id" });
+    if (!promptId) return res.status(400).json({ ok: false, error: "bad_prompt_id" });
+
+    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = Number(s.rows[0].id);
+
+    // Ensure submission belongs to this school
+    const sub = await pool.query(
+      `SELECT 1 FROM submissions WHERE id = $1 AND school_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [submissionId, schoolId]
+    );
+    if (!sub.rowCount) return res.status(404).json({ ok: false, error: "submission_not_found" });
+
+    // Ensure prompt belongs to this school
+    const pr = await pool.query(
+      `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
+      [promptId, schoolId]
+    );
+    if (!pr.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+
+    const del = await pool.query(
+      `DELETE FROM ai_reports WHERE submission_id = $1 AND prompt_id = $2`,
+      [submissionId, promptId]
+    );
+
+    return res.json({ ok: true, deleted: del.rowCount > 0 });
+  } catch (err) {
+    console.error("❌ /api/admin/reports delete error:", err);
+    return res.status(500).json({ ok: false, error: "delete_failed", message: err.message });
   }
 });

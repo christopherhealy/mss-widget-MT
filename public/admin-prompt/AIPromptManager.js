@@ -38,8 +38,8 @@ console.log("✅ AIPromptManager.js loaded");
     btnSuggest: $("btnSuggest"),
     promptName: $("promptName"),
     promptText: $("promptText"),
-    helperLanguage: $("helperLanguage"),
-    suggestNotes: $("suggestNotes"),
+    promptLanguage: $("helperLanguage"),
+    promptNotes: $("suggestNotes"),
     editError: $("editError"),
 
     // Checklists
@@ -62,6 +62,7 @@ console.log("✅ AIPromptManager.js loaded");
   let promptsCache = [];
   let viewerPromptId = null;
   let editPromptId = null; // null = add, number = edit
+  let viewerPrompt = null;   // ← ADD THIS
 
   // ---------------------------
   // Variables + Suggest metric lists
@@ -329,40 +330,41 @@ function syncMetricsIntoPromptText() {
   // ---------------------------
   // Suggest: preamble + input collection + validation
   // ---------------------------
-  function buildSuggestPreamble() {
-    return [
-      "SYSTEM ROLE:",
-      "You are an expert instructional designer for MySpeakingScore (MSS).",
-      "",
-      "TASK:",
-      "Generate a teacher-usable AI prompt template for feedback on a student's spoken response.",
-      "This template will be stored in ai_prompts.prompt_text and later used with real submission data.",
-      "",
-      "CONSTRAINTS:",
-      "- Use ONLY the metrics the admin selected.",
-      "- Do NOT invent scores or facts.",
-      "- Be practical: actionable exercises, encouraging, teacher-friendly.",
-      "- Output must be a single prompt template (not JSON).",
-      "",
-      "AVAILABLE RUNTIME VARIABLES (placeholders):",
-      "- {{question}}",
-      "- {{transcript}} (clean transcript)",
-      "- {{student}} (if present)",
-      "- {{wpm}} (if selected)",
-      "- Selected MSS scores: {{mss_fluency}}, {{mss_pron}}, {{mss_grammar}}, {{mss_vocab}}, {{mss_cefr}}, {{mss_toefl}}",
-      "",
-      "REQUIRED OUTPUT STRUCTURE (Markdown):",
-      "1) Quick Summary (2–3 bullets)",
-      "2) Strengths (2–4 bullets)",
-      "3) Priority Improvements (2–4 bullets)",
-      "4) Exercises (3–6 items) tied to selected metrics",
-      "5) Next Attempt Plan (short checklist)",
-      "",
-      "TONE:",
-      "Supportive, specific, teacher-friendly."
-    ].join("\n");
-  }
-
+ function buildSuggestPreamble() {
+  return [
+    "SYSTEM ROLE:",
+    "You are an accomplished, thoughtful, and kind ESL teacher and instructional coach.",
+    "You have assessment results for a student's spoken response and want to provide a clear, concise feedback report with practical suggestions the student can try immediately. If you are using a helper language, only use it to explain concepts and to support your instructions- as the benefit of learning English involves reading English as much as possible. ",
+    "",
+    "TASK:",
+    "Generate a teacher-usable AI prompt TEMPLATE for feedback on a student's spoken response.",
+    "This template will be stored in ai_prompts.prompt_text and later used with real submission data.",
+    "",
+    "CONSTRAINTS:",
+    "- Use ONLY the metrics the admin selected.",
+    "- Do NOT invent scores or facts.",
+    "- If a metric is missing/blank, gracefully omit it (do not mention it).",
+    "- Be practical: actionable exercises, encouraging, teacher-friendly.",
+    "- Output must be a single prompt template (not JSON).",
+    "",
+    "AVAILABLE RUNTIME VARIABLES (placeholders):",
+    "- {{question}}",
+    "- {{transcript}} (clean transcript)",
+    "- {{student}} (if present)",
+    "- {{wpm}} (if selected)",
+    "- Selected MSS scores: {{mss_fluency}}, {{mss_pron}}, {{mss_grammar}}, {{mss_vocab}}, {{mss_cefr}}, {{mss_toefl}}",
+    "",
+    "REQUIRED OUTPUT STRUCTURE (Markdown):",
+    "1) Quick Summary (2–3 bullets)",
+    "2) Strengths (2–4 bullets)",
+    "3) Priority Improvements (2–4 bullets)",
+    "4) Exercises (3–6 items) tied to selected metrics",
+    "5) Next Attempt Plan (short checklist)",
+    "",
+    "TONE:",
+    "Supportive, specific, teacher-friendly, and concise."
+  ].join("\n");
+}
   function collectSuggestInputs() {
     const name = (els.promptName?.value || "").trim();
     const helperLanguage = (els.helperLanguage?.value || "").trim();
@@ -539,16 +541,25 @@ function syncMetricsIntoPromptText() {
     });
   }
 
+
   // ---------------------------
   // Viewer Modal
   // ---------------------------
-  function openViewer(p) {
-    viewerPromptId = Number(p.id);
-    els.viewerTitle.textContent = p.name || "Prompt";
-    els.viewerMeta.textContent = `id=${p.id}`;
-    els.viewerText.textContent = p.prompt_text || "";
-    els.viewerOverlay.classList.add("show");
-  }
+function openViewer(p) {
+  viewerPrompt = p;                  // ✅ store full object
+  viewerPromptId = Number(p.id);     // keep if you want
+
+  els.viewerTitle.textContent = p.name || "Prompt";
+  els.viewerMeta.textContent = `id=${p.id}`;
+  els.viewerText.textContent = p.prompt_text || "";
+  els.viewerOverlay.classList.add("show");
+}
+
+function closeViewer() {
+  els.viewerOverlay.classList.remove("show");
+  viewerPromptId = null;
+  viewerPrompt = null;               // ✅ clear
+}
 
   function closeViewer() {
     els.viewerOverlay.classList.remove("show");
@@ -558,8 +569,18 @@ function syncMetricsIntoPromptText() {
   // ---------------------------
   // Editor Modal
   // ---------------------------
- function openEditor(pOrNull) {
+function openEditor(pOrNull) {
   showEditError("");
+
+  if (!els.promptName || !els.promptText || !els.promptLanguage || !els.promptNotes) {
+    console.error("[openEditor] missing DOM refs:", {
+      promptName: !!els.promptName,
+      promptText: !!els.promptText,
+      promptLanguage: !!els.promptLanguage,
+      promptNotes: !!els.promptNotes,
+    });
+    return;
+  }
 
   if (pOrNull) {
     editPromptId = Number(pOrNull.id);
@@ -567,19 +588,18 @@ function syncMetricsIntoPromptText() {
     els.editMeta.textContent = `id=${pOrNull.id} • slug=${currentSlug}`;
     els.promptName.value = pOrNull.name || "";
     els.promptText.value = pOrNull.prompt_text || "";
-    els.helperLanguage.value = ""; // not persisted yet
-    if (els.suggestNotes) els.suggestNotes.value = "";
+    els.promptLanguage.value = pOrNull.language || "";
+    els.promptNotes.value = pOrNull.notes || "";
   } else {
     editPromptId = null;
     els.editTitle.textContent = "Add Prompt";
     els.editMeta.textContent = `slug=${currentSlug}`;
     els.promptName.value = "";
     els.promptText.value = "";
-    els.helperLanguage.value = "";
-    if (els.suggestNotes) els.suggestNotes.value = "";
+    els.promptLanguage.value = "";
+    els.promptNotes.value = "";
   }
 
-  // ✅ Always sync checkbox state from current prompt text (Add or Edit)
   const selectedKeys = parseMetricsFromPromptText(els.promptText.value);
 
   document.querySelectorAll("input.mssMetric").forEach(cb => {
@@ -590,8 +610,6 @@ function syncMetricsIntoPromptText() {
     cb.checked = selectedKeys.includes(cb.value);
   });
 
-  // ✅ Ensure block exists / normalized based on current checkbox state
-  // (If your parse came from block, this becomes idempotent)
   syncMetricsIntoPromptText();
 
   els.editOverlay.classList.add("show");
@@ -622,73 +640,130 @@ function syncMetricsIntoPromptText() {
     }
   }
 
-  async function handleSave() {
-    showEditError("");
+async function handleSave() {
+  showEditError("");
 
-    const name = (els.promptName.value || "").trim();
-    const prompt_text = (els.promptText.value || "").trim();
+  const name = (els.promptName.value || "").trim();
+  const prompt_text = (els.promptText.value || "").trim();
+ 
+  const language = (els.promptLanguage?.value || "").trim();
+  const notes = (els.promptNotes?.value || "").trim();
 
-    if (!name) return showEditError("Prompt Name is required.");
-    if (!prompt_text) return showEditError("Prompt Text is required.");
+  if (!name) return showEditError("Prompt Name is required.");
+  if (!prompt_text) return showEditError("Prompt Text is required.");
 
-    const payload = { name, prompt_text };
+  const payload = { name, prompt_text, notes, language };
 
-    try {
-      setStatus("Saving…");
-      els.btnSave.disabled = true;
+  try {
+    setStatus("Saving…");
+    els.btnSave.disabled = true;
 
-      if (editPromptId == null) {
-        await createPrompt(currentSlug, payload);
-      } else {
-        await updatePrompt(currentSlug, editPromptId, payload);
-      }
-
-      await refresh();
-      setStatus("");
-      closeEditor();
-    } catch (e) {
-      showEditError(`Save failed: ${e.message || "unknown"}`);
-    } finally {
-      els.btnSave.disabled = false;
+    let saved;
+    if (editPromptId == null) {
+      saved = await createPrompt(currentSlug, payload);
+      if (saved?.id) editPromptId = Number(saved.id); // ✅
+    } else {
+      saved = await updatePrompt(currentSlug, editPromptId, payload);
     }
+
+    await refresh();
+    setStatus("Saved ✓");
+  } catch (e) {
+    showEditError(`Save failed: ${e.message || "unknown"}`);
+  } finally {
+    els.btnSave.disabled = false;
+  }
+}
+
+function getCurrentSchoolSlug() {
+  // 1) URL param is canonical (deep links)
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get("slug");
+  if (fromUrl && String(fromUrl).trim()) return String(fromUrl).trim();
+
+  // 2) If you have a school selector dropdown in this page
+  const sel =
+    document.getElementById("schoolSelect") ||
+    document.getElementById("portal-school-selector");
+
+  if (sel && sel.value && String(sel.value).trim()) return String(sel.value).trim();
+
+  // 3) If you stored it anywhere
+  const fromLS = localStorage.getItem("mss_current_slug");
+  if (fromLS && String(fromLS).trim()) return String(fromLS).trim();
+
+  return "";
+}
+// ---------------------------
+// Suggest (calls server AI suggest endpoint)
+// ---------------------------
+async function handleSuggest() {
+  showEditError("");
+
+  const inputs = collectSuggestInputs();
+  const problem = validateSuggestInputs(inputs);
+  if (problem) {
+    showModal("Suggest AI Prompt", problem);
+    return;
   }
 
-  // ---------------------------
-  // Suggest (stub for now; next step is AI API call)
-  // ---------------------------
-  async function handleSuggest() {
-    showEditError("");
+  const slug = String(getCurrentSchoolSlug() || window.currentSchoolSlug || "").trim();
+  if (!slug) {
+    showModal("Suggest AI Prompt", "Missing school slug. Open this page with ?slug=your-school-slug.");
+    return;
+  }
 
-    const inputs = collectSuggestInputs();
-    const problem = validateSuggestInputs(inputs);
-    if (problem) {
-      showModal("Suggest AI Prompt", problem);
+  try {
+    const payload = {
+      slug,
+      name: inputs.name,
+      helperLanguage: inputs.helperLanguage || null,
+      mss_metrics: inputs.mss || [],
+      opt_metrics: inputs.opt || [],
+      admin_notes: inputs.notes || "",
+    };
+
+ const token = localStorage.getItem("mss_admin_token");
+
+ const resp = await fetch(
+  `/api/admin/ai-prompts/${encodeURIComponent(slug)}/suggest`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  }
+);
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data?.ok) {
+      const msg = data?.message || data?.error || `Suggest failed (${resp.status})`;
+      showModal("Suggest AI Prompt", msg);
       return;
     }
 
-    // Hardwired preamble + admin selections (ready for API submission)
-    const preamble = buildSuggestPreamble();
+    const suggested = String(data.prompt_text || "").trim();
+    if (!suggested) {
+      showModal("Suggest AI Prompt", "Suggest returned empty prompt_text.");
+      return;
+    }
 
-    const selections = [
-      "",
-      "ADMIN SELECTIONS:",
-      `- Prompt name: ${inputs.name}`,
-      `- Helper language: ${inputs.helperLanguage || "None (English only)"}`,
-      `- MSS metrics: ${inputs.mss.join(", ")}`,
-      `- Optional metrics: ${inputs.opt.length ? inputs.opt.join(", ") : "None"}`,
-      `- Admin notes: ${inputs.notes || "None"}`
-    ].join("\n");
+    // Inject into Prompt Text editor
+    if (!els || !els.promptText) {
+      showModal("Suggest AI Prompt", "Internal error: promptText element not found.");
+      return;
+    }
+    els.promptText.value = suggested;
 
-    const composedRequest = `${preamble}\n${selections}`;
-
-    // For now: show what will be sent.
-    // Next: POST to your AI API endpoint and set els.promptText.value = modelOutput.
-    showModal(
-      "Suggest is wired (next step: AI API)",
-      "Request that will be sent to the AI API:\n\n" + composedRequest
-    );
+    showModal("Suggest AI Prompt", "Suggestion inserted into Prompt Text. Review and Save when ready.");
+  } catch (e) {
+    console.error("❌ handleSuggest failed:", e);
+    showModal("Suggest AI Prompt", e?.message || "Unexpected error");
   }
-
+}
   // ---------------------------
   // Refresh
   // ---------------------------
@@ -741,13 +816,15 @@ function syncMetricsIntoPromptText() {
     });
 
     // Viewer edit -> opens editor
-    els.viewerEdit?.addEventListener("click", () => {
-      const p = promptsCache.find(x => Number(x.id) === Number(viewerPromptId));
-      if (p) {
-        closeViewer();
-        openEditor(p);
-      }
-    });
+   els.viewerEdit?.addEventListener("click", () => {
+   if (!viewerPrompt) {
+    console.warn("[AIPromptManager] Edit clicked but viewerPrompt is null");
+    return;
+   }
+   const p = viewerPrompt;
+   closeViewer();
+   openEditor(p);
+  });
 
     // Editor modal buttons
     els.editClose?.addEventListener("click", closeEditor);
