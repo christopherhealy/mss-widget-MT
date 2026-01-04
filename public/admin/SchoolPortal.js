@@ -187,79 +187,91 @@ function confirmSchoolChange(nextLabel) {
   });
 }
 
-function getAdminToken() {
-  // 1) canonical token key
-  const t1 = (localStorage.getItem("mss_admin_token") || "").trim();
+// ---------------------------------------------------------------------
+// Admin auth helpers (JWT first-class; legacy key kept separate)
+// ---------------------------------------------------------------------
+
+const LS_TOKEN_KEY   = "mss_admin_token";   // JWT
+const LS_LEGACY_KEY  = "mss_admin_key";     // legacy (NOT a JWT)
+const LS_SESSION_KEY = "mssAdminSession";   // session object (may contain token)
+
+// Returns JWT token only (or null)
+function getAdminJwtToken() {
+  // 1) Canonical JWT key
+  const t1 = String(localStorage.getItem(LS_TOKEN_KEY) || "").trim();
   if (t1) return t1;
 
-  // 2) legacy/admin key (if you use it)
-  const t2 = (localStorage.getItem("mss_admin_key") || "").trim();
-  if (t2) return t2;
-
-  // 3) legacy session object
+  // 2) Legacy session object may contain token (only accept if it LOOKS like a JWT)
   try {
-    const raw = localStorage.getItem("mssAdminSession");
+    const raw = localStorage.getItem(LS_SESSION_KEY);
     const s = raw ? JSON.parse(raw) : null;
 
-    // Common legacy names people use:
-    const t3 = (s?.token || s?.adminKey || s?.mss_admin_token || "").trim();
-    if (t3) return t3;
+    const candidate = String(
+      s?.token || s?.jwt || s?.accessToken || s?.mss_admin_token || ""
+    ).trim();
+
+    // only accept if it looks like a JWT (three dot-separated parts)
+    if (candidate && candidate.split(".").length === 3) return candidate;
   } catch (_) {}
 
-  return "";
+  return null;
 }
-async function adminFetch(url, opts = {}) {
-  const token = getAdminToken();
 
-  // Merge headers safely: caller headers first, then enforce auth and defaults.
-  const callerHeaders = (opts && opts.headers) ? opts.headers : {};
+// Returns legacy admin key (or null) — never used as Bearer
+function getLegacyAdminKey() {
+  const k = String(localStorage.getItem(LS_LEGACY_KEY) || "").trim();
+  return k || null;
+}
+
+async function adminFetch(url, opts = {}) {
+  const token = getAdminJwtToken();
+  const legacyKey = getLegacyAdminKey(); // keep if you still need it for old endpoints
+
+  const callerHeaders = opts.headers || {};
   const headers = new Headers(callerHeaders);
 
-  // Ensure JSON content-type when sending a body and caller didnâ€™t set one
   if (opts.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  // Enforce Authorization last so it cannot be accidentally overridden
+  headers.set("Accept", "application/json");
+
+  // JWT Bearer only
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // Optional: cache-busting / clarity
-  headers.set("Accept", "application/json");
+  // OPTIONAL: only if you still have endpoints that require a legacy key.
+  // If you don't use legacy-key auth anymore, delete this entirely.
+  // headers.set("X-Admin-Key", legacyKey || "");
 
-  const finalOpts = {
-    ...opts,
-    headers,
-    // If you ever switch to cookies, you can uncomment:
-    // credentials: "include",
-  };
-
-  // Helpful QA logging (leave on during QA; you can remove later)
+  // QA logging — include first 12 chars so you can confirm which path is used
   try {
     console.log("[adminFetch]", opts.method || "GET", url, {
-      hasToken: !!token,
+      hasJwt: !!token,
+      jwtPrefix: token ? token.slice(0, 12) : null,
+      hasLegacyKey: !!legacyKey,
       hasAuthHeader: headers.has("Authorization"),
     });
   } catch (_) {}
 
-  return fetch(url, finalOpts);
+  return fetch(url, { ...opts, headers });
 }
-  
-function getLegacySession() {
-    try {
-      const raw = window.localStorage.getItem("mssAdminSession");
-      console.log("[SchoolPortal] raw mssAdminSession:", raw);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      console.log("[SchoolPortal] parsed mssAdminSession:", parsed);
-      return parsed;
-    } catch (e) {
-      console.warn("[SchoolPortal] Failed to read/parse mssAdminSession:", e);
-      return null;
-    }
-  }
 
+// Keep this for debugging only (not used by adminFetch now)
+function getLegacySession() {
+  try {
+    const raw = window.localStorage.getItem(LS_SESSION_KEY);
+    console.log("[SchoolPortal] raw mssAdminSession:", raw);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    console.log("[SchoolPortal] parsed mssAdminSession:", parsed);
+    return parsed;
+  } catch (e) {
+    console.warn("[SchoolPortal] Failed to read/parse mssAdminSession:", e);
+    return null;
+  }
+}
   const DEFAULT_ADMIN_HOME_URL = "/admin/AdminHome.html"; // change if needed
 
  // -----------------------------------------------------------------------
