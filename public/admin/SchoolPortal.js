@@ -188,30 +188,34 @@ function confirmSchoolChange(nextLabel) {
 }
 
 // ---------------------------------------------------------------------
-// Admin auth helpers (JWT first-class; legacy key kept separate)
+// ---------------------------------------------------------------------
+// Admin auth helpers (JWT-first; legacy key optional)
 // ---------------------------------------------------------------------
 
 const LS_TOKEN_KEY   = "mss_admin_token";   // JWT
 const LS_LEGACY_KEY  = "mss_admin_key";     // legacy (NOT a JWT)
 const LS_SESSION_KEY = "mssAdminSession";   // session object (may contain token)
+const LS_LAST_AUTH_DIAG = "mss_admin_auth_diag"; // optional: last auth debug snapshot
+
+function looksLikeJwt(s) {
+  const t = String(s || "").trim();
+  return t && t.split(".").length === 3;
+}
 
 // Returns JWT token only (or null)
 function getAdminJwtToken() {
   // 1) Canonical JWT key
   const t1 = String(localStorage.getItem(LS_TOKEN_KEY) || "").trim();
-  if (t1) return t1;
+  if (looksLikeJwt(t1)) return t1;
 
-  // 2) Legacy session object may contain token (only accept if it LOOKS like a JWT)
+  // 2) Session object may contain token
   try {
     const raw = localStorage.getItem(LS_SESSION_KEY);
     const s = raw ? JSON.parse(raw) : null;
-
     const candidate = String(
-      s?.token || s?.jwt || s?.accessToken || s?.mss_admin_token || ""
+      s?.token || s?.jwt || s?.accessToken || s?.access_token || s?.mss_admin_token || ""
     ).trim();
-
-    // only accept if it looks like a JWT (three dot-separated parts)
-    if (candidate && candidate.split(".").length === 3) return candidate;
+    if (looksLikeJwt(candidate)) return candidate;
   } catch (_) {}
 
   return null;
@@ -223,9 +227,16 @@ function getLegacyAdminKey() {
   return k || null;
 }
 
+// Store last auth diag for later QA (optional)
+function saveAuthDiag(diag) {
+  try {
+    localStorage.setItem(LS_LAST_AUTH_DIAG, JSON.stringify(diag));
+  } catch (_) {}
+}
+
 async function adminFetch(url, opts = {}) {
   const token = getAdminJwtToken();
-  const legacyKey = getLegacyAdminKey(); // keep if you still need it for old endpoints
+  const legacyKey = getLegacyAdminKey();
 
   const callerHeaders = opts.headers || {};
   const headers = new Headers(callerHeaders);
@@ -233,7 +244,6 @@ async function adminFetch(url, opts = {}) {
   if (opts.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-
   headers.set("Accept", "application/json");
 
   // JWT Bearer only
@@ -241,24 +251,33 @@ async function adminFetch(url, opts = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // OPTIONAL: only if you still have endpoints that require a legacy key.
-  // If you don't use legacy-key auth anymore, delete this entirely.
-  // headers.set("X-Admin-Key", legacyKey || "");
+  // OPTIONAL legacy header if you still support it server-side.
+  // If you do NOT support legacy at all, leave this commented out.
+  // if (legacyKey) headers.set("X-Admin-Key", legacyKey);
 
-  // QA logging — include first 12 chars so you can confirm which path is used
-  try {
-    console.log("[adminFetch]", opts.method || "GET", url, {
-      hasJwt: !!token,
-      jwtPrefix: token ? token.slice(0, 12) : null,
-      hasLegacyKey: !!legacyKey,
-      hasAuthHeader: headers.has("Authorization"),
-    });
-  } catch (_) {}
+  const method = (opts.method || "GET").toUpperCase();
+  const diag = {
+    ts: new Date().toISOString(),
+    method,
+    url,
+    hasJwt: !!token,
+    jwtPrefix: token ? token.slice(0, 12) : null,
+    hasLegacyKey: !!legacyKey,
+    hasAuthHeader: headers.has("Authorization"),
+  };
+  saveAuthDiag(diag);
 
-  return fetch(url, { ...opts, headers });
+  // QA logging
+  try { console.log("[adminFetch]", diag); } catch (_) {}
+
+  const res = await fetch(url, { ...opts, headers });
+
+  // If you want to keep UX moving without hard-redirecting:
+  // return res and let caller decide. Do NOT auto-redirect here.
+  return res;
 }
 
-// Keep this for debugging only (not used by adminFetch now)
+// Debug helper
 function getLegacySession() {
   try {
     const raw = window.localStorage.getItem(LS_SESSION_KEY);
@@ -272,58 +291,6 @@ function getLegacySession() {
     return null;
   }
 }
-  const DEFAULT_ADMIN_HOME_URL = "/admin/AdminHome.html"; // change if needed
-
- // -----------------------------------------------------------------------
-  // Query params
-  // -----------------------------------------------------------------------
-
-  const params = new URLSearchParams(window.location.search);
-  let INITIAL_SLUG = params.get("slug");
-  const ASSESSMENT_ID_FROM_URL = params.get("assessmentId");
-
-  // -----------------------------------------------------------------------
-  // Admin Home navigation helper
-  // -----------------------------------------------------------------------
-
-  function buildAdminHomeUrl() {
-    let base = ADMIN_HOME_URL;
-
-    try {
-      const url = new URL(base, window.location.origin);
-
-      // Prefer adminKey from URL, else from localStorage
-      const params = new URLSearchParams(window.location.search);
-      const adminKey =
-        params.get("adminKey") ||
-        window.localStorage.getItem(ADMIN_KEY_STORAGE);
-
-      if (adminKey) {
-        url.searchParams.set("adminKey", adminKey);
-      }
-
-      return url.pathname + url.search;
-    } catch (e) {
-      console.warn("[SchoolPortal] buildAdminHomeUrl failed:", e);
-      return ADMIN_HOME_URL;
-    }
-  }
-
-function returnToAdminHome() {
-    try {
-      // If opened from AdminHome via window.open()
-      if (window.opener && !window.opener.closed) {
-        window.opener.focus();
-        window.close(); // only works if script-opened
-        return;
-      }
-    } catch (e) {
-      // ignore cross-window issues
-    }
-
-    // Fallback: navigate in same tab
-    window.location.href = buildAdminHomeUrl();
-  }
 
 async function ensureSlugFromSingleSchoolOrThrow() {
   // If URL already has slug (or already set), we're done
