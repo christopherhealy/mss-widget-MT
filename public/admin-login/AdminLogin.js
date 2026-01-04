@@ -1,8 +1,9 @@
 // /public/admin-login/AdminLogin.js
-// v2.7 — JWT session (prod-ready)
+// v2.8 — JWT session (prod-ready, QA-hardened)
 // - Stores mssAdminSession + mss_admin_token
 // - Expects server to return { ok:true, admin:{...}, token:"<jwt>" }
-// - Show-password toggle wired on load (not inside submit)
+// - Clears legacy keys to avoid mixed auth
+// - Adds QA logging for token presence + persistence
 
 console.log("✅ AdminLogin.js loaded");
 
@@ -16,6 +17,14 @@ console.log("✅ AdminLogin.js loaded");
   const LS_SESSION_KEY = "mssAdminSession";
   const LS_TOKEN_KEY = "mss_admin_token";
   const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
+
+  // Legacy / historical keys we may have used at some point
+  const LEGACY_KEYS = [
+    "mss_admin_key",
+    "mssAdminToken",
+    "mss_admin_jwt",
+    "mss_admin_session",
+  ];
 
   // -----------------------------
   // Helpers
@@ -41,31 +50,48 @@ console.log("✅ AdminLogin.js loaded");
   function safeSetLS(key, value) {
     try {
       localStorage.setItem(key, value);
+      return true;
     } catch (e) {
       console.warn("[AdminLogin] localStorage set failed:", key, e);
+      return false;
     }
   }
 
   function safeRemoveLS(key) {
     try {
       localStorage.removeItem(key);
+      return true;
     } catch (e) {
       console.warn("[AdminLogin] localStorage remove failed:", key, e);
+      return false;
     }
   }
 
   function clearAuthStorage() {
     safeRemoveLS(LS_TOKEN_KEY);
     safeRemoveLS(LS_SESSION_KEY);
+    LEGACY_KEYS.forEach((k) => safeRemoveLS(k));
+
+    // Also clear any legacy token fields inside the session object if present
+    try {
+      const raw = localStorage.getItem(LS_SESSION_KEY);
+      const s = raw ? JSON.parse(raw) : null;
+      if (s && (s.token || s.jwt || s.adminKey)) {
+        delete s.token;
+        delete s.jwt;
+        delete s.adminKey;
+        safeSetLS(LS_SESSION_KEY, JSON.stringify(s));
+      }
+    } catch (_) {}
   }
 
   function saveAdminSession(session) {
-    safeSetLS(LS_SESSION_KEY, JSON.stringify(session));
+    return safeSetLS(LS_SESSION_KEY, JSON.stringify(session));
   }
 
   function saveAdminToken(token) {
-    if (!token) return;
-    safeSetLS(LS_TOKEN_KEY, String(token));
+    if (!token) return false;
+    return safeSetLS(LS_TOKEN_KEY, String(token));
   }
 
   function deriveIsSuperadminFromEmail(email) {
@@ -79,6 +105,7 @@ console.log("✅ AdminLogin.js loaded");
   function normalizeLoginResponse(data, emailFromForm) {
     if (!data || typeof data !== "object") return null;
 
+    // Accept a few shapes (but prefer { admin, token })
     const admin = data.admin || data.session || data;
 
     const adminId = admin.adminId ?? admin.id ?? admin.admin_id ?? null;
@@ -105,6 +132,14 @@ console.log("✅ AdminLogin.js loaded");
       null;
 
     return { adminId, email, isSuperadmin, token };
+  }
+
+  async function safeJson(resp) {
+    try {
+      return await resp.json();
+    } catch {
+      return {};
+    }
   }
 
   // -----------------------------
@@ -173,16 +208,22 @@ console.log("✅ AdminLogin.js loaded");
       try {
         const res = await fetch("/api/admin/login", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          cache: "no-store",
           body: JSON.stringify({ email, password }),
         });
 
-        let data = {};
+        const data = await safeJson(res);
+
+        // QA: log the minimal response shape (never log password)
         try {
-          data = await res.json();
-        } catch {
-          data = {};
-        }
+          console.log("[AdminLogin] /api/admin/login", {
+            status: res.status,
+            okField: data?.ok,
+            hasAdmin: !!data?.admin,
+            hasToken: !!(data?.token || data?.jwt || data?.accessToken || data?.access_token),
+          });
+        } catch (_) {}
 
         // -----------------------------
         // FAILURE
@@ -190,6 +231,7 @@ console.log("✅ AdminLogin.js loaded");
         if (!res.ok || data.ok === false) {
           const msg =
             data.message ||
+            data.error ||
             "Login failed. Please check your email and password.";
 
           if (!DEV_BYPASS_ON_401) {
@@ -232,18 +274,20 @@ console.log("✅ AdminLogin.js loaded");
 
         if (!norm || !norm.adminId || !norm.email) {
           setStatus("Login succeeded but session data is incomplete.", true);
+          console.warn("[AdminLogin] Incomplete normalized login response:", norm, data);
           return;
         }
 
         if (!norm.token) {
           setStatus(
-            "Login succeeded but server did not return a JWT token. Fix /api/admin/login to return { token }. Check MSS_ADMIN_JWT_SECRET.",
+            "Login succeeded but server did not return a JWT token. Fix /api/admin/login to return { token }.",
             true
           );
+          console.warn("[AdminLogin] Missing token in server response:", data);
           return;
         }
 
-        saveAdminSession({
+        const sessionOk = saveAdminSession({
           adminId: Number(norm.adminId),
           email: norm.email,
           isSuperadmin:
@@ -252,7 +296,22 @@ console.log("✅ AdminLogin.js loaded");
               : deriveIsSuperadminFromEmail(norm.email),
         });
 
-        saveAdminToken(norm.token);
+        const tokenOk = saveAdminToken(norm.token);
+
+        // QA: confirm persistence before redirect
+        try {
+          const storedToken = localStorage.getItem(LS_TOKEN_KEY);
+          console.log("[AdminLogin] persisted", {
+            sessionOk,
+            tokenOk,
+            storedTokenLen: storedToken ? storedToken.length : 0,
+          });
+        } catch (_) {}
+
+        if (!tokenOk) {
+          setStatus("Login succeeded but token could not be saved to localStorage.", true);
+          return;
+        }
 
         setStatus("");
         window.location.href = ADMIN_HOME_URL;

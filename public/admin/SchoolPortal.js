@@ -188,33 +188,26 @@ function confirmSchoolChange(nextLabel) {
 }
 
 function getAdminToken() {
-  // Primary: token stored directly (this is what you have)
-  const t1 = localStorage.getItem("mss_admin_token");
-  if (t1 && String(t1).trim()) return String(t1).trim();
+  // 1) canonical token key
+  const t1 = (localStorage.getItem("mss_admin_token") || "").trim();
+  if (t1) return t1;
 
-  // Fallback: if you ever store it under mss_admin_jwt
-  const t2 = localStorage.getItem("mss_admin_jwt");
-  if (t2 && String(t2).trim()) return String(t2).trim();
+  // 2) legacy/admin key (if you use it)
+  const t2 = (localStorage.getItem("mss_admin_key") || "").trim();
+  if (t2) return t2;
 
-  // Fallback: if you later embed it in mssAdminSession
+  // 3) legacy session object
   try {
     const raw = localStorage.getItem("mssAdminSession");
-    if (raw) {
-      const sess = JSON.parse(raw);
-      const t =
-        sess?.token ||
-        sess?.jwt ||
-        sess?.admin_token ||
-        sess?.access_token ||
-        sess?.data?.token ||
-        sess?.data?.jwt;
-      if (t && String(t).trim()) return String(t).trim();
-    }
+    const s = raw ? JSON.parse(raw) : null;
+
+    // Common legacy names people use:
+    const t3 = (s?.token || s?.adminKey || s?.mss_admin_token || "").trim();
+    if (t3) return t3;
   } catch (_) {}
 
   return "";
 }
-
 async function adminFetch(url, opts = {}) {
   const token = getAdminToken();
 
