@@ -188,34 +188,37 @@ function confirmSchoolChange(nextLabel) {
 }
 
 // ---------------------------------------------------------------------
-// ---------------------------------------------------------------------
-// Admin auth helpers (JWT-first; legacy key optional)
+// Admin auth helpers (JWT first-class; legacy key kept separate)
 // ---------------------------------------------------------------------
 
 const LS_TOKEN_KEY   = "mss_admin_token";   // JWT
 const LS_LEGACY_KEY  = "mss_admin_key";     // legacy (NOT a JWT)
 const LS_SESSION_KEY = "mssAdminSession";   // session object (may contain token)
-const LS_LAST_AUTH_DIAG = "mss_admin_auth_diag"; // optional: last auth debug snapshot
-
-function looksLikeJwt(s) {
-  const t = String(s || "").trim();
-  return t && t.split(".").length === 3;
-}
 
 // Returns JWT token only (or null)
 function getAdminJwtToken() {
-  // 1) Canonical JWT key
-  const t1 = String(localStorage.getItem(LS_TOKEN_KEY) || "").trim();
-  if (looksLikeJwt(t1)) return t1;
+  // Canonical
+  let t = String(localStorage.getItem("mss_admin_token") || "").trim();
+  if (t) return t;
 
-  // 2) Session object may contain token
+  // Back-compat uppercase (common drift)
+  t = String(localStorage.getItem("MSS_ADMIN_TOKEN") || "").trim();
+  if (t) {
+    try { localStorage.setItem("mss_admin_token", t); } catch {}
+    return t;
+  }
+
+  // Session object fallbacks
   try {
-    const raw = localStorage.getItem(LS_SESSION_KEY);
+    const raw = localStorage.getItem("mssAdminSession");
     const s = raw ? JSON.parse(raw) : null;
     const candidate = String(
-      s?.token || s?.jwt || s?.accessToken || s?.access_token || s?.mss_admin_token || ""
+      s?.token || s?.jwt || s?.accessToken || s?.mss_admin_token || s?.mss_admin_token || ""
     ).trim();
-    if (looksLikeJwt(candidate)) return candidate;
+    if (candidate && candidate.split(".").length === 3) {
+      try { localStorage.setItem("mss_admin_token", candidate); } catch {}
+      return candidate;
+    }
   } catch (_) {}
 
   return null;
@@ -227,16 +230,9 @@ function getLegacyAdminKey() {
   return k || null;
 }
 
-// Store last auth diag for later QA (optional)
-function saveAuthDiag(diag) {
-  try {
-    localStorage.setItem(LS_LAST_AUTH_DIAG, JSON.stringify(diag));
-  } catch (_) {}
-}
-
 async function adminFetch(url, opts = {}) {
   const token = getAdminJwtToken();
-  const legacyKey = getLegacyAdminKey();
+  const legacyKey = getLegacyAdminKey(); // keep if you still need it for old endpoints
 
   const callerHeaders = opts.headers || {};
   const headers = new Headers(callerHeaders);
@@ -244,6 +240,7 @@ async function adminFetch(url, opts = {}) {
   if (opts.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+
   headers.set("Accept", "application/json");
 
   // JWT Bearer only
@@ -251,33 +248,24 @@ async function adminFetch(url, opts = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // OPTIONAL legacy header if you still support it server-side.
-  // If you do NOT support legacy at all, leave this commented out.
-  // if (legacyKey) headers.set("X-Admin-Key", legacyKey);
+  // OPTIONAL: only if you still have endpoints that require a legacy key.
+  // If you don't use legacy-key auth anymore, delete this entirely.
+  // headers.set("X-Admin-Key", legacyKey || "");
 
-  const method = (opts.method || "GET").toUpperCase();
-  const diag = {
-    ts: new Date().toISOString(),
-    method,
-    url,
-    hasJwt: !!token,
-    jwtPrefix: token ? token.slice(0, 12) : null,
-    hasLegacyKey: !!legacyKey,
-    hasAuthHeader: headers.has("Authorization"),
-  };
-  saveAuthDiag(diag);
+  // QA logging — include first 12 chars so you can confirm which path is used
+  try {
+    console.log("[adminFetch]", opts.method || "GET", url, {
+      hasJwt: !!token,
+      jwtPrefix: token ? token.slice(0, 12) : null,
+      hasLegacyKey: !!legacyKey,
+      hasAuthHeader: headers.has("Authorization"),
+    });
+  } catch (_) {}
 
-  // QA logging
-  try { console.log("[adminFetch]", diag); } catch (_) {}
-
-  const res = await fetch(url, { ...opts, headers });
-
-  // If you want to keep UX moving without hard-redirecting:
-  // return res and let caller decide. Do NOT auto-redirect here.
-  return res;
+  return fetch(url, { ...opts, headers });
 }
 
-// Debug helper
+// Keep this for debugging only (not used by adminFetch now)
 function getLegacySession() {
   try {
     const raw = window.localStorage.getItem(LS_SESSION_KEY);
@@ -291,6 +279,58 @@ function getLegacySession() {
     return null;
   }
 }
+  const DEFAULT_ADMIN_HOME_URL = "/admin/AdminHome.html"; // change if needed
+
+ // -----------------------------------------------------------------------
+  // Query params
+  // -----------------------------------------------------------------------
+
+  const params = new URLSearchParams(window.location.search);
+  let INITIAL_SLUG = params.get("slug");
+  const ASSESSMENT_ID_FROM_URL = params.get("assessmentId");
+
+  // -----------------------------------------------------------------------
+  // Admin Home navigation helper
+  // -----------------------------------------------------------------------
+
+  function buildAdminHomeUrl() {
+    let base = ADMIN_HOME_URL;
+
+    try {
+      const url = new URL(base, window.location.origin);
+
+      // Prefer adminKey from URL, else from localStorage
+      const params = new URLSearchParams(window.location.search);
+      const adminKey =
+        params.get("adminKey") ||
+        window.localStorage.getItem(ADMIN_KEY_STORAGE);
+
+      if (adminKey) {
+        url.searchParams.set("adminKey", adminKey);
+      }
+
+      return url.pathname + url.search;
+    } catch (e) {
+      console.warn("[SchoolPortal] buildAdminHomeUrl failed:", e);
+      return ADMIN_HOME_URL;
+    }
+  }
+
+function returnToAdminHome() {
+    try {
+      // If opened from AdminHome via window.open()
+      if (window.opener && !window.opener.closed) {
+        window.opener.focus();
+        window.close(); // only works if script-opened
+        return;
+      }
+    } catch (e) {
+      // ignore cross-window issues
+    }
+
+    // Fallback: navigate in same tab
+    window.location.href = buildAdminHomeUrl();
+  }
 
 async function ensureSlugFromSingleSchoolOrThrow() {
   // If URL already has slug (or already set), we're done
@@ -335,19 +375,19 @@ async function ensureSlugFromSingleSchoolOrThrow() {
 }
 
  function clearAdminSessionAndRedirect() {
-    try {
-      window.localStorage.removeItem(ADMIN_KEY_STORAGE);
-      window.localStorage.removeItem("mssAdminSession");
-      window.localStorage.removeItem("MSS_ADMIN_SESSION");
-      window.localStorage.removeItem("MSS_ADMIN_SESSION_V2");
-      window.localStorage.removeItem("MSS_ADMIN_TOKEN");
-      window.localStorage.removeItem("MSS_ADMIN_EMAIL");
-    } catch (e) {
-      console.warn("[SchoolPortal] Error clearing admin session", e);
-    }
-
-    window.location.href = ADMIN_LOGIN_URL;
+  try {
+    localStorage.removeItem("mss_admin_token");
+    localStorage.removeItem("MSS_ADMIN_TOKEN");
+    localStorage.removeItem("mssAdminSession");
+    localStorage.removeItem("MSS_ADMIN_SESSION");
+    localStorage.removeItem("MSS_ADMIN_SESSION_V2");
+    localStorage.removeItem("mss_admin_key");
+    localStorage.removeItem("MSS_ADMIN_EMAIL");
+  } catch (e) {
+    console.warn("[SchoolPortal] Error clearing admin session", e);
   }
+  window.location.href = ADMIN_LOGIN_URL;
+}
 
  // ✅ New: load admin session directly from localStorage.mssAdminSession
 async function loadAdminSession() {
@@ -596,19 +636,36 @@ function setReportStatus(msg="", isError=false){
 }
 
 async function loadAiPromptsForSchool() {
-  const res = await adminFetch(`/api/admin/ai-prompts/${encodeURIComponent(CURRENT_SLUG)}`, { method: "GET" });
+  if (!CURRENT_SLUG) {
+    aiPromptsCache = [];
+    return { ok: true, prompts: [] };
+  }
+
+  const res = await adminFetch(
+    `/api/admin/ai-prompts/${encodeURIComponent(CURRENT_SLUG)}`,
+    { method: "GET" }
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    aiPromptsCache = [];
+    return { ok: false, auth: true, status: res.status, prompts: [] };
+  }
+
   const data = await res.json().catch(() => ({}));
 
-  if (res.status === 401) {
-    window.location.href = "/admin-login/AdminLogin.html";
-    return [];
+  if (!res.ok || data.ok === false) {
+    return {
+      ok: false,
+      auth: false,
+      status: res.status,
+      error: data.error || `http_${res.status}`,
+      prompts: []
+    };
   }
-  if (!res.ok || data.ok === false) throw new Error(data.error || `http_${res.status}`);
 
   aiPromptsCache = Array.isArray(data.prompts) ? data.prompts : [];
-  return aiPromptsCache;
+  return { ok: true, prompts: aiPromptsCache };
 }
-
 function populateAiPromptSelect() {
   const sel = $("aiPromptSelect");
   const hint = $("aiPromptHint");
@@ -1600,7 +1657,7 @@ function openReportViewerForSubmission(submissionId) {
   if (btnDelete) btnDelete._mssBound = false;
   wireReportViewerEvents();
 
-  // Optional (recommended): move focus into the modal for accessibility
+  // Optional: move focus into the modal for accessibility
   setTimeout(() => {
     $("btnRunReport")?.focus?.();
   }, 0);
@@ -1610,8 +1667,23 @@ function openReportViewerForSubmission(submissionId) {
     try {
       setReportStatus("Loading prompts…");
 
-      if (!aiPromptsCache.length) {
-        await loadAiPromptsForSchool();
+      // Always attempt to load (but the loader is non-destructive and returns status)
+      const result = await loadAiPromptsForSchool();
+
+      if (!result || result.ok !== true) {
+        // Auth expired/invalid: keep this behavior localized to the viewer
+        if (result && result.auth) {
+          setReportStatus("Session expired. Please sign in again.", true);
+          clearAdminSessionAndRedirect();
+          return;
+        }
+
+        // Non-auth failure: show error and keep modal open
+        const msg =
+          (result && (result.error || result.message)) ||
+          "Unable to load AI prompts.";
+        setReportStatus(msg, true);
+        return;
       }
 
       populateAiPromptSelect();
@@ -1628,7 +1700,7 @@ function openReportViewerForSubmission(submissionId) {
 
       setReportStatus("");
     } catch (e) {
-      setReportStatus(`Unable to load prompts: ${e.message || "unknown"}`, true);
+      setReportStatus(`Unable to load prompts: ${e?.message || "unknown"}`, true);
     }
   })();
 }

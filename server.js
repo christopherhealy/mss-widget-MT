@@ -140,42 +140,27 @@ function requireSuperAdmin(req, res, next) {
 }
 
 function requireAdminAuth(req, res, next) {
-console.log(
-  "[AuthCheck]",
-  req.path,
-  "auth:",
-  req.headers.authorization,
-  "x-mss:",
-  req.headers["x-mss-admin-key"]
-);  
+  try {
+    const auth = String(req.headers.authorization || "");
+    const hasSecret = !!process.env.MSS_ADMIN_JWT_SECRET;
 
-try {
-    requireAdminJwtSecret();
-
-    const token = readAdminTokenFromRequest(req);
-    console.log("[requireAdminAuth]", req.method, req.path, "token?", !!token);
-    if (!token) {
-      return res.status(401).json({
-        ok: false,
-        error: "missing_admin_token",
-        message: "Missing admin token.",
-      });
+    if (!auth.startsWith("Bearer ")) {
+      console.warn("[requireAdminAuth] missing bearer", { hasAuth: !!auth, hasSecret });
+      return res.status(401).json({ ok: false, error: "missing_bearer" });
     }
 
-    const decoded = jwt.verify(token, ADMIN_JWT_SECRET, {
-      issuer: "mss-widget-mt",
-      audience: "mss-admin",
-    });
+    const token = auth.slice(7).trim();
+    if (!hasSecret) {
+      console.error("[requireAdminAuth] MSS_ADMIN_JWT_SECRET missing (Vercel env)");
+      return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
+    }
 
-    req.adminAuth = decoded;
+    const payload = jwt.verify(token, process.env.MSS_ADMIN_JWT_SECRET);
+    req.admin = payload;
     return next();
-  } catch (err) {
-    console.warn("[Auth] requireAdminAuth failed:", err?.name, err?.message);
-    return res.status(401).json({
-      ok: false,
-      error: "invalid_admin_token",
-      message: "Invalid or expired admin token.",
-    });
+  } catch (e) {
+    console.warn("[requireAdminAuth] jwt verify failed", { name: e?.name, message: e?.message });
+    return res.status(401).json({ ok: false, error: "bad_token" });
   }
 }
 // ---------------------------------------------------------------------
