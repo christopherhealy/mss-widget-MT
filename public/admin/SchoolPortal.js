@@ -832,6 +832,7 @@ async function fetchSchoolsForAdmin() {
       return;
     }
 
+
     SCHOOLS = [{ id: null, slug: INITIAL_SLUG, name: INITIAL_SLUG }];
     CURRENT_SLUG = INITIAL_SLUG;
     CURRENT_SCHOOL = SCHOOLS[0];
