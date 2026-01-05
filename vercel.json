@@ -5,9 +5,5 @@
       "source": "/api/:path*",
       "destination": "https://mss-widget-mt.onrender.com/api/:path*"
     }
-  ],
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/public/index.html" }
   ]
 }
