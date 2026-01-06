@@ -6178,9 +6178,44 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
         is_default, is_active, sort_order, created_at, updated_at
     `;
 
-    const upd = await pool.query(sql, values);
-    if (!upd.rowCount) return res.status(500).json({ ok: false, error: "update_failed" });
+// --- DROP-IN: update prompt + invalidate cached reports (transaction-safe) ---
 
+let upd;
+let inv;
+
+try {
+  await pool.query("BEGIN");
+
+  upd = await pool.query(sql, values);
+  if (!upd.rowCount) {
+    await pool.query("ROLLBACK");
+    return res.status(500).json({ ok: false, error: "update_failed" });
+  }
+
+  // Invalidate cached reports for this prompt (all submissions in this school)
+  inv = await pool.query(
+    `DELETE FROM ai_reports ar
+     USING submissions s
+     WHERE ar.prompt_id = $1
+       AND ar.submission_id = s.id
+       AND s.school_id = $2
+       AND s.deleted_at IS NULL`,
+    [id, schoolId]
+  );
+
+  await pool.query("COMMIT");
+
+  return res.json({
+    ok: true,
+    slug,
+    schoolId,
+    prompt: upd.rows[0],
+    invalidated_reports: inv.rowCount,
+  });
+} catch (err) {
+  try { await pool.query("ROLLBACK"); } catch (_) {}
+  throw err; // let your outer catch handle logging + 500
+}
     // FIX 2: prompt changed -> cached reports are stale
     const invalidated = await invalidateReportsForPromptInSchool(id, schoolId);
 

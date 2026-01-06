@@ -1532,74 +1532,79 @@ function confirmPortalModal({ title = "Confirm", body = "", okText = "OK", cance
 // Report Viewer (Generate Report) — inside IIFE
 // -----------------------------------------------------------------------
 function wireReportViewerEvents() {
-  const btnRun    = $("btnRunReport");
-  const btnClose  = $("btnReportClose");
-  const btnX      = $("reportCloseX");
-  const btnDelete = $("btnReportDelete");
-  const ov        = $("reportOverlay");
+  const ov = document.getElementById("reportOverlay");
+  const btnRun = document.getElementById("btnRunReport");
+  const btnClose = document.getElementById("btnReportClose");
+  const btnX = document.getElementById("reportCloseX");
+  const btnDelete = document.getElementById("btnReportDelete");
 
-  if (!ov) {
-    console.warn("[ReportViewer] reportOverlay not found");
-    return;
-  }
+  console.log("✅ wireReportViewerEvents()", {
+    hasOverlay: !!ov,
+    hasRun: !!btnRun,
+    hasClose: !!btnClose,
+    hasX: !!btnX,
+    hasDelete: !!btnDelete,
+    hasDeleteFn: typeof deleteCurrentReportFromViewer === "function",
+  });
 
-  // Stop backdrop clicks from closing when clicking inside the modal
-  const modal = ov.querySelector(".sp-modal"); // IMPORTANT: matches your HTML
-  if (modal && !modal._mssBound) {
+  // Stop clicks inside modal from bubbling to backdrop
+  const modal = ov?.querySelector(".sp-modal");
+  if (modal && !modal._mssBoundClickStop) {
     modal.addEventListener("click", (e) => e.stopPropagation());
-    modal._mssBound = true;
+    modal._mssBoundClickStop = true;
   }
 
+  // Run
   if (btnRun && !btnRun._mssBound) {
     btnRun.addEventListener("click", generateReport);
     btnRun._mssBound = true;
   }
 
+  // Close buttons
+  const closeHandler = () => closeReportViewer();
   if (btnClose && !btnClose._mssBound) {
-    btnClose.addEventListener("click", closeReportViewer);
+    btnClose.addEventListener("click", closeHandler);
     btnClose._mssBound = true;
   }
-
   if (btnX && !btnX._mssBound) {
-    btnX.addEventListener("click", closeReportViewer);
+    btnX.addEventListener("click", closeHandler);
     btnX._mssBound = true;
   }
 
-  // Delete cached report (bind ONCE; resolve function at click-time)
+  // Delete (this is the important one)
   if (btnDelete && !btnDelete._mssBound) {
-    btnDelete.addEventListener("click", async (e) => {
+    btnDelete.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      console.log("🗑️ btnReportDelete clicked", {
+        currentSubmissionId,
+        reportViewerPromptId,
+        reportViewerHasCachedReport,
+      });
 
-      // Helpful QA log (remove later if desired)
-      console.log("[ReportViewer] Delete clicked");
-
-      const fn =
-        (window && window.deleteCurrentReportFromViewer) ||
-        (typeof deleteCurrentReportFromViewer === "function" ? deleteCurrentReportFromViewer : null);
-
-      if (typeof fn !== "function") {
+      if (typeof deleteCurrentReportFromViewer !== "function") {
         setReportStatus("Delete is not implemented yet.", true);
         return;
       }
-
-      await fn();
+      deleteCurrentReportFromViewer().catch((err) => {
+        console.warn("deleteCurrentReportFromViewer failed:", err);
+      });
     });
     btnDelete._mssBound = true;
   }
 
-  // Click outside modal closes
-  if (!ov._mssBound) {
+  // Click outside closes
+  if (ov && !ov._mssBoundBackdrop) {
     ov.addEventListener("click", (e) => {
       if (e.target === ov) closeReportViewer();
     });
-    ov._mssBound = true;
+    ov._mssBoundBackdrop = true;
   }
 
-  // Escape closes (bind only once globally)
+  // Escape closes
   if (!document._mssReportEscBound) {
     document.addEventListener("keydown", (e) => {
-      const visible = !ov.classList.contains("hidden");
+      const visible = ov && !ov.classList.contains("hidden");
       if (visible && e.key === "Escape") closeReportViewer();
     });
     document._mssReportEscBound = true;
@@ -1815,7 +1820,13 @@ async function generateReport() {
   }
 }
 
+// -----------------------------------------------------------------------
+// Delete cached report immediately (no confirm dialog)
+// DELETE /api/admin/reports/:slug/:submission_id/:prompt_id
+// -----------------------------------------------------------------------
 async function deleteCurrentReportFromViewer() {
+  console.log("🧨 deleteCurrentReportFromViewer() CLICK");
+
   const btnRun = $("btnRunReport");
   const btnDelete = $("btnReportDelete");
 
@@ -1823,21 +1834,8 @@ async function deleteCurrentReportFromViewer() {
   if (!currentSubmissionId) return setReportStatus("Missing submission id.", true);
   if (!reportViewerPromptId) return setReportStatus("Missing prompt id.", true);
 
-  if (!reportViewerHasCachedReport) {
-    setReportStatus("Nothing to delete (this report is not cached).", true);
-    return;
-  }
-
-  const ok = await confirmModal(
-    "Delete cached report",
-    "Delete the cached report text for this submission/prompt?\n\nThis will not delete the prompt.",
-    { okText: "Delete", cancelText: "Cancel", danger: true }
-  );
-  if (!ok) return;
-
   setReportStatus("Deleting cached report…");
   if (btnDelete) btnDelete.disabled = true;
-  if (btnRun) btnRun.disabled = true;
 
   try {
     const url =
@@ -1845,36 +1843,40 @@ async function deleteCurrentReportFromViewer() {
       `/${encodeURIComponent(String(currentSubmissionId))}` +
       `/${encodeURIComponent(String(reportViewerPromptId))}`;
 
+    console.log("🧨 DELETE url:", url);
+
     const res = await adminFetch(url, { method: "DELETE" });
+    console.log("🧨 DELETE status:", res.status);
 
     if (res.status === 401 || res.status === 403) {
+      setReportStatus("Session expired. Please sign in again.", true);
       clearAdminSessionAndRedirect();
       return;
     }
 
     const data = await res.json().catch(() => ({}));
+    console.log("🧨 DELETE response:", data);
+
     if (!res.ok || data.ok === false) {
       throw new Error(data.error || data.message || `http_${res.status}`);
     }
 
+    // Clear viewer + reset state
     $("reportOutput").textContent = "";
     reportViewerHasCachedReport = false;
 
+    // Hide delete until a cached report is detected again
     if (btnDelete) btnDelete.style.display = "none";
 
-    // Re-check state for the currently selected prompt (prevents stale UI flags)
-    await refreshReportForSelection().catch(() => {});
+    // Re-enable Generate
+    if (btnRun) btnRun.disabled = false;
 
-    setReportStatus(
-      data.deleted === false
-        ? "No cached report found (already deleted)."
-        : "Deleted cached report ✓"
-    );
+    setReportStatus(data.deleted ? "Deleted cached report ✓" : "No cached report found to delete.", !data.deleted);
   } catch (e) {
+    console.warn("🧨 DELETE failed:", e);
     setReportStatus(`Delete failed: ${e?.message || "unknown"}`, true);
   } finally {
     if (btnDelete) btnDelete.disabled = false;
-    if (btnRun) btnRun.disabled = false;
   }
 }
 
@@ -2944,16 +2946,16 @@ function wireReportViewerEvents() {
   // ------------------------------------------------------------
   // Delete cached report
   // ------------------------------------------------------------
-  if (btnDelete && !btnDelete._mssBound) {
-    if (typeof deleteCurrentReportFromViewer === "function") {
-      btnDelete.addEventListener("click", deleteCurrentReportFromViewer);
-    } else {
-      btnDelete.addEventListener("click", () => {
-        setReportStatus("Delete is not implemented yet.", true);
-      });
-    }
-    btnDelete._mssBound = true;
-  }
+ // Delete button (no confirm)
+if (btnDelete && !btnDelete._mssBound) {
+  btnDelete.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteCurrentReportFromViewer();
+  });
+  btnDelete._mssBound = true;
+  console.log("✅ btnReportDelete bound");
+}
 
   // ------------------------------------------------------------
   // Copy report output (THIS is why Copy wasn’t working)

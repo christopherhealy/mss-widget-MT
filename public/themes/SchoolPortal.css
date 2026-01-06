@@ -1274,3 +1274,67 @@ body.modal-open {
 
   padding-right: 8px;
 }
+/* =========================================================
+   REPORT VIEWER – overlay must sit above the portal
+   ========================================================= */
+
+#reportOverlay.sp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;               /* ensure it reverts from any accidental overrides */
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;               /* higher than portal */
+  background: rgba(0, 0, 0, 0.40);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;        /* must capture mouse */
+}
+
+#reportOverlay.sp-modal-backdrop.hidden {
+  display: none;
+  pointer-events: none;
+}
+
+/* Report modal sizing */
+#reportOverlay .sp-modal.report-modal {
+  width: min(980px, 96vw);
+  max-height: 88vh;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.28);
+  pointer-events: auto;
+}
+
+/* Make the output area actually scroll */
+#reportOverlay .report-card {
+  border-radius: 16px;
+  padding: 14px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.015);
+}
+
+#reportOverlay #reportOutput.report-output {
+  min-height: 280px;
+  max-height: 62vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-right: 8px;
+}
+
+/* Lock background scroll while modal open (JS toggles body.modal-open) */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* =========================================================
+   MSS confirm/notice modal MUST be above report overlay
+   This is the key for "Delete does nothing" symptom.
+   ========================================================= */
+#mssModalOverlay.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;               /* higher than #reportOverlay (5000) */
+  pointer-events: auto;
+}
