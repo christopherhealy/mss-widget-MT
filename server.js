@@ -5928,7 +5928,86 @@ app.get("/api/funnel/verify", async (req, res) => {
 
 
 // =====================================================================
-// AI PROMPTS + AI REPORTS
+// AI PROMPTS + AI REPORTS  (Cleaned + Scoped + Cache-safe)
+// =====================================================================
+// Assumptions:
+// - requireAdminAuth populates req.admin = { isSuperAdmin:boolean, schoolId:number, ... }
+// - ai_reports has NO school_id, so all scoping must be enforced via submissions (school_id)
+// - Unique constraint exists on ai_reports(submission_id, prompt_id)
+// - Helper fns exist: renderPromptTemplate(), sha256(), openAiGenerateReport()
+
+function assertSchoolScope(req, schoolId) {
+  if (req.admin?.isSuperAdmin) return;
+  if (Number(req.admin?.schoolId) !== Number(schoolId)) {
+    const err = new Error("forbidden_school_scope");
+    err.status = 403;
+    throw err;
+  }
+}
+
+async function resolveSchoolBySlug(slug) {
+  const s = await pool.query(
+    `SELECT id, slug, name
+     FROM schools
+     WHERE slug = $1
+     LIMIT 1`,
+    [slug]
+  );
+  if (!s.rowCount) {
+    const err = new Error("school_not_found");
+    err.status = 404;
+    throw err;
+  }
+  return {
+    schoolId: Number(s.rows[0].id),
+    schoolSlug: String(s.rows[0].slug || slug),
+    schoolName: String(s.rows[0].name || ""),
+  };
+}
+
+async function assertPromptBelongsToSchool(promptId, schoolId) {
+  const pr = await pool.query(
+    `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
+    [promptId, schoolId]
+  );
+  if (!pr.rowCount) {
+    const err = new Error("prompt_not_found");
+    err.status = 404;
+    throw err;
+  }
+}
+
+async function assertSubmissionBelongsToSchool(submissionId, schoolId) {
+  const sub = await pool.query(
+    `SELECT 1
+     FROM submissions
+     WHERE id = $1 AND school_id = $2 AND deleted_at IS NULL
+     LIMIT 1`,
+    [submissionId, schoolId]
+  );
+  if (!sub.rowCount) {
+    const err = new Error("submission_not_found");
+    err.status = 404;
+    throw err;
+  }
+}
+
+async function invalidateReportsForPromptInSchool(promptId, schoolId) {
+  // ai_reports has no school_id; enforce scope via submissions
+  const del = await pool.query(
+    `DELETE FROM ai_reports ar
+     USING submissions s
+     WHERE ar.submission_id = s.id
+       AND ar.prompt_id = $1
+       AND s.school_id = $2
+       AND s.deleted_at IS NULL`,
+    [promptId, schoolId]
+  );
+  return del.rowCount || 0;
+}
+
+// =====================================================================
+// AI PROMPTS
 // =====================================================================
 
 // ---------------------------------------------------------------------
@@ -5940,16 +6019,8 @@ app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    const s = await pool.query(
-      `SELECT id, slug, name
-       FROM schools
-       WHERE slug = $1
-       LIMIT 1`,
-      [slug]
-    );
-    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
-
-    const schoolId = Number(s.rows[0].id);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
     const r = await pool.query(
       `SELECT id, name, prompt_text, notes, language, is_default, is_active, sort_order, updated_at
@@ -5962,29 +6033,37 @@ app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
       [schoolId]
     );
 
-    return res.json({ ok: true, prompts: r.rows });
+    return res.json({ ok: true, slug: schoolSlug, schoolId, prompts: r.rows });
   } catch (err) {
-    console.error("❌ /api/admin/ai-prompts/:slug failed:", err);
-    return res.status(500).json({ ok: false, error: "ai_prompts_failed", message: err.message });
+    const status = err?.status || 500;
+    const code = status === 500 ? "ai_prompts_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ /api/admin/ai-prompts/:slug failed:", err);
+    return res.status(status).json({ ok: false, error: code });
   }
 });
 
 // ---------------------------------------------------------------------
 // AI Prompts - create by school slug
 // POST /api/admin/ai-prompts/:slug
-// body: { name, prompt_text, notes?, is_active?, is_default?, sort_order? }
+// body: { name, prompt_text, notes?, language?, is_active?, is_default?, sort_order? }
 // ---------------------------------------------------------------------
 app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
+
     const name = String(req.body?.name || "").trim();
     const promptText = String(req.body?.prompt_text || "").trim();
-    const notes = String(req.body?.notes || "").trim(); // optional
+    const notes = String(req.body?.notes || "").trim();
 
     if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
     if (!promptText) return res.status(400).json({ ok: false, error: "missing_prompt_text" });
+
+    const langRaw = String(req.body?.language || "").trim();
+    const language = langRaw === "" ? null : langRaw;
 
     const isActive = req.body?.is_active === false ? false : true;
     const isDefault = req.body?.is_default === true ? true : false;
@@ -5994,29 +6073,21 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
         ? null
         : Number(req.body.sort_order);
 
-    // 1) Resolve school_id from slug
-    const s = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
-    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
-
-    const schoolId = Number(s.rows[0].id);
-
-    // 2) Insert prompt
     const ins = await pool.query(
       `
-      INSERT INTO ai_prompts (school_id, name, prompt_text, notes, is_default, is_active, sort_order)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, school_id, name, prompt_text, notes, is_default, is_active, sort_order, created_at, updated_at
+      INSERT INTO ai_prompts (school_id, name, prompt_text, notes, language, is_default, is_active, sort_order)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, school_id, name, prompt_text, notes, language, is_default, is_active, sort_order, created_at, updated_at
       `,
-      [schoolId, name, promptText, notes, isDefault, isActive, sortOrder]
+      [schoolId, name, promptText, notes, language, isDefault, isActive, sortOrder]
     );
 
-    return res.json({ ok: true, slug, schoolId, prompt: ins.rows[0] });
+    return res.json({ ok: true, slug: schoolSlug, schoolId, prompt: ins.rows[0] });
   } catch (err) {
-    console.error("❌ [ai-prompts] create failed:", err);
-    return res.status(500).json({ ok: false, error: "prompts_create_failed", message: err.message });
+    const status = err?.status || 500;
+    const code = status === 500 ? "prompts_create_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ [ai-prompts] create failed:", err);
+    return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });
 
@@ -6024,6 +6095,7 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
 // AI Prompts - update by slug + id
 // PUT /api/admin/ai-prompts/:slug/:id
 // body: { name?, prompt_text?, notes?, language?, is_active?, is_default?, sort_order? }
+// Side effect: invalidates cached reports for this prompt in this school.
 // ---------------------------------------------------------------------
 app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
   try {
@@ -6033,21 +6105,10 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
 
-    // Resolve school_id from slug
-    const s = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
-    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
-    const schoolId = Number(s.rows[0].id);
-
-    // Ensure prompt belongs to this school
-    const owned = await pool.query(
-      `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
-      [id, schoolId]
-    );
-    if (!owned.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    await assertPromptBelongsToSchool(id, schoolId);
 
     // Build partial update
     const fields = [];
@@ -6069,23 +6130,13 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     }
 
     if (req.body?.notes !== undefined) {
-      const notes = String(req.body.notes || "").trim();
-      // notes optional; allow empty string
       fields.push(`notes = $${idx++}`);
-      values.push(notes);
+      values.push(String(req.body.notes || ""));
     }
 
     if (req.body?.language !== undefined) {
-      // language optional; allow empty -> NULL
-      // Accept values like "en", "en-CA", "fr", etc. Keep flexible.
       const langRaw = String(req.body.language || "").trim();
       const language = langRaw === "" ? null : langRaw;
-
-      // Optional: basic sanity check (comment out if you want fully free-form)
-      // if (language && language.length > 20) {
-      //   return res.status(400).json({ ok: false, error: "invalid_language" });
-      // }
-
       fields.push(`language = $${idx++}`);
       values.push(language);
     }
@@ -6130,16 +6181,28 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     const upd = await pool.query(sql, values);
     if (!upd.rowCount) return res.status(500).json({ ok: false, error: "update_failed" });
 
-    return res.json({ ok: true, slug, schoolId, prompt: upd.rows[0] });
+    // FIX 2: prompt changed -> cached reports are stale
+    const invalidated = await invalidateReportsForPromptInSchool(id, schoolId);
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug,
+      schoolId,
+      prompt: upd.rows[0],
+      invalidated_reports: invalidated,
+    });
   } catch (err) {
-    console.error("❌ [ai-prompts] update failed:", err);
-    return res.status(500).json({ ok: false, error: "prompts_update_failed", message: err.message });
+    const status = err?.status || 500;
+    const code = status === 500 ? "prompts_update_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ [ai-prompts] update failed:", err);
+    return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });
 
 // ---------------------------------------------------------------------
 // AI Prompts - delete by slug + id
 // DELETE /api/admin/ai-prompts/:slug/:id
+// Side effect: invalidates cached reports for this prompt in this school.
 // ---------------------------------------------------------------------
 app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
   try {
@@ -6149,28 +6212,33 @@ app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res)
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
 
-    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
-    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
-    const schoolId = Number(s.rows[0].id);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
-    // Ensure prompt belongs to this school
-    const owned = await pool.query(
-      `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
-      [id, schoolId]
-    );
-    if (!owned.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    await assertPromptBelongsToSchool(id, schoolId);
+
+    // Invalidate caches first (helps if FK constraints exist later)
+    const invalidated = await invalidateReportsForPromptInSchool(id, schoolId);
 
     await pool.query(`DELETE FROM ai_prompts WHERE id = $1 AND school_id = $2`, [id, schoolId]);
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, slug: schoolSlug, schoolId, invalidated_reports: invalidated });
   } catch (err) {
-    console.error("❌ [ai-prompts] delete failed:", err);
-    return res.status(500).json({ ok: false, error: "prompts_delete_failed", message: err.message });
+    const status = err?.status || 500;
+    const code = status === 500 ? "prompts_delete_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ [ai-prompts] delete failed:", err);
+    return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });
+
+// =====================================================================
+// AI REPORTS
+// =====================================================================
+
 // ---------------------------------------------------------------------
 // AI Reports - existing (cache check)
 // GET /api/admin/reports/existing?submission_id=123&ai_prompt_id=456
+// IMPORTANT: scope enforced via submissions.school_id
 // ---------------------------------------------------------------------
 app.get("/api/admin/reports/existing", requireAdminAuth, async (req, res) => {
   try {
@@ -6179,6 +6247,19 @@ app.get("/api/admin/reports/existing", requireAdminAuth, async (req, res) => {
 
     if (!submissionId) return res.status(400).json({ ok: false, error: "missing_submission_id" });
     if (!promptId) return res.status(400).json({ ok: false, error: "missing_ai_prompt_id" });
+
+    // scope via submissions
+    const sc = await pool.query(
+      `SELECT school_id
+       FROM submissions
+       WHERE id = $1 AND deleted_at IS NULL
+       LIMIT 1`,
+      [submissionId]
+    );
+    if (!sc.rowCount) return res.status(404).json({ ok: false, error: "submission_not_found" });
+
+    const schoolId = Number(sc.rows[0].school_id);
+    assertSchoolScope(req, schoolId);
 
     const r = await pool.query(
       `SELECT report_text, created_at, model, temperature, max_output_tokens
@@ -6203,35 +6284,34 @@ app.get("/api/admin/reports/existing", requireAdminAuth, async (req, res) => {
       source: "cache",
     });
   } catch (err) {
-    console.error("❌ /api/admin/reports/existing failed:", err);
-    return res.status(500).json({ ok: false, error: "existing_failed", message: err.message });
+    const status = err?.status || 500;
+    const code = status === 500 ? "existing_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ /api/admin/reports/existing failed:", err);
+    return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });
 
 // ---------------------------------------------------------------------
 // AI Reports - generate (cache + OpenAI + store)
 // POST /api/admin/reports/generate
-// body: { slug, submission_id, ai_prompt_id }
+// body: { slug, submission_id, ai_prompt_id, force?: true }
+// - if force=true -> bypass cache and re-generate (UPSERT overwrites)
 // ---------------------------------------------------------------------
 app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
   try {
     const slug = String(req.body?.slug || "").trim();
     const submissionId = Number(req.body?.submission_id || 0);
     const promptId = Number(req.body?.ai_prompt_id || 0);
+    const force = req.body?.force === true;
 
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!submissionId) return res.status(400).json({ ok: false, error: "bad_submission_id" });
     if (!promptId) return res.status(400).json({ ok: false, error: "bad_prompt_id" });
 
-    // 1) Resolve school_id from slug
-    const s = await pool.query(
-      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
-    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
-    const schoolId = Number(s.rows[0].id);
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
-    // 2) Load prompt (must belong to school + be active)
+    // Prompt must belong to school + be active
     const p = await pool.query(
       `SELECT id, prompt_text, notes, language
        FROM ai_prompts
@@ -6251,7 +6331,7 @@ app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
 
     if (!promptText) return res.status(400).json({ ok: false, error: "empty_prompt_text" });
 
-    // 2b) Load submission (must belong to same school, not deleted)
+    // Submission must belong to school, not deleted
     const sub = await pool.query(
       `SELECT *
        FROM submissions
@@ -6265,17 +6345,14 @@ app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
 
     const row = sub.rows[0];
 
-    // Build variables (add as many as you support)
+    // Variables available to template
     const vars = {
-      // core
       question: row.question || "",
       transcript: row.transcript_clean || row.transcript || "",
       student: row.student_name || row.student_email || row.student_id || "",
 
-      // speed
       wpm: row.wpm ?? "",
 
-      // MSS
       mss_fluency: row.mss_fluency ?? "",
       mss_grammar: row.mss_grammar ?? "",
       mss_pron: row.mss_pron ?? "",
@@ -6285,57 +6362,48 @@ app.post("/api/admin/reports/generate", requireAdminAuth, async (req, res) => {
       mss_ielts: row.mss_ielts ?? "",
       mss_pte: row.mss_pte ?? "",
 
-      // Vox (optional)
       vox_score: row.vox_score ?? "",
     };
 
-    // 3) Render template using submission vars BEFORE calling OpenAI
+    // Render template with vars
     const renderedPromptText = renderPromptTemplate(promptText, vars).trim();
     if (!renderedPromptText) {
       return res.status(400).json({ ok: false, error: "rendered_prompt_empty" });
     }
 
-    // Notes/language add-ons should be appended to the RENDERED prompt
+    // Append notes + language to rendered prompt
     const parts = [renderedPromptText];
     if (notes) parts.push(`\n\n---\nNotes / Guidance:\n${notes}\n`);
     if (language) parts.push(`\n\n---\nOutput language:\n${language}\n`);
-
     const finalPrompt = parts.join("");
+
     const promptHash = sha256(finalPrompt);
 
-// 🔍 DEBUG: inspect final prompt BEFORE cache / OpenAI
+    // Cache check (unless forced)
+    if (!force) {
+      const existing = await pool.query(
+        `SELECT report_text
+         FROM ai_reports
+         WHERE submission_id = $1 AND prompt_id = $2
+         LIMIT 1`,
+        [submissionId, promptId]
+      );
 
-const unreplaced =
-  (finalPrompt.match(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g) || []);
-
-console.log("[AI] finalPrompt preview:");
-console.log(finalPrompt.slice(0, 400));
-console.log("[AI] finalPrompt length:", finalPrompt.length);
-console.log("[AI] unreplaced placeholders:", unreplaced.length, unreplaced.slice(0, 10));
-
-    // 4) Cache check (submission + prompt_id)
-    //    Rule: one report per (submission, prompt). If present, return it.
-    const existing = await pool.query(
-      `SELECT report_text
-       FROM ai_reports
-       WHERE submission_id = $1 AND prompt_id = $2
-       LIMIT 1`,
-      [submissionId, promptId]
-    );
-
-    if (existing.rowCount) {
-      return res.json({
-        ok: true,
-        report_text: existing.rows[0].report_text,
-        source: "cache",
-        prompt_language: language,
-      });
+      if (existing.rowCount) {
+        return res.json({
+          ok: true,
+          report_text: existing.rows[0].report_text,
+          source: "cache",
+          prompt_language: language,
+          forced: false,
+        });
+      }
     }
 
-    // 5) Generate
+    // Generate via OpenAI
     const ai = await openAiGenerateReport({
       promptText: finalPrompt,
-      language, // pass-through for downstream handling (optional)
+      language,
       model: "gpt-4o-mini",
       temperature: 0.4,
       max_output_tokens: 900,
@@ -6343,7 +6411,6 @@ console.log("[AI] unreplaced placeholders:", unreplaced.length, unreplaced.slice
 
     const reportText = String(ai.text || "").trim();
 
-    // 6) Store (UPSERT so repeated generations don't crash)
     await pool.query(
       `INSERT INTO ai_reports (submission_id, prompt_id, prompt_hash, model, temperature, max_output_tokens, report_text)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -6363,127 +6430,20 @@ console.log("[AI] unreplaced placeholders:", unreplaced.length, unreplaced.slice
       report_text: reportText,
       source: "openai",
       prompt_language: language,
+      forced: !!force,
     });
   } catch (err) {
-    console.error("❌ /api/admin/reports/generate error:", err);
-    return res.status(500).json({ ok: false, error: "generate_failed", message: err.message });
-  }
-});
-
-// ---------------------------------------------------------------------
-// AI Prompts - suggest a prompt template (OpenAI)
-// POST /api/admin/ai-prompts/:slug/suggest
-// body: { slug?, name, helperLanguage?, mss_metrics[], opt_metrics[], admin_notes? }
-// Returns: { ok:true, prompt_text }
-// ---------------------------------------------------------------------
-app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-
-    const name = String(req.body?.name || "").trim();
-    const helperLanguage = String(req.body?.helperLanguage || "").trim() || null;
-    const mss = Array.isArray(req.body?.mss_metrics) ? req.body.mss_metrics : [];
-    const opt = Array.isArray(req.body?.opt_metrics) ? req.body.opt_metrics : [];
-    const adminNotes = String(req.body?.admin_notes || "").trim(); // for teacher only; do not send verbatim unless you intend to
-
-    if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
-    if (!mss.length && !opt.length) {
-      return res.status(400).json({ ok: false, error: "missing_metrics" });
-    }
-
-    // Resolve school_id (optional but good for validation/logging)
-    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
-    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
-
-    // Build the prompt that asks OpenAI to CREATE A TEMPLATE (not a report)
-    // This is similar to your buildSuggestPreamble(), but server-side.
-    // IMPORTANT: include placeholders to be used later at runtime.
-    const runtimeVars = [
-      "{{question}}",
-      "{{transcript}}",
-      "{{student}}",
-      "{{wpm}}",
-      "{{mss_fluency}}",
-      "{{mss_pron}}",
-      "{{mss_grammar}}",
-      "{{mss_vocab}}",
-      "{{mss_cefr}}",
-      "{{mss_toefl}}",
-      "{{mss_ielts}}",
-      "{{mss_pte}}",
-    ];
-
-    const selectedVars = [
-      // Always include question/transcript; include others if selected (your call)
-      "{{question}}",
-      "{{transcript}}",
-      ...(opt.includes("wpm") ? ["{{wpm}}"] : []),
-      ...mss.map((k) => `{{${k}}}`),
-    ];
-
-    const systemPreamble = [
-      "SYSTEM ROLE:",
-      "You are an expert instructional designer for MySpeakingScore (MSS).",
-      "",
-      "TASK:",
-      "Generate a teacher-usable AI prompt TEMPLATE for feedback on a student's spoken response.",
-      "This template will be stored in ai_prompts.prompt_text and later used with real submission data.",
-      "",
-      "CONSTRAINTS:",
-      "- Use ONLY the metrics the admin selected.",
-      "- Do NOT invent scores or facts.",
-      "- Be practical: actionable exercises, encouraging, teacher-friendly.",
-      "- Output must be a single prompt template (not JSON).",
-      "",
-      "AVAILABLE RUNTIME VARIABLES (placeholders):",
-      selectedVars.map(v => `- ${v}`).join("\n"),
-      "",
-      "REQUIRED OUTPUT STRUCTURE (Markdown):",
-      "1) Quick Summary (2–3 bullets)",
-      "2) Strengths (2–4 bullets)",
-      "3) Priority Improvements (2–4 bullets)",
-      "4) Exercises (3–6 items) tied to selected metrics",
-      "5) Next Attempt Plan (short checklist)",
-      "",
-      "TONE:",
-      "Supportive, specific, teacher-friendly.",
-      "",
-      "ADMIN SELECTIONS:",
-      `- Prompt name: ${name}`,
-      `- Helper language: ${helperLanguage || "None (English only)"}`,
-      `- MSS metrics: ${mss.join(", ") || "None"}`,
-      `- Optional metrics: ${opt.join(", ") || "None"}`,
-      // Admin notes are teacher-only; if you want them to shape the suggestion without being stored elsewhere,
-      // you MAY include them here. If you do, I'd label them as "private guidance" and avoid re-output.
-      adminNotes ? `- Private guidance (do not repeat): ${adminNotes}` : `- Private guidance (do not repeat): None`,
-      "",
-      "OUTPUT RULE:",
-      "Return ONLY the prompt template. Do not add explanations.",
-    ].join("\n");
-
-    const ai = await openAiGenerateReport({
-      promptText: systemPreamble,
-      model: "gpt-4o-mini",
-      temperature: 0.3,
-      max_output_tokens: 900,
-    });
-
-    const prompt_text = String(ai.text || "").trim();
-    if (!prompt_text) {
-      return res.status(500).json({ ok: false, error: "suggest_empty" });
-    }
-
-    return res.json({ ok: true, prompt_text });
-  } catch (err) {
-    console.error("❌ /api/admin/ai-prompts/:slug/suggest error:", err);
-    return res.status(500).json({ ok: false, error: "suggest_failed", message: err.message });
+    const status = err?.status || 500;
+    const code = status === 500 ? "generate_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ /api/admin/reports/generate error:", err);
+    return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });
 
 // ---------------------------------------------------------------------
 // AI Reports - delete one cached report
 // DELETE /api/admin/reports/:slug/:submission_id/:prompt_id
+// Scoped delete via submissions.school_id (ai_reports has no school_id)
 // ---------------------------------------------------------------------
 app.delete("/api/admin/reports/:slug/:submission_id/:prompt_id", requireAdminAuth, async (req, res) => {
   try {
@@ -6495,32 +6455,28 @@ app.delete("/api/admin/reports/:slug/:submission_id/:prompt_id", requireAdminAut
     if (!submissionId) return res.status(400).json({ ok: false, error: "bad_submission_id" });
     if (!promptId) return res.status(400).json({ ok: false, error: "bad_prompt_id" });
 
-    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
-    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
-    const schoolId = Number(s.rows[0].id);
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
-    // Ensure submission belongs to this school
-    const sub = await pool.query(
-      `SELECT 1 FROM submissions WHERE id = $1 AND school_id = $2 AND deleted_at IS NULL LIMIT 1`,
-      [submissionId, schoolId]
-    );
-    if (!sub.rowCount) return res.status(404).json({ ok: false, error: "submission_not_found" });
-
-    // Ensure prompt belongs to this school
-    const pr = await pool.query(
-      `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
-      [promptId, schoolId]
-    );
-    if (!pr.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    await assertSubmissionBelongsToSchool(submissionId, schoolId);
+    await assertPromptBelongsToSchool(promptId, schoolId);
 
     const del = await pool.query(
-      `DELETE FROM ai_reports WHERE submission_id = $1 AND prompt_id = $2`,
-      [submissionId, promptId]
+      `DELETE FROM ai_reports ar
+       USING submissions s
+       WHERE ar.submission_id = s.id
+         AND ar.submission_id = $1
+         AND ar.prompt_id = $2
+         AND s.school_id = $3
+         AND s.deleted_at IS NULL`,
+      [submissionId, promptId, schoolId]
     );
 
-    return res.json({ ok: true, deleted: del.rowCount > 0 });
+    return res.json({ ok: true, deleted: del.rowCount > 0, deleted_count: del.rowCount || 0 });
   } catch (err) {
-    console.error("❌ /api/admin/reports delete error:", err);
-    return res.status(500).json({ ok: false, error: "delete_failed", message: err.message });
+    const status = err?.status || 500;
+    const code = status === 500 ? "delete_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ /api/admin/reports delete error:", err);
+    return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });

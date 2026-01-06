@@ -888,7 +888,7 @@ table.tests-table td:nth-child(16) {
 }
 
 /* -----------------------------------------------------------------------
-   Transcript modal (sp-modal – SchoolPortal Transcript)
+   Modal base (sp-modal – used by Transcript + Report Viewer)
    ----------------------------------------------------------------------- */
 
 .sp-modal-backdrop {
@@ -901,10 +901,15 @@ table.tests-table td:nth-child(16) {
   align-items: center;
   z-index: 4000;
   transition: opacity 0.18s ease;
+
+  /* critical: ensure backdrop captures pointer + creates stacking context */
+  pointer-events: auto;
+  isolation: isolate;
 }
 
 .sp-modal-backdrop.hidden {
   display: none;
+  pointer-events: none;
 }
 
 .sp-modal {
@@ -919,17 +924,14 @@ table.tests-table td:nth-child(16) {
     0 30px 80px rgba(15, 23, 42, 0.28),
     0 0 0 1px rgba(148, 163, 184, 0.16);
   animation: sp-modal-enter 0.25s ease;
+
+  /* critical: modal stays interactive */
+  pointer-events: auto;
 }
 
 @keyframes sp-modal-enter {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Header */
@@ -943,9 +945,7 @@ table.tests-table td:nth-child(16) {
   border-bottom: 1px solid #e5e7eb;
 }
 
-.sp-modal-titleblock {
-  margin-right: 1rem;
-}
+.sp-modal-titleblock { margin-right: 1rem; }
 
 .sp-modal-title {
   margin: 0;
@@ -974,17 +974,17 @@ table.tests-table td:nth-child(16) {
   justify-content: center;
 }
 
-.sp-modal-close:hover {
-  background: #f3f4f6;
-}
+.sp-modal-close:hover { background: #f3f4f6; }
 
-/* Body */
+/* Body (Transcript modal uses this directly) */
 
 .sp-modal-body {
   padding: 1.4rem 1.6rem;
   font-size: 0.95rem;
   line-height: 1.55;
   color: #1e293b;
+
+  /* critical: readable + scrollable content */
   overflow-y: auto;
   white-space: pre-wrap;
   max-height: 60vh;
@@ -1001,29 +1001,22 @@ table.tests-table td:nth-child(16) {
 }
 
 /* -----------------------------------------------------------------------
-   Misc helpers
+   Report Viewer specifics
    ----------------------------------------------------------------------- */
 
-.muted {
-  color: var(--mss-muted, #6b7280);
+/* Report Viewer output: scrollable read-only area */
+.report-output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
-.spinner {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  border: 2px solid rgba(15, 23, 42, 0.12);
-  border-top-color: var(--mss-primary, #1d4ed8);
-  animation: spin 0.7s linear infinite;
+/* Optional: prevent background scroll while any modal is open (toggle via JS) */
+body.modal-open {
+  overflow: hidden;
 }
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* -----------------------------------------------------------------------
    Small screens
    ----------------------------------------------------------------------- */
@@ -1081,22 +1074,90 @@ table.tests-table td:nth-child(16) {
 .report-output { min-height: 240px; white-space: pre-wrap; }
 
 /* ---------- Report Modal: Ive-pass ---------- */
+/* ============================
+   Report Viewer - Modal capture fix
+   ============================ */
 
+/* Force overlay to sit above all admin UI and capture clicks */
 #reportOverlay.sp-modal-backdrop {
-  background: rgba(0, 0, 0, 0.40);
-  backdrop-filter: blur(6px);
+  z-index: 99999;            /* higher than portal shell/cards/iframes */
+  pointer-events: auto;      /* overlay must receive mouse */
+  isolation: isolate;        /* new stacking context for reliable hit testing */
 }
 
+/* If hidden, make sure it cannot capture (prevents weird dead-zones) */
+#reportOverlay.sp-modal-backdrop.hidden {
+  pointer-events: none;
+}
+
+/* Make sure the modal itself can receive events */
 #reportOverlay .sp-modal {
+  pointer-events: auto;
+}
+
+/* Disable background scroll while modal is open (your JS toggles body.modal-open) */
+body.modal-open {
+  overflow: hidden !important;
+}
+
+/* ============================
+   Report output scrollability
+   ============================ */
+
+/* The card should not grow forever; let the output scroll */
+#reportOverlay .report-card {
+  /* keep your existing styles, add: */
+  max-height: 62vh;
+  overflow: hidden;          /* contain the scroll area inside */
+}
+
+/* Make the report text area scroll */
+#reportOverlay .report-output {
+  max-height: 58vh;          /* slightly less than card max */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;        /* keeps scrollbar off text */
+  overflow-wrap: anywhere;   /* avoids horizontal scroll on long tokens */
+}
+
+/* =====================================================================
+   REPORT VIEWER – FORCE STYLES (ID-scoped, should always win)
+   ===================================================================== */
+
+#reportOverlay.sp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: rgba(0, 0, 0, 0.40);
+  backdrop-filter: blur(6px);
+
+  pointer-events: auto;
+  isolation: isolate;
+}
+
+#reportOverlay.hidden {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+#reportOverlay .sp-modal.report-modal {
   width: min(980px, 96vw);
   max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+
   border-radius: 18px;
   overflow: hidden;
   background: #fff;
   box-shadow: 0 30px 90px rgba(0,0,0,0.28);
+
+  pointer-events: auto;
 }
 
-/* Header */
 #reportOverlay .report-head {
   display: flex;
   align-items: center;
@@ -1112,7 +1173,7 @@ table.tests-table td:nth-child(16) {
   min-width: 0;
 }
 
-#reportOverlay .mTitle {
+#reportOverlay #reportTitle {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -1120,7 +1181,7 @@ table.tests-table td:nth-child(16) {
   margin: 0;
 }
 
-#reportOverlay .report-meta {
+#reportOverlay #reportMeta {
   font-size: 12px;
   opacity: 0.65;
   white-space: nowrap;
@@ -1128,8 +1189,7 @@ table.tests-table td:nth-child(16) {
   text-overflow: ellipsis;
 }
 
-/* Close button: no box, just a soft control */
-#reportOverlay .iconBtn {
+#reportOverlay #reportCloseX.iconBtn {
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -1142,12 +1202,12 @@ table.tests-table td:nth-child(16) {
   font-size: 16px;
   line-height: 1;
 }
-#reportOverlay .iconBtn:hover { background: rgba(0,0,0,0.04); }
-#reportOverlay .iconBtn:active { transform: translateY(1px); }
+#reportOverlay #reportCloseX.iconBtn:hover { background: rgba(0,0,0,0.04); }
+#reportOverlay #reportCloseX.iconBtn:active { transform: translateY(1px); }
 
-/* Body */
 #reportOverlay .report-body {
   padding: 16px 18px 18px;
+  overflow: hidden; /* keeps internal scrolling clean */
 }
 
 #reportOverlay .report-controls {
@@ -1181,13 +1241,6 @@ table.tests-table td:nth-child(16) {
   background: #fff;
 }
 
-#reportOverlay .hint {
-  margin-top: 6px;
-  font-size: 12px;
-  opacity: 0.65;
-}
-
-/* Actions block */
 #reportOverlay .report-actions {
   display: flex;
   gap: 10px;
@@ -1195,14 +1248,12 @@ table.tests-table td:nth-child(16) {
   flex-wrap: wrap;
 }
 
-/* Status */
 #reportOverlay .report-status {
   margin: 10px 0 12px;
   font-size: 13px;
   opacity: 0.85;
 }
 
-/* Output card */
 #reportOverlay .report-card {
   border-radius: 16px;
   padding: 14px;
@@ -1210,27 +1261,16 @@ table.tests-table td:nth-child(16) {
   background: rgba(0,0,0,0.015);
 }
 
-#reportOverlay .report-output {
+/* IMPORTANT: scrollable output */
+#reportOverlay #reportOutput.report-output {
   min-height: 280px;
+  max-height: 62vh;
+  overflow-y: auto;
+
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.55;
-}
 
-/* Make primary button less “bulky” */
-#reportOverlay .btn {
-  height: 38px;
-  border-radius: 12px;
-}
-
-/* Optional: keep modal scroll tasteful */
-#reportOverlay .sp-modal::-webkit-scrollbar { width: 10px; }
-#reportOverlay .sp-modal::-webkit-scrollbar-thumb {
-  border-radius: 10px;
-  background: rgba(0,0,0,0.18);
-  border: 2px solid rgba(255,255,255,0.8);
-}
-/* just to hide the Delete button for a report for now (Dec 31( */
-#btnReportDelete {
-  display: none !important;
+  padding-right: 8px;
 }

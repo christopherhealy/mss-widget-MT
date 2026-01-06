@@ -1645,9 +1645,16 @@ function openReportViewerForSubmission(submissionId) {
   const ov = $("reportOverlay");
   if (!ov) return;
 
+  // ---- NEW: lock background scroll while modal is open ----
+  document.body.classList.add("modal-open");
+
   // Show modal
   ov.classList.remove("hidden");
   ov.setAttribute("aria-hidden", "false");
+
+  // ---- NEW: ensure overlay actually captures pointer events ----
+  // (helps when other containers have transforms/stacking contexts)
+  ov.style.pointerEvents = "auto";
 
   // Re-bind report viewer events every open (safe + avoids “stub bound once”)
   const btnClose = $("btnReportClose");
@@ -1658,9 +1665,14 @@ function openReportViewerForSubmission(submissionId) {
   if (btnDelete) btnDelete._mssBound = false;
   wireReportViewerEvents();
 
-  // Optional: move focus into the modal for accessibility
+  // ---- NEW: move focus inside the modal reliably ----
+  // Prefer the first real control in the viewer.
   setTimeout(() => {
-    $("btnRunReport")?.focus?.();
+    const first =
+      $("aiPromptSelect") ||
+      $("btnRunReport") ||
+      ov.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (first && typeof first.focus === "function") first.focus();
   }, 0);
 
   // Load prompts (once per session) then STOP — let user choose
@@ -1693,7 +1705,6 @@ function openReportViewerForSubmission(submissionId) {
       const sel = $("aiPromptSelect");
       if (sel && !sel._mssBound) {
         sel.addEventListener("change", () => {
-          // Optional: show existing report for selected prompt (nice UX)
           refreshReportForSelection().catch(() => {});
         });
         sel._mssBound = true;
@@ -1717,9 +1728,18 @@ function closeReportViewer() {
   ov.setAttribute("aria-hidden", "true");
   currentSubmissionId = null;
 
+  // ---- NEW: unlock background scroll ----
+  document.body.classList.remove("modal-open");
+
   // Optional: return focus to something sensible on the main page
   setTimeout(() => {
-    $("btnRefreshTests")?.focus?.();
+    // NOTE: in your HTML the id is btn-refresh-tests, not btnRefreshTests
+    const back =
+      $("btn-refresh-tests") ||
+      $("openReportsBtn") ||
+      document.querySelector('[data-role="tests-card"] button') ||
+      null;
+    back?.focus?.();
   }, 0);
 }
 // -----------------------------------------------------------------------
@@ -1795,16 +1815,6 @@ async function generateReport() {
   }
 }
 
-// -----------------------------------------------------------------------
-// Delete currently displayed cached report (ai_reports row only)
-// Calls: DELETE /api/admin/reports/:slug/:submission_id/:prompt_id
-// Behavior:
-// - deletes cached report for (submission_id, prompt_id)
-// - clears viewer output
-// - hides Delete button
-// - re-enables Generate
-// -----------------------------------------------------------------------
-
 async function deleteCurrentReportFromViewer() {
   const btnRun = $("btnRunReport");
   const btnDelete = $("btnReportDelete");
@@ -1827,6 +1837,7 @@ async function deleteCurrentReportFromViewer() {
 
   setReportStatus("Deleting cached report…");
   if (btnDelete) btnDelete.disabled = true;
+  if (btnRun) btnRun.disabled = true;
 
   try {
     const url =
@@ -1850,159 +1861,22 @@ async function deleteCurrentReportFromViewer() {
     reportViewerHasCachedReport = false;
 
     if (btnDelete) btnDelete.style.display = "none";
-    if (btnRun) btnRun.disabled = false;
 
-    setReportStatus("Deleted cached report ✓");
+    // Re-check state for the currently selected prompt (prevents stale UI flags)
+    await refreshReportForSelection().catch(() => {});
+
+    setReportStatus(
+      data.deleted === false
+        ? "No cached report found (already deleted)."
+        : "Deleted cached report ✓"
+    );
   } catch (e) {
     setReportStatus(`Delete failed: ${e?.message || "unknown"}`, true);
   } finally {
     if (btnDelete) btnDelete.disabled = false;
+    if (btnRun) btnRun.disabled = false;
   }
 }
-  // -----------------------------------------------------------------------
-  // Transcript + AI Prompt modals
-  // -----------------------------------------------------------------------
-
-  function showPrompt(row) {
-    if (!row) return;
-
-    const promptText = buildAIPromptFromRow(row);
-
-    const backdrop = document.getElementById("portal-transcript-backdrop");
-    const body = document.getElementById("portal-transcript-body");
-    const title = document.getElementById("portal-transcript-title");
-    const subtitle = document.getElementById("portal-transcript-subtitle");
-    const closeBtn = document.getElementById("portal-transcript-close");
-    const okBtn = document.getElementById("portal-transcript-ok");
-
-    if (!backdrop || !body) {
-      alert(promptText || "No AI prompt available.");
-      return;
-    }
-
-    LAST_ROW = row;
-    LAST_AI_PROMPT = promptText;
-
-    const submittedAt = row.submitted_at || row.created_at || "";
-
-    if (title) {
-      title.textContent =
-        "AI Prompt – " + formatShortDateTime(submittedAt || "");
-    }
-
-    if (subtitle) {
-      subtitle.textContent = row.student_name
-        ? row.student_name
-        : row.student_email
-        ? row.student_email
-        : row.student_id
-        ? "Student #" + row.student_id
-        : "";
-    }
-
-    body.textContent = promptText || "No AI prompt available.";
-
-    backdrop.classList.remove("hidden");
-
-    const close = () => backdrop.classList.add("hidden");
-
-    if (closeBtn && !closeBtn._mssBound) {
-      closeBtn.addEventListener("click", close);
-      closeBtn._mssBound = true;
-    }
-    if (okBtn && !okBtn._mssBound) {
-      okBtn.addEventListener("click", close);
-      okBtn._mssBound = true;
-    }
-
-    document.addEventListener(
-      "keydown",
-      function escHandler(e) {
-        if (e.key === "Escape") {
-          close();
-          document.removeEventListener("keydown", escHandler);
-        }
-      },
-      { once: true }
-    );
-  }
-
-  function showTranscript(row) {
-    const transcript = (row && row.transcript_clean) || "";
-    const question = (row && row.question) || "";
-
-    const backdrop = document.getElementById("portal-transcript-backdrop");
-    const body = document.getElementById("portal-transcript-body");
-    const title = document.getElementById("portal-transcript-title");
-    const subtitle = document.getElementById("portal-transcript-subtitle");
-    const closeBtn = document.getElementById("portal-transcript-close");
-    const okBtn = document.getElementById("portal-transcript-ok");
-
-    if (!backdrop || !body) {
-      const header = question ? `Question:\n\n${question}\n\n` : "";
-      alert(header + (transcript || "No transcript available."));
-      return;
-    }
-
-    LAST_ROW = row || null;
-
-    const submittedAt = row?.submitted_at || row?.created_at || "";
-
-    if (title) {
-      title.textContent =
-        "Transcript – " + formatShortDateTime(submittedAt || "");
-    }
-
-    if (subtitle) {
-      subtitle.textContent = row?.student_name
-        ? row.student_name
-        : row?.student_email
-        ? row.student_email
-        : row?.student_id
-        ? "Student #" + row.student_id
-        : "";
-    }
-
-    let bodyText = "";
-    if (question) {
-      bodyText += "Question\n\n";
-      bodyText += question + "\n\n";
-    }
-    bodyText += transcript || "No transcript available.";
-
-    body.textContent = bodyText;
-
-    if (row) {
-      LAST_AI_PROMPT = buildAIPromptFromRow(row);
-      console.log("🧠 AI prompt prepared for row", row.id);
-    } else {
-      LAST_AI_PROMPT = "";
-    }
-
-    backdrop.classList.remove("hidden");
-
-    const close = () => backdrop.classList.add("hidden");
-
-    if (closeBtn && !closeBtn._mssBound) {
-      closeBtn.addEventListener("click", close);
-      closeBtn._mssBound = true;
-    }
-    if (okBtn && !okBtn._mssBound) {
-      okBtn.addEventListener("click", close);
-      okBtn._mssBound = true;
-    }
-
-    document.addEventListener(
-      "keydown",
-      function escHandler(e) {
-        if (e.key === "Escape") {
-          close();
-          document.removeEventListener("keydown", escHandler);
-        }
-      },
-      { once: true }
-    );
-  }
 
   // -----------------------------------------------------------------------
   // DashboardViewer integration
@@ -3007,27 +2881,56 @@ if (btnAdminHome && !btnAdminHome._mssBound) {
   }
 
 
+// -----------------------------------------------------------------------
+// Drop-in replacement: wireReportViewerEvents()
+// Fixes:
+// 1) Ensures overlay captures clicks (prevents “mouse is behind” issues)
+// 2) Wires Copy button for report output (Copy now works)
+// 3) Keeps your safe _mssBound pattern (no stacked listeners)
+// 4) Adds a small focus assist on open (optional but helpful)
+// -----------------------------------------------------------------------
+
 function wireReportViewerEvents() {
   const btnRun = document.getElementById("btnRunReport");
   const btnClose = document.getElementById("btnReportClose");
   const btnX = document.getElementById("reportCloseX");
-  console.log("✅ wireReportViewerEvents running");
   const btnDelete = document.getElementById("btnReportDelete");
-  console.log("btnReportDelete exists?", !!btnDelete);
-  const ov = document.getElementById("reportOverlay");
+  const btnCopy = document.getElementById("btnReportCopy");
 
-  // Stop backdrop clicks from closing when clicking inside the modal
-  const modal = ov?.querySelector(".sp-modal"); // IMPORTANT: .sp-modal, not .modal
+  const ov = document.getElementById("reportOverlay");
+  const modal = ov?.querySelector(".sp-modal"); // correct: reportOverlay uses .sp-modal
+  const out = document.getElementById("reportOutput");
+
+  console.log("✅ wireReportViewerEvents running");
+  console.log("btnReportDelete exists?", !!btnDelete);
+
+  // ------------------------------------------------------------
+  // Defensive: ensure overlay actually intercepts pointer events
+  // (prevents “cursor remains on screen behind” symptom)
+  // ------------------------------------------------------------
+  if (ov) {
+    // If CSS is correct, these do nothing; if CSS regressed, they save you.
+    ov.style.pointerEvents = "auto";
+    ov.style.zIndex = ov.style.zIndex || "9999";
+  }
+
+  // Stop clicks inside modal from bubbling to overlay
   if (modal && !modal._mssBound) {
     modal.addEventListener("click", (e) => e.stopPropagation());
     modal._mssBound = true;
   }
 
+  // ------------------------------------------------------------
+  // Generate
+  // ------------------------------------------------------------
   if (btnRun && !btnRun._mssBound) {
     btnRun.addEventListener("click", generateReport);
     btnRun._mssBound = true;
   }
 
+  // ------------------------------------------------------------
+  // Close buttons
+  // ------------------------------------------------------------
   if (btnClose && !btnClose._mssBound) {
     btnClose.addEventListener("click", closeReportViewer);
     btnClose._mssBound = true;
@@ -3038,19 +2941,60 @@ function wireReportViewerEvents() {
     btnX._mssBound = true;
   }
 
-  // Optional: wire delete button once you implement delete endpoint
+  // ------------------------------------------------------------
+  // Delete cached report
+  // ------------------------------------------------------------
   if (btnDelete && !btnDelete._mssBound) {
-  if (typeof deleteCurrentReportFromViewer === "function") {
-    btnDelete.addEventListener("click", deleteCurrentReportFromViewer);
-  } else {
-    btnDelete.addEventListener("click", () => {
-      setReportStatus("Delete is not implemented yet.", true);
-    });
+    if (typeof deleteCurrentReportFromViewer === "function") {
+      btnDelete.addEventListener("click", deleteCurrentReportFromViewer);
+    } else {
+      btnDelete.addEventListener("click", () => {
+        setReportStatus("Delete is not implemented yet.", true);
+      });
+    }
+    btnDelete._mssBound = true;
   }
-  btnDelete._mssBound = true;
-}
 
+  // ------------------------------------------------------------
+  // Copy report output (THIS is why Copy wasn’t working)
+  // ------------------------------------------------------------
+  if (btnCopy && !btnCopy._mssBound) {
+    btnCopy.addEventListener("click", async () => {
+      try {
+        const text = (out?.innerText || out?.textContent || "").trim();
+        if (!text) {
+          setReportStatus("Nothing to copy yet.", true);
+          return;
+        }
+
+        // Prefer Clipboard API
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          // Fallback for non-secure contexts / older browsers
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          ta.style.top = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+
+        setReportStatus("Copied ✓");
+      } catch (e) {
+        setReportStatus(`Copy failed: ${e?.message || "unknown"}`, true);
+      }
+    });
+    btnCopy._mssBound = true;
+  }
+
+  // ------------------------------------------------------------
   // Click outside modal closes
+  // ------------------------------------------------------------
   if (ov && !ov._mssBound) {
     ov.addEventListener("click", (e) => {
       if (e.target === ov) closeReportViewer();
@@ -3058,15 +3002,23 @@ function wireReportViewerEvents() {
     ov._mssBound = true;
   }
 
- 
-
-  // Escape closes (use hidden class, not style.display)
+  // ------------------------------------------------------------
+  // Escape closes (only when visible)
+  // ------------------------------------------------------------
   if (!document._mssReportEscBound) {
     document.addEventListener("keydown", (e) => {
       const visible = ov && !ov.classList.contains("hidden");
       if (visible && e.key === "Escape") closeReportViewer();
     });
     document._mssReportEscBound = true;
+  }
+
+  // ------------------------------------------------------------
+  // Optional: ensure focus lands inside the modal when it is open
+  // (prevents weird “background focus” behavior)
+  // ------------------------------------------------------------
+  if (ov && !ov.classList.contains("hidden")) {
+    setTimeout(() => btnRun?.focus?.(), 0);
   }
 }
   // -----------------------------------------------------------------------
