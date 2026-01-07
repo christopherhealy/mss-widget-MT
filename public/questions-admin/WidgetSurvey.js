@@ -77,11 +77,12 @@ function requireAdminSession(reason) {
   throw new Error("Admin session missing – redirected to login.");
 }
 
-//Dec 16
+//Jan 7
 function confirmSchoolChange(nextLabel) {
-  // Replace this with MSSViewer.confirm(...) later if you want a branded modal.
   return window.confirm(
-    `You are changing schools${nextLabel ? " to:\n\n" + nextLabel : ""}\n\nPress OK to continue, or Cancel to stay on the current school.`
+    "You are changing schools" +
+      (nextLabel ? " to:\n\n" + nextLabel : "") +
+      "\n\nPress OK to continue, or Cancel to stay on the current school."
   );
 }
 
@@ -345,6 +346,10 @@ function openAddModal() {
   aeDirty = false;
   $("aeTitle").textContent = "Add Question";
   $("aeTextarea").value = "";
+
+  // NEW: default Public = true
+  if ($("aeIsPublic")) $("aeIsPublic").checked = true;
+
   showOverlay("aeOverlay", true);
 }
 
@@ -360,8 +365,12 @@ function openEditModal(i) {
       : item || "";
 
   $("aeTitle").textContent = "Edit Question";
-  $("aeTextarea").value = text;
-  showOverlay("aeOverlay", true);
+$("aeTextarea").value = text;
+
+// NEW: set checkbox from item (default true)
+if ($("aeIsPublic")) $("aeIsPublic").checked = normalizeIsPublic(item && item.is_public);
+
+showOverlay("aeOverlay", true);
 }
 
 function getMerged() {
@@ -389,6 +398,20 @@ function moveTo(i, dest) {
   render();
 }
 
+function normalizeIsPublic(v) {
+  // Default is TRUE (public) for legacy records
+  return v === false ? false : true;
+}
+
+function pubPillHtml(isPublic) {
+  var on = normalizeIsPublic(isPublic);
+  return (
+    '<span class="pubPill' + (on ? "" : " off") + '">' +
+    (on ? "Public" : "Private") +
+    "</span>"
+  );
+}
+
 function render() {
   var list = $("list");
   if (!list) return;
@@ -400,36 +423,46 @@ function render() {
   }
 
   var html = "";
-  for (var i = 0; i < survey.length; i++) {
-    var item = survey[i];
-    var hasHelp = !!(item && item.hasHelp);
+for (var i = 0; i < survey.length; i++) {
+  var item = survey[i];
+  var hasHelp = !!(item && item.hasHelp);
+  var isPublic = normalizeIsPublic(item && item.is_public);
 
-    html +=
-      '<div class="row" data-idx="' +
-      i +
-      '" draggable="true"' +
-      (hasHelp ? ' data-has-help="1"' : "") +
-      ">" +
+  html +=
+    '<div class="row" data-idx="' +
+    i +
+    '" draggable="true"' +
+    (hasHelp ? ' data-has-help="1"' : "") +
+    (isPublic ? ' data-is-public="1"' : ' data-is-public="0"') +
+    ">" +
       '<div class="idx" title="Drag to reorder">' +
-      (i + 1) +
+        (i + 1) +
       "</div>" +
       "<div>" +
-      summarize(item) +
+        summarize(item) +
       "</div>" +
       '<div class="ctrls">' +
-      '<button type="button" class="btn" data-act="edit">Edit</button>' +
-      '<button type="button" class="btn" data-act="help">Help' +
-      (hasHelp ? " •" : "") +
-      "</button>" +
-      '<button type="button" class="btn" data-act="top">Top</button>' +
-      '<button type="button" class="btn" data-act="up">Up</button>' +
-      '<button type="button" class="btn" data-act="down">Down</button>' +
-      '<button type="button" class="btn" data-act="bottom">Bottom</button>' +
-      '<button type="button" class="btn" data-act="remove">✕</button>' +
-      "</div>" +
-      "</div>";
-  }
 
+        // Public toggle (checkbox + pill)
+        '<label class="pubToggle" title="Show/hide in the public widget">' +
+          '<input type="checkbox" class="isPublicToggle" data-act="togglePublic" ' +
+            (isPublic ? "checked" : "") +
+          " />" +
+          pubPillHtml(isPublic) +
+        "</label>" +
+
+        '<button type="button" class="btn" data-act="edit">Edit</button>' +
+        '<button type="button" class="btn" data-act="help">Help' +
+          (hasHelp ? " •" : "") +
+        "</button>" +
+        '<button type="button" class="btn" data-act="top">Top</button>' +
+        '<button type="button" class="btn" data-act="up">Up</button>' +
+        '<button type="button" class="btn" data-act="down">Down</button>' +
+        '<button type="button" class="btn" data-act="bottom">Bottom</button>' +
+        '<button type="button" class="btn" data-act="remove">✕</button>' +
+      "</div>" +
+    "</div>";
+}
   list.innerHTML = html;
   wireDnd(list);
 }
@@ -567,88 +600,142 @@ function showOverlay(id, show) {
 
 function wireAddEdit() {
   var ta = $("aeTextarea");
+  var pubEl = $("aeIsPublic"); // NEW checkbox (may be null if HTML not updated)
+
   if (!ta) return;
 
+  // Guard: avoid double-binding if this ever gets called twice
+  if (ta._mssAddEditBound) return;
+  ta._mssAddEditBound = true;
+
+  function readIsPublic() {
+    // default = true (public) if checkbox is missing
+    return pubEl ? !!pubEl.checked : true;
+  }
+
+  function applyToSurvey(text, isPub, mode) {
+    if (mode === "add") {
+      survey.push({ id: null, question: text, is_public: isPub });
+      return;
+    }
+
+    if (mode === "edit" && aeIndex > -1) {
+      var item = survey[aeIndex];
+      if (item && typeof item === "object") {
+        item.question = text;
+        item.is_public = isPub;
+      } else {
+        survey[aeIndex] = { id: null, question: text, is_public: isPub };
+      }
+    }
+  }
+
+  function clearModal() {
+    ta.value = "";
+    if (pubEl) pubEl.checked = true; // sensible default
+    aeDirty = false;
+    aeMode = "add";
+    aeIndex = -1;
+  }
+
+  // Track dirty state
   ta.addEventListener("input", function () {
     aeDirty = true;
   });
+  if (pubEl) {
+    pubEl.addEventListener("change", function () {
+      aeDirty = true;
+    });
+  }
 
-  $("aeCancel").addEventListener("click", function () {
-    $("aeTextarea").value = "";
-    aeDirty = false;
-    showOverlay("aeOverlay", false);
-  });
+  // Cancel
+  var btnCancel = $("aeCancel");
+  if (btnCancel) {
+    btnCancel.addEventListener("click", function () {
+      clearModal();
+      showOverlay("aeOverlay", false);
+    });
+  }
 
-  $("aeSave").addEventListener("click", function () {
-    var v = ta.value.trim();
-    if (!v) {
-      setStatus("Nothing to save", false);
-      return;
-    }
+  // Save
+  var btnSave = $("aeSave");
+  if (btnSave) {
+    btnSave.addEventListener("click", function () {
+      var v = ta.value.trim();
+      if (!v) {
+        setStatus("Nothing to save", false);
+        return;
+      }
 
-    if (aeMode === "add") {
-      survey.push({ id: null, question: v });
-    } else if (aeMode === "edit" && aeIndex > -1) {
-      var item = survey[aeIndex];
-      if (item && typeof item === "object") item.question = v;
-      else survey[aeIndex] = { id: null, question: v };
-    }
+      var isPub = readIsPublic();
+      applyToSurvey(v, isPub, aeMode);
 
-    aeDirty = false;
-    render();
-    setStatus("Saved");
-  });
+      aeDirty = false;
+      render();
+      setStatus("Saved", true);
+    });
+  }
 
-  $("aeSaveNew").addEventListener("click", function () {
-    var v = ta.value.trim();
-    if (!v) {
-      setStatus("Nothing to save", false);
-      return;
-    }
+  // Save & New
+  var btnSaveNew = $("aeSaveNew");
+  if (btnSaveNew) {
+    btnSaveNew.addEventListener("click", function () {
+      var v = ta.value.trim();
+      if (!v) {
+        setStatus("Nothing to save", false);
+        return;
+      }
 
-    if (aeMode === "edit" && aeIndex > -1) {
-      var item = survey[aeIndex];
-      if (item && typeof item === "object") item.question = v;
-      else survey[aeIndex] = { id: null, question: v };
-    } else {
-      survey.push({ id: null, question: v });
-    }
+      var isPub = readIsPublic();
+      applyToSurvey(v, isPub, aeMode);
 
-    render();
-    ta.value = "";
-    aeMode = "add";
-    aeIndex = -1;
-    aeDirty = false;
-    setStatus("Saved. Ready for next.");
-  });
+      render();
 
-  $("aeClose").addEventListener("click", function () {
-    if (aeDirty && $("aeTextarea").value.trim()) {
-      triConfirm("Save your question?", "No", "Cancel", "Save").then(function (
-        choice
-      ) {
+      // Reset modal for next add
+      ta.value = "";
+      if (pubEl) pubEl.checked = true;
+      aeMode = "add";
+      aeIndex = -1;
+      aeDirty = false;
+
+      setStatus("Saved. Ready for next.", true);
+    });
+  }
+
+  // Close (with optional save)
+  var btnClose = $("aeClose");
+  if (btnClose) {
+    btnClose.addEventListener("click", function () {
+      var v = ta.value.trim();
+
+      // Nothing typed / not dirty -> just close
+      if (!aeDirty || !v) {
+        showOverlay("aeOverlay", false);
+        return;
+      }
+
+      triConfirm("Save your question?", "No", "Cancel", "Save").then(function (choice) {
         if (choice === "save") {
-          var v = $("aeTextarea").value.trim();
-          if (aeMode === "add") {
-            survey.push({ id: null, question: v });
-          } else if (aeMode === "edit" && aeIndex > -1) {
-            var item = survey[aeIndex];
-            if (item && typeof item === "object") item.question = v;
-            else survey[aeIndex] = { id: null, question: v };
-          }
+          var isPub = readIsPublic();
+          applyToSurvey(v, isPub, aeMode);
+
           render();
           aeDirty = false;
           showOverlay("aeOverlay", false);
-          setStatus("Saved");
-        } else if (choice === "nosave") {
+          setStatus("Saved", true);
+          return;
+        }
+
+        if (choice === "nosave") {
           aeDirty = false;
           showOverlay("aeOverlay", false);
+          return;
         }
+
+        // "cancel" -> do nothing (stay open)
       });
-    } else {
-      showOverlay("aeOverlay", false);
-    }
-  });
+    });
+  }
 }
 
 function twoBtnConfirm(title, cancelLabel, okLabel) {
@@ -771,6 +858,7 @@ async function saveToServer() {
         id: q.id || null,
         sort_order: order,
         question: text,
+        is_public: normalizeIsPublic(q.is_public), // NEW
       };
     })
     .filter(function (q) {
@@ -921,11 +1009,12 @@ async function load() {
                 : idx + 1;
 
             return {
-              id: row.id || null,
-              question: row.question != null ? String(row.question) : "",
-              sort_order: order,
-              hasHelp: !!(row.hasHelp || row.has_help),
-            };
+             id: row.id || null,
+             question: row.question != null ? String(row.question) : "",
+             sort_order: order,
+             hasHelp: !!(row.hasHelp || row.has_help),
+             is_public: normalizeIsPublic(row.is_public), // NEW
+             };
           })
           .filter(function (item) {
             return item.question.trim() !== "";
@@ -1021,40 +1110,118 @@ function wireRowActions() {
   var listEl = $("list");
   if (!listEl) return;
 
+  // Avoid stacking listeners if wireRowActions() is ever called again
+  if (listEl._mssRowActionsBound) return;
+  listEl._mssRowActionsBound = true;
+
+  // Helper: ES5-safe closest()
+  function closestWithAttr(startEl, attrName) {
+    var el = startEl;
+    while (el && el !== listEl) {
+      if (el.getAttribute && el.getAttribute(attrName)) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  // Helper: ES5-safe closest('.row')
+  function closestRow(startEl) {
+    var el = startEl;
+    while (el && el !== listEl) {
+      if (el.classList && el.classList.contains("row")) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  // Helper: safe index parse
+  function getRowIndex(rowEl) {
+    var raw = rowEl && rowEl.getAttribute ? rowEl.getAttribute("data-idx") : null;
+    var i = raw != null ? parseInt(raw, 10) : NaN;
+    if (isNaN(i)) return -1;
+    if (i < 0 || i >= survey.length) return -1;
+    return i;
+  }
+
+  // CLICK actions (buttons). NOTE: do NOT handle togglePublic here to avoid double-trigger.
   listEl.addEventListener("click", function (e) {
-    var btn = e.target.closest("button[data-act]");
+    var t = e && e.target ? e.target : null;
+    if (!t) return;
+
+    var btn = closestWithAttr(t, "data-act");
     if (!btn) return;
 
-    var row = btn.closest(".row");
+    var act = btn.getAttribute("data-act");
+    if (!act) return;
+
+    // Let checkbox changes be handled ONLY by the change handler below
+    if (act === "togglePublic") return;
+
+    var row = closestRow(btn);
     if (!row) return;
 
-    var i = +row.dataset.idx;
-    switch (btn.dataset.act) {
+    var i = getRowIndex(row);
+    if (i === -1) return;
+
+    switch (act) {
       case "edit":
         openEditModal(i);
         break;
+
       case "help":
         openHelpFor(i);
         break;
+
       case "top":
         moveTo(i, 0);
         break;
+
       case "up":
         move(i, -1);
         break;
+
       case "down":
         move(i, 1);
         break;
+
       case "bottom":
         moveTo(i, survey.length - 1);
         break;
+
       case "remove":
         confirmRemove(i);
         break;
     }
   });
-}
 
+  // CHANGE actions (checkboxes) — single source of truth for Public/Private
+  listEl.addEventListener("change", function (e) {
+    var el = e && e.target ? e.target : null;
+    if (!el || !el.getAttribute) return;
+
+    if (el.getAttribute("data-act") !== "togglePublic") return;
+
+    var row = closestRow(el);
+    if (!row) return;
+
+    var i = getRowIndex(row);
+    if (i === -1) return;
+
+    var item = survey[i];
+    if (!item || typeof item !== "object") {
+      // Normalize just in case survey had strings
+      item = { id: null, question: String(survey[i] || "") };
+      survey[i] = item;
+    }
+
+    item.is_public = !!el.checked;
+
+    // Keep UI consistent (pill text, etc.)
+    render();
+
+    setStatus(item.is_public ? "Marked Public" : "Marked Private", true);
+  });
+}
 /* -----------------------------------------------------------------------
    HELP MODAL (load/save per questionId)
    ----------------------------------------------------------------------- */
@@ -1138,6 +1305,11 @@ if (helpCloseX) {
 }
 
 function wireHelpModal() {
+  // Avoid double-binding if wireHelpModal() is ever called again
+  if (wireHelpModal._bound) return;
+  wireHelpModal._bound = true;
+
+  // Close via Cancel button
   var cancel = $("helpCancel");
   if (cancel) {
     cancel.addEventListener("click", function () {
@@ -1145,10 +1317,23 @@ function wireHelpModal() {
     });
   }
 
+  // Close via X (bind here so DOM is guaranteed present after DOMContentLoaded)
+  var helpCloseX = $("helpCloseX");
+  if (helpCloseX) {
+    helpCloseX.addEventListener("click", function () {
+      // Reuse the same close path as Cancel (keeps behavior consistent)
+      var btn = $("helpCancel");
+      if (btn) btn.click();
+      else showOverlay("helpOverlay", false);
+    });
+  }
+
+  // Copy Prompt
   var copyBtn = $("copyPromptBtn");
   if (copyBtn) {
     copyBtn.addEventListener("click", function () {
-      var txt = ($("helpPrompt").value || "").trim();
+      var hp = $("helpPrompt");
+      var txt = hp ? String(hp.value || "").trim() : "";
       if (!txt) {
         setStatus("Nothing to copy", false);
         return;
@@ -1176,6 +1361,7 @@ function wireHelpModal() {
     });
   }
 
+  // Save Help
   var save = $("helpSave");
   if (!save) return;
 
@@ -1189,11 +1375,20 @@ function wireHelpModal() {
       return;
     }
 
+    var elMax = $("helpMax");
+    var elMin = $("helpMin");
+    var elPrompt = $("helpPrompt");
+
     var body = {
-      maxhelp: $("helpMax").value || "",
-      minhelp: $("helpMin").value || "",
-      prompt: $("helpPrompt").value || DEFAULT_HELP_PROMPT,
+      maxhelp: elMax ? String(elMax.value || "") : "",
+      minhelp: elMin ? String(elMin.value || "") : "",
+      prompt: elPrompt
+        ? String(elPrompt.value || "")
+        : String(DEFAULT_HELP_PROMPT || ""),
     };
+
+    // If prompt was left blank, fall back to template
+    if (!body.prompt.trim()) body.prompt = String(DEFAULT_HELP_PROMPT || "");
 
     var p = new URLSearchParams(window.location.search);
     var adminKey = (p.get("adminKey") || "").trim();
@@ -1231,8 +1426,8 @@ function wireHelpModal() {
             body.prompt
           );
         }
-        render();
 
+        render();
         setStatus("Help saved", true);
         showOverlay("helpOverlay", false);
       })
@@ -1446,10 +1641,11 @@ window.addEventListener("DOMContentLoaded", async function () {
               .map(function (q) {
                 if (q && typeof q === "object") {
                   return {
-                    id: q.id || null,
-                    question: q.question != null ? String(q.question) : String(q || ""),
-                    sort_order: q.sort_order != null ? q.sort_order : null,
-                    hasHelp: !!q.hasHelp,
+                   id: q.id || null,
+                   question: q.question != null ? String(q.question) : String(q || ""),
+                   sort_order: q.sort_order != null ? q.sort_order : null,
+                   hasHelp: !!q.hasHelp,
+                   is_public: normalizeIsPublic(q.is_public), // NEW
                   };
                 }
                 return { id: null, question: String(q || ""), sort_order: null, hasHelp: false };
@@ -1502,7 +1698,7 @@ window.addEventListener("DOMContentLoaded", async function () {
         .slice(start)
         .map(function (r) {
           var t = normalizeCell(r[col]);
-          return t ? { id: null, question: t } : null;
+          return t ? { id: null, question: t, is_public: true } : null;
         })
         .filter(function (item) {
           return !!item;

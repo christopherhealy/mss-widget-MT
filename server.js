@@ -2413,6 +2413,7 @@ app.get("/api/widget/:slug/bootstrap", async (req, res) => {
           COALESCE(position, sort_order, id) AS ord
         FROM questions
         WHERE assessment_id = $1
+        AND is_public = true
         ORDER BY ord ASC, id ASC
       `,
       [assessmentId]
@@ -2516,9 +2517,7 @@ app.get("/api/widget/:slug/image/:kind", async (req, res) => {
 app.get("/api/assessments/:assessmentId/questions", async (req, res) => {
   const assessmentId = Number(req.params.assessmentId);
   if (!Number.isFinite(assessmentId)) {
-    return res
-      .status(400)
-      .json({ questions: [], error: "Invalid assessmentId" });
+    return res.status(400).json({ questions: [], error: "Invalid assessmentId" });
   }
 
   try {
@@ -2527,6 +2526,7 @@ app.get("/api/assessments/:assessmentId/questions", async (req, res) => {
         q.id,
         q.question,
         q.position AS sort_order,
+        q.is_public,
         EXISTS (
           SELECT 1
           FROM questions_help h
@@ -2545,6 +2545,7 @@ app.get("/api/assessments/:assessmentId/questions", async (req, res) => {
         question: r.question,
         sort_order: r.sort_order,
         hasHelp: r.has_help,
+        is_public: r.is_public,          // NEW
       })),
     });
   } catch (err) {
@@ -2558,34 +2559,28 @@ app.get("/api/assessments/:assessmentId/questions", async (req, res) => {
 app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
   const assessmentId = Number(req.params.assessmentId);
   if (!Number.isFinite(assessmentId)) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Invalid assessmentId" });
+    return res.status(400).json({ success: false, error: "Invalid assessmentId" });
   }
 
   const questions = Array.isArray(req.body.questions) ? req.body.questions : [];
   if (!questions.length) {
-    return res
-      .status(400)
-      .json({ success: false, error: "No questions provided" });
+    return res.status(400).json({ success: false, error: "No questions provided" });
   }
+
+  // Default TRUE unless explicitly false
+  const normalizeIsPublic = (v) => (v === false ? false : true);
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // Get school for this assessment (needed for inserts)
     const assessRow = await client.query(
       `SELECT school_id FROM assessments WHERE id = $1`,
       [assessmentId]
     );
-    if (!assessRow.rowCount) {
-      throw new Error(`Assessment ${assessmentId} not found`);
-    }
+    if (!assessRow.rowCount) throw new Error(`Assessment ${assessmentId} not found`);
     const schoolId = assessRow.rows[0].school_id;
 
-    // IDs coming in from client (existing questions only)
-    // Normalize to numbers so includes() works with DB ids
     const incomingIds = questions
       .map((q) => (q.id != null ? Number(q.id) : null))
       .filter((id) => Number.isInteger(id));
@@ -2597,6 +2592,7 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
 
       const text = (q.question || "").toString().trim();
       const order = idx + 1;
+      const isPublic = normalizeIsPublic(q.is_public);
 
       await client.query(
         `
@@ -2604,22 +2600,24 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
         SET position   = $1,
             sort_order = $1,
             question   = $2,
+            is_public  = $3,
             updated_at = NOW()
-        WHERE id = $3 AND assessment_id = $4
+        WHERE id = $4 AND assessment_id = $5
         `,
-        [order, text, Number(q.id), assessmentId]
+        [order, text, isPublic, Number(q.id), assessmentId]
       );
     }
 
-    // 2) Insert new questions (and add their ids to incomingIds)
+    // 2) Insert new questions
     for (let idx = 0; idx < questions.length; idx++) {
       const q = questions[idx];
-      if (q.id) continue; // already handled above
+      if (q.id) continue;
 
       const text = (q.question || "").toString().trim();
       if (!text) continue;
 
       const order = idx + 1;
+      const isPublic = normalizeIsPublic(q.is_public);
 
       const insertRes = await client.query(
         `
@@ -2629,21 +2627,20 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
           position,
           sort_order,
           question,
-          is_active
+          is_active,
+          is_public
         )
-        VALUES ($1, $2, $3, $3, $4, TRUE)
+        VALUES ($1, $2, $3, $3, $4, TRUE, $5)
         RETURNING id
         `,
-        [schoolId, assessmentId, order, text]
+        [schoolId, assessmentId, order, text, isPublic]
       );
 
       const newId = insertRes.rows[0]?.id;
-      if (Number.isInteger(newId)) {
-        incomingIds.push(newId);
-      }
+      if (Number.isInteger(newId)) incomingIds.push(newId);
     }
 
-    // 3) Delete questions that are no longer present in the client list
+    // 3) Deletes unchanged
     const existingRes = await client.query(
       `SELECT id FROM questions WHERE assessment_id = $1`,
       [assessmentId]
@@ -2652,18 +2649,13 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
       .map((r) => Number(r.id))
       .filter((id) => Number.isInteger(id));
 
-    const idsToDelete = existingIds.filter(
-      (id) => !incomingIds.includes(id)
-    );
+    const idsToDelete = existingIds.filter((id) => !incomingIds.includes(id));
 
     if (idsToDelete.length) {
-      // First delete any help rows for those questions
       await client.query(
         `DELETE FROM questions_help WHERE question_id = ANY($1::int[])`,
         [idsToDelete]
       );
-
-      // Then delete the questions themselves
       await client.query(
         `DELETE FROM questions WHERE id = ANY($1::int[]) AND assessment_id = $2`,
         [idsToDelete, assessmentId]
@@ -5004,6 +4996,7 @@ async function cloneDefaultsFromDemoSchool(client, newSchoolId) {
         sort_order
       FROM questions
       WHERE assessment_id = $1
+      AND is_public = true
       ORDER BY position, id
     `,
     [demoAssessment.id]

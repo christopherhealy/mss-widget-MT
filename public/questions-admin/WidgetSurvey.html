@@ -120,6 +120,29 @@
 }
 
 .modalClose:hover { background:#fff; }
+
+.pubToggle {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+  color:#374151;
+  user-select:none;
+}
+.pubToggle input { transform: translateY(1px); }
+.pubPill {
+  font-size:11px;
+  padding:3px 8px;
+  border:1px solid var(--mss-edge);
+  border-radius:999px;
+  background:#f9fafb;
+  color:#374151;
+}
+.pubPill.off {
+  background:#fff7ed;
+  border-color:#fed7aa;
+  color:#9a3412;
+}
   </style>
 </head>
 <body>
@@ -217,8 +240,20 @@
     <div class="modal" role="dialog" aria-modal="true" aria-label="Add or Edit Question">
       <div class="modalHead"><div id="aeTitle" class="title">Add Question</div></div>
       <div class="modalBody">
-        <textarea id="aeTextarea" class="ta" placeholder="Type the question here…"></textarea>
-      </div>
+  <textarea id="aeTextarea" class="ta" placeholder="Type the question here…"></textarea>
+
+  <!-- NEW: Public toggle -->
+  <label style="display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;">
+    <input id="aeIsPublic" type="checkbox" checked />
+    <span>
+      <b>Public</b> (shows in the school’s normal widget)
+    </span>
+  </label>
+
+  <div class="muted" style="margin-top:6px;">
+    If unchecked, this question is hidden from the public widget and can be used only in teacher assignments.
+  </div>
+</div>
       <div class="modalFoot">
         <button id="aeCancel" type="button" class="btn">Cancel</button>
         <button id="aeSave" type="button" class="btn">Save</button>
