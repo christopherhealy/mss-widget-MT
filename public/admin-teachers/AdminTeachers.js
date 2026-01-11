@@ -179,7 +179,7 @@ async function adminFetch(url, opts = {}) {
     const ENTITY_TYPE = "teacher";
 
     let currentEntityId = null;
-    let pageLimit = 50;
+    let pageLimit = 5; ///may have to adjust 
     let pageOffset = 0;
     let cachedNotes = [];
 
@@ -410,8 +410,50 @@ async function adminFetch(url, opts = {}) {
       }
     }
 
+async function saveNoteFromModal() {
+  if (!currentEntityId) {
+    setStatus("No teacher selected.", false);
+    return;
+  }
+
+  const txt = ($("notesFormText")?.value || "").trim();
+  const pinned = !!$("notesFormPinned")?.checked;
+
+  if (!txt) {
+    setStatus("Note body is required.", false);
+    return;
+  }
+
+  setStatus("Saving note…", false);
+
+  try {
+    await NotesApi.create({
+      slug: SLUG,
+      entityType: ENTITY_TYPE,
+      entityId: currentEntityId,
+      bodyText: txt,
+      dueAt: null,
+      tags: pinned ? ["pinned"] : [],
+      meta: { pinned }
+    });
+
+    // Clear modal form
+    if ($("notesFormText")) $("notesFormText").value = "";
+    if ($("notesFormPinned")) $("notesFormPinned").checked = false;
+
+    // Refresh BOTH modal + preview
+    await refreshModalList();
+    await refreshPreviewAndCounts();
+
+    setStatus("Note saved.", true);
+  } catch (e) {
+    setStatus("Note save failed: " + (e.message || "error"), false);
+  }
+}
+
     async function openModalAndLoad() {
       if (!currentEntityId) return;
+      pageOffset = 0;
       openNotesModal();
       try {
         if ($("notesTeacherLabel")) $("notesTeacherLabel").textContent = teacherLabel();
@@ -427,40 +469,41 @@ async function adminFetch(url, opts = {}) {
       if ($("noteQuickPinned")) $("noteQuickPinned").checked = false;
     }
 
-    function bindUiOnce() {
-      // At-a-glance buttons
-      $("openNotesBtn")?.addEventListener("click", openModalAndLoad);
-      $("notesPreviewOpenBtn")?.addEventListener("click", openModalAndLoad);
+   function bindUiOnce() {
+  // At-a-glance buttons
+  $("openNotesBtn")?.addEventListener("click", openModalAndLoad);
+  $("notesPreviewOpenBtn")?.addEventListener("click", openModalAndLoad);
 
-      // Quick add controls
-      $("addQuickNoteBtn")?.addEventListener("click", addQuickNote);
-      $("clearQuickNoteBtn")?.addEventListener("click", clearQuick);
+  // Quick add controls
+  $("addQuickNoteBtn")?.addEventListener("click", addQuickNote);
+  $("clearQuickNoteBtn")?.addEventListener("click", clearQuick);
 
-      // Modal close buttons
-      $("notesCloseBtn")?.addEventListener("click", closeNotesModal);
-      $("notesDoneBtn")?.addEventListener("click", closeNotesModal);
+  // MODAL save / cancel
+  $("notesFormSaveBtn")?.addEventListener("click", saveNoteFromModal);
+  $("notesFormCancelBtn")?.addEventListener("click", function () {
+    if ($("notesFormText")) $("notesFormText").value = "";
+    if ($("notesFormPinned")) $("notesFormPinned").checked = false;
+  });
 
-      $("notesMask")?.addEventListener("click", function (e) {
-        if (e.target === $("notesMask")) closeNotesModal();
-      });
+  // Modal close buttons
+  $("notesCloseBtn")?.addEventListener("click", closeNotesModal);
+  $("notesDoneBtn")?.addEventListener("click", closeNotesModal);
 
-      // Modal refresh + paging
-      $("notesRefreshBtn")?.addEventListener("click", function () {
-        refreshModalList().catch(() => {});
-      });
+  $("notesMask")?.addEventListener("click", function (e) {
+    if (e.target === $("notesMask")) closeNotesModal();
+  });
 
-      $("notesPrevBtn")?.addEventListener("click", function () {
-        pageOffset = Math.max(pageOffset - pageLimit, 0);
-        refreshModalList().catch(() => {});
-      });
-
-      $("notesNextBtn")?.addEventListener("click", function () {
-        pageOffset = pageOffset + pageLimit;
-        refreshModalList().catch(() => {});
-      });
-
-      // Note: edit/delete wiring will be enabled once you add PUT/DELETE routes.
-    }
+  // Modal refresh + paging
+  $("notesRefreshBtn")?.addEventListener("click", () => refreshModalList().catch(() => {}));
+  $("notesPrevBtn")?.addEventListener("click", () => {
+    pageOffset = Math.max(pageOffset - pageLimit, 0);
+    refreshModalList().catch(() => {});
+  });
+  $("notesNextBtn")?.addEventListener("click", () => {
+    pageOffset += pageLimit;
+    refreshModalList().catch(() => {});
+  });
+}
 
     // Public entry point: called whenever selected teacher changes
     async function setEntity(entityId) {

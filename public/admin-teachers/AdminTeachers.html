@@ -264,6 +264,38 @@
       .odGrid { grid-template-columns: 1fr; }
       .odActions { justify-content:flex-start; }
     }
+/* Modal shell */
+#notesMask .modal {
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header + footer fixed */
+#notesMask .mhd,
+#notesMask .mft {
+  flex: 0 0 auto;
+}
+
+/* Modal body becomes flex container */
+#notesMask .mbd {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Notes list scrolls */
+#notesList {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  max-height: 320px;   /* ~4 notes */
+  padding-right: 6px;
+}
+
+/* Add Note section must never scroll away */
+#notesAddForm {
+  flex: 0 0 auto;
+}
   </style>
 </head>
 
@@ -553,101 +585,129 @@
     </div>
   </div>
 
-  <!-- Notes Modal (List + Add/Edit/Delete) -->
-  <div class="modalMask" id="notesMask">
-    <div class="modal">
-      <div class="mhd">
-        <div class="h">Notes</div>
-        <button class="btn" id="notesCloseBtn" type="button">Close</button>
+<!-- Notes Modal (List + Add) -->
+<div class="modalMask" id="notesMask">
+  <div class="modal" style="max-height:90vh; display:flex; flex-direction:column;">
+
+    <!-- Header -->
+    <div class="mhd">
+      <div class="h">Notes</div>
+      <button class="btn" id="notesCloseBtn" type="button">Close</button>
+    </div>
+
+    <!-- Body -->
+    <div class="mbd" style="overflow:hidden; display:flex; flex-direction:column; gap:12px;">
+
+      <!-- Context -->
+      <div class="muted" id="notesContextLine">
+        Teacher: <span id="notesTeacherLabel" class="mono">—</span>
       </div>
 
-      <div class="mbd">
-        <div class="muted" id="notesContextLine" style="margin-bottom:10px;">
-          Teacher: <span id="notesTeacherLabel" class="mono">—</span>
-        </div>
+      <!-- Add Note -->
+      <div class="card" style="box-shadow:none; border-radius:14px;">
+        <div class="bd" style="padding:12px;">
 
-        <div class="card" style="box-shadow:none; border-radius: 14px; margin-bottom:12px;">
-          <div class="bd" style="padding:12px;">
-            <div class="row" style="justify-content:space-between; align-items:center;">
-              <div style="font-weight:800;" id="notesFormTitle">Add note</div>
-              <div class="pill mono" id="notesEditingPill" style="display:none;">editing: —</div>
-            </div>
-
-            <div class="field" style="margin-top:10px; min-width:0;">
-              <label>Note</label>
-              <textarea id="notesFormText" placeholder="Write a note…"></textarea>
-            </div>
-
-            <div class="row" style="margin-top:10px; justify-content:space-between;">
-              <div class="row" style="gap:8px;">
-                <label class="pill" style="cursor:pointer;">
-                  <input type="checkbox" id="notesFormPinned" style="accent-color: var(--warn);" />
-                  Pin
-                </label>
-                <span class="muted">Pinned notes appear first.</span>
-              </div>
-
-              <div class="row" style="gap:8px;">
-                <button class="btn" id="notesFormCancelBtn" type="button" disabled>Cancel</button>
-                <button class="btn ok" id="notesFormSaveBtn" type="button" disabled>Save</button>
-              </div>
+          <!-- Add note header row -->
+          <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-weight:800;">Add note</div>
+            <div class="row" style="gap:8px;">
+              <button class="btn" id="notesFormCancelBtn" type="button">Cancel</button>
+              <button class="btn ok" id="notesFormSaveBtn" type="button">Save</button>
             </div>
           </div>
-        </div>
 
-        <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <div class="row" style="gap:8px; align-items:center;">
-            <div style="font-weight:800;">All notes</div>
-            <span class="pill mono" id="notesTotalPill">total: —</span>
+          <!-- Textarea -->
+          <div class="field">
+            <label>Note</label>
+            <textarea
+              id="notesFormText"
+              placeholder="Write a note…"
+              style="
+                width:100%;
+                min-height:80px;
+                max-height:160px;
+                overflow-y:auto;
+                resize:vertical;
+              "
+            ></textarea>
           </div>
 
-          <div class="row" style="gap:8px;">
-            <button class="btn small" id="notesRefreshBtn" type="button" disabled>Refresh</button>
+          <!-- Options -->
+          <div class="row" style="margin-top:8px; gap:8px; align-items:center;">
+            <label class="pill" style="cursor:pointer;">
+              <input type="checkbox" id="notesFormPinned" style="accent-color: var(--warn);" />
+              Pin
+            </label>
+            <span class="muted">Pinned notes appear first.</span>
           </div>
-        </div>
-
-        <div id="notesList" class="list">
-          <div class="muted">Loading…</div>
-        </div>
-
-        <div class="row" style="justify-content:flex-end; margin-top:10px; gap:8px;">
-          <button class="btn small" id="notesPrevBtn" type="button" disabled>Prev</button>
-          <button class="btn small" id="notesNextBtn" type="button" disabled>Next</button>
         </div>
       </div>
 
-      <div class="mft">
-        <div class="muted" id="notesFooterHint" style="margin-right:auto;">
-          Tip: use pinned notes for evergreen context (e.g., constraints, preferences).
+      <!-- Notes list header -->
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div class="row" style="gap:8px; align-items:center;">
+          <div style="font-weight:800;">All notes</div>
+          <span class="pill mono" id="notesTotalPill">total: —</span>
         </div>
-        <button class="btn" id="notesDoneBtn" type="button">Done</button>
+        <button class="btn small" id="notesRefreshBtn" type="button">Refresh</button>
+      </div>
+
+      <!-- Notes list (scroll container) -->
+      <div
+        id="notesList"
+        class="list"
+        style="
+          flex:1;
+          overflow-y:auto;
+          padding-right:4px;
+        "
+      >
+        <div class="muted">Loading…</div>
+      </div>
+
+      <!-- Paging -->
+      <div class="row" style="justify-content:flex-end; gap:8px;">
+        <button class="btn small" id="notesPrevBtn" type="button">Prev</button>
+        <button class="btn small" id="notesNextBtn" type="button">Next</button>
       </div>
     </div>
-  </div>
 
-  <!-- Notes Delete Confirm Modal -->
-  <div class="modalMask" id="notesDeleteMask">
-    <div class="modal">
-      <div class="mhd">
-        <div class="h">Delete Note</div>
-        <button class="btn" id="notesDeleteCancelBtn" type="button">Close</button>
+    <!-- Footer -->
+    <div class="mft">
+      <div class="muted" style="margin-right:auto;">
+        Tip: use pinned notes for evergreen context (e.g., constraints, preferences).
       </div>
-      <div class="mbd">
-        <div class="dangerBox">
-          This will delete this note:
-          <div class="mono" id="notesDeleteMeta" style="margin-top:8px;">—</div>
-          <div style="margin-top:10px; white-space:pre-wrap;" id="notesDeleteText">—</div>
-        </div>
-        <div class="muted" style="margin-top:10px;">
-          Recommended: delete only if it is incorrect or duplicated; otherwise keep as history.
-        </div>
-      </div>
-      <div class="mft">
-        <button class="btn" id="notesDeleteCancelBtn2" type="button">Cancel</button>
-        <button class="btn danger" id="notesDeleteConfirmBtn" type="button" disabled>Delete</button>
-      </div>
+      <button class="btn" id="notesDoneBtn" type="button">Done</button>
     </div>
   </div>
+</div>
+
+<!-- Notes Delete Confirm Modal -->
+<div class="modalMask" id="notesDeleteMask">
+  <div class="modal">
+
+    <div class="mhd">
+      <div class="h">Delete Note</div>
+      <button class="btn" id="notesDeleteCancelBtn" type="button">Close</button>
+    </div>
+
+    <div class="mbd">
+      <div class="dangerBox">
+        This will delete this note:
+        <div class="mono" id="notesDeleteMeta" style="margin-top:8px;">—</div>
+        <div style="margin-top:10px; white-space:pre-wrap;" id="notesDeleteText">—</div>
+      </div>
+      <div class="muted" style="margin-top:10px;">
+        Recommended: delete only if it is incorrect or duplicated; otherwise keep as history.
+      </div>
+    </div>
+
+    <div class="mft">
+      <button class="btn" id="notesDeleteCancelBtn2" type="button">Cancel</button>
+      <button class="btn danger" id="notesDeleteConfirmBtn" type="button" disabled>Delete</button>
+    </div>
+  </div>
+</div>
 
    <script src="/js/notes-api.js?v=20260110_1"></script>
    <script src="/js/notes-widget.js?v=20260110_1"></script>
