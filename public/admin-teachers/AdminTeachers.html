@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Teacher Admin</title>
+
+  <style>
+    :root {
+      /* Light theme tokens */
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --card2: #f8fafc;
+      --border: rgba(15, 23, 42, 0.14);
+      --text: #0f172a;
+      --muted: rgba(15, 23, 42, 0.62);
+
+      --accent: #1d4ed8;  /* MSS-ish blue */
+      --danger: #b91c1c;
+      --ok: #16a34a;
+      --warn: #b45309;
+
+      --shadow: 0 10px 26px rgba(15, 23, 42, 0.10);
+      --radius: 16px;
+      --radius2: 12px;
+      --pad: 16px;
+
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+
+    html, body { height:100%; }
+
+    body {
+      margin:0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(1100px 650px at 10% 10%, rgba(29, 78, 216, 0.10), transparent 55%),
+        radial-gradient(900px 600px at 90% 20%, rgba(22, 163, 74, 0.08), transparent 60%),
+        linear-gradient(180deg, #f7f9fd, #f3f6fb 55%, #eef2f9);
+    }
+
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 22px 18px 34px; }
+
+    .topbar {
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      margin-bottom: 14px;
+    }
+
+    .title { display:flex; flex-direction:column; gap:4px; }
+    .title h1 { margin:0; font-size: 20px; letter-spacing: .2px; }
+    .title .sub { color: var(--muted); font-size: 13px; }
+    .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      transition: transform .05s ease, background .15s ease, box-shadow .15s ease, opacity .15s ease;
+    }
+    .btn:hover {
+      background: #f8fafc;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn:disabled { opacity: .55; cursor: default; box-shadow:none; }
+
+    .btn.primary {
+      background: rgba(29, 78, 216, 0.10);
+      border-color: rgba(29, 78, 216, 0.30);
+    }
+    .btn.primary:hover { background: rgba(29, 78, 216, 0.14); }
+
+    .btn.danger {
+      background: rgba(185, 28, 28, 0.08);
+      border-color: rgba(185, 28, 28, 0.28);
+    }
+    .btn.danger:hover { background: rgba(185, 28, 28, 0.12); }
+
+    .btn.ok {
+      background: rgba(22, 163, 74, 0.08);
+      border-color: rgba(22, 163, 74, 0.28);
+    }
+    .btn.ok:hover { background: rgba(22, 163, 74, 0.12); }
+
+    .btn.small { padding: 8px 10px; font-size: 12px; border-radius: 10px; }
+
+    .pill {
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.70);
+      white-space: nowrap;
+    }
+    .pill.on {
+      color: #064e3b;
+      border-color: rgba(22, 163, 74, 0.30);
+      background: rgba(22, 163, 74, 0.10);
+    }
+    .pill.off {
+      color: #7f1d1d;
+      border-color: rgba(185, 28, 28, 0.26);
+      background: rgba(185, 28, 28, 0.08);
+    }
+    .pill.duty {
+      color: #7c2d12;
+      border-color: rgba(180, 83, 9, 0.32);
+      background: rgba(180, 83, 9, 0.10);
+    }
+
+    .status {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.75);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns: 1.05fr 1.25fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card2);
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .card .hd .h { font-weight: 700; font-size: 14px; }
+    .card .bd { padding: 14px; }
+
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .field {
+      display:flex; flex-direction:column; gap:6px;
+      min-width: 180px;
+      flex: 1;
+    }
+    .field label { font-size: 12px; color: var(--muted); }
+
+    input[type="text"], input[type="email"], textarea, select {
+      width: 100%;
+      padding: 10px 11px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      outline:none;
+      font-size: 13px;
+      transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: rgba(29, 78, 216, 0.35);
+      box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.10);
+    }
+    textarea { min-height: 96px; resize: vertical; }
+
+    .muted { color: var(--muted); font-size: 12px; }
+    .mono { font-family: var(--mono); }
+
+    .list { display:flex; flex-direction:column; gap:10px; }
+
+    .tRow {
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.80);
+      cursor:pointer;
+      transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
+    }
+    .tRow:hover {
+      background: #ffffff;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+    }
+    .tRow.sel {
+      border-color: rgba(29, 78, 216, 0.35);
+      background: rgba(29, 78, 216, 0.07);
+    }
+    .tTop { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .tName { font-weight: 700; }
+    .tEmail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .tMeta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+    /* On-duty panel */
+    .odGrid {
+      display:grid;
+      grid-template-columns: 1.3fr .9fr;
+      gap: 12px;
+      align-items: center;
+    }
+    .odLine { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .odName { font-weight: 800; }
+    .odActions { display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+    .odMeta { margin-top: 6px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+    /* Modal */
+    .modalMask {
+      position: fixed; inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      display:none;
+      align-items:center; justify-content:center;
+      padding: 18px;
+      z-index: 50;
+    }
+    .modal {
+      width: min(720px, 96vw);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
+      overflow:hidden;
+    }
+    .modal .mhd {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card2);
+      display:flex; justify-content:space-between; align-items:center; gap:12px;
+    }
+    .modal .mhd .h { font-weight: 800; }
+    .modal .mbd { padding: 14px; }
+    .modal .mft {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--card2);
+      display:flex; justify-content:flex-end; gap:10px;
+    }
+
+    /* Small "danger box" for delete confirm */
+    .dangerBox {
+      border: 1px solid rgba(185, 28, 28, 0.26);
+      background: rgba(185, 28, 28, 0.06);
+      border-radius: 14px;
+      padding: 12px;
+      color: #7f1d1d;
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+      .odGrid { grid-template-columns: 1fr; }
+      .odActions { justify-content:flex-start; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>Teacher Admin</h1>
+        <div class="sub">Manage teachers, on-duty coverage, and student assignments (v1).</div>
+      </div>
+      <div class="actions">
+        <div class="pill mono" id="slugPill">slug: …</div>
+        <button class="btn" id="backBtn" type="button">Back to Admin Home</button>
+        <button class="btn primary" id="addTeacherBtn" type="button">+ Add Teacher</button>
+      </div>
+    </div>
+
+    <div class="status" id="status">Ready.</div>
+
+    <!-- On-Duty Panel -->
+    <div class="card" id="onDutyCard" style="margin-top:12px;">
+      <div class="hd">
+        <div class="h">On-Duty Coverage</div>
+        <div class="muted">One teacher maximum (per school)</div>
+      </div>
+      <div class="bd">
+        <div class="odGrid">
+          <div>
+            <div class="odLine">
+              <span class="pill duty">On Duty</span>
+              <span class="odName" id="onDutyName">Loading…</span>
+              <span class="muted" id="onDutyEmail"></span>
+            </div>
+            <div class="odMeta">
+              <span class="pill mono" id="onDutyId">id: —</span>
+              <span class="pill mono" id="onDutySince">since: —</span>
+              <span class="muted">Setting on-duty clears any previous on-duty teacher.</span>
+            </div>
+          </div>
+
+          <div class="odActions">
+            <button class="btn danger" id="btnClearOnDuty" type="button">Clear on-duty</button>
+            <button class="btn ok" id="btnSetSelectedOnDuty" type="button" disabled>Set selected on-duty</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: Teacher List -->
+      <div class="card">
+        <div class="hd">
+          <div class="h">Teachers</div>
+          <div class="row" style="justify-content:flex-end">
+            <label class="pill" style="cursor:pointer;">
+              <input type="checkbox" id="activeOnly" checked style="accent-color: var(--accent);" />
+              Active only
+            </label>
+            <button class="btn small" id="refreshBtn" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="row" style="margin-bottom:10px;">
+            <div class="field" style="flex:2;">
+              <label>Search</label>
+              <input type="text" id="q" placeholder="name or email" />
+            </div>
+            <div style="padding-top:18px;">
+              <button class="btn" id="searchBtn" type="button">Search</button>
+            </div>
+          </div>
+
+          <div class="list" id="teacherList">
+            <div class="muted">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Teacher Detail -->
+      <div class="card">
+        <div class="hd">
+          <div class="h">Teacher Detail</div>
+          <div class="row">
+            <div class="pill mono" id="teacherIdPill">id: —</div>
+            <div class="pill" id="activePill">—</div>
+            <div class="pill duty" id="dutyPill" style="display:none;">On Duty</div>
+          </div>
+        </div>
+
+        <div class="bd">
+          <div id="detailEmpty" class="muted">Select a teacher to view/edit details.</div>
+
+          <div id="detail" style="display:none;">
+            <div class="row">
+              <div class="field">
+                <label>Full name</label>
+                <input type="text" id="fullName" />
+              </div>
+              <div class="field">
+                <label>Email (login identity)</label>
+                <input type="email" id="email" />
+              </div>
+            </div>
+
+            <div class="row" style="margin-top:10px;">
+              <label class="pill" style="cursor:pointer;">
+                <input type="checkbox" id="isActive" style="accent-color: var(--accent);" />
+                Active
+              </label>
+              <label class="pill" style="cursor:pointer;">
+                <input type="checkbox" id="isOnDuty" style="accent-color: var(--warn);" />
+                On duty (public leads)
+              </label>
+              <div class="muted">On-duty is exclusive per school and is managed via the On-Duty panel / API.</div>
+            </div>
+
+            <!-- CRUD actions -->
+            <div class="row" style="margin-top:12px; justify-content:space-between;">
+              <div class="row" style="gap:8px;">
+                <button class="btn" id="inviteBtn" type="button">Send set-password link</button>
+              </div>
+
+              <div class="row" style="gap:8px; justify-content:flex-end;">
+                <button class="btn danger" id="deleteBtn" type="button" disabled>Delete</button>
+                <button class="btn danger" id="deactivateBtn" type="button" disabled>Deactivate</button>
+                <button class="btn ok" id="saveBtn" type="button" disabled>Save</button>
+              </div>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--border); margin: 14px 0;" />
+
+            <!-- NOTES (Teacher) — inline block (JS wires these IDs) -->
+            <div class="row" style="align-items:flex-start; gap:12px;">
+              <div style="flex:1;">
+                <div class="row" style="justify-content:space-between; align-items:center;">
+                  <div style="font-weight:800;">Notes</div>
+
+                  <div class="row" style="gap:8px;">
+                    <span class="pill mono" id="notesCountPill" title="Total notes for this teacher">notes: —</span>
+                    <button class="btn small" id="openNotesBtn" type="button" disabled>View all</button>
+                  </div>
+                </div>
+
+                <!-- Quick add -->
+                <div style="margin-top:10px;">
+                  <div class="field" style="min-width:0;">
+                    <label>Add a note (quick)</label>
+                    <textarea id="noteQuickText" placeholder="Type a note… (e.g., availability, follow-ups, concerns)"></textarea>
+                  </div>
+
+                  <div class="row" style="margin-top:10px; justify-content:space-between;">
+                    <div class="row" style="gap:8px;">
+                      <label class="pill" style="cursor:pointer;">
+                        <input type="checkbox" id="noteQuickPinned" style="accent-color: var(--warn);" />
+                        Pin
+                      </label>
+                      <span class="muted">Pinned notes surface first.</span>
+                    </div>
+
+                    <div class="row" style="gap:8px;">
+                      <button class="btn" id="clearQuickNoteBtn" type="button" disabled>Clear</button>
+                      <button class="btn ok" id="addQuickNoteBtn" type="button" disabled>Add note</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- At-a-glance preview -->
+                <div style="margin-top:12px;">
+                  <div class="muted" style="margin-bottom:6px;">Most recent</div>
+
+                  <div class="card" style="box-shadow:none; border-radius: 14px;">
+                    <div class="bd" style="padding:12px;">
+                      <div id="notesPreviewEmpty" class="muted">No notes yet.</div>
+
+                      <div id="notesPreview" style="display:none;">
+                        <div class="row" style="justify-content:space-between; align-items:flex-start;">
+                          <div style="flex:1; min-width:0;">
+                            <div class="row" style="gap:8px; align-items:center;">
+                              <span class="pill duty" id="notesPreviewPinned" style="display:none;">Pinned</span>
+                              <div class="mono muted" id="notesPreviewMeta">—</div>
+                            </div>
+                            <div style="margin-top:8px; white-space:pre-wrap;" id="notesPreviewText">—</div>
+                          </div>
+
+                          <div class="row" style="gap:8px; margin-left:10px;">
+                            <button class="btn small" id="notesPreviewEditBtn" type="button" disabled>Edit</button>
+                            <button class="btn small" id="notesPreviewOpenBtn" type="button" disabled>Open</button>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--border); margin: 14px 0;" />
+
+            <!-- Student assignments scaffold -->
+            <div class="row" style="align-items:flex-start;">
+              <div style="flex:1;">
+                <div style="font-weight:800; margin-bottom:6px;">Student Assignments (bulk)</div>
+                <div class="muted" style="margin-bottom:10px;">
+                  v1 UI scaffold. Next: choose students (search + multi-select) then assign/unassign.
+                </div>
+                <div class="row">
+                  <button class="btn" id="bulkAssignBtn" type="button">Bulk assign students</button>
+                  <button class="btn danger" id="bulkUnassignBtn" type="button">Bulk unassign students</button>
+                </div>
+              </div>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--border); margin: 14px 0;" />
+
+            <div class="muted">
+              Operational note: For funnel leads, you’ll likely surface “lead” tagged students in TeacherHome for the on-duty teacher.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Teacher Modal -->
+  <div class="modalMask" id="modalMask">
+    <div class="modal">
+      <div class="mhd">
+        <div class="h">Add Teacher</div>
+        <button class="btn" id="closeModalBtn" type="button">Close</button>
+      </div>
+      <div class="mbd">
+        <div class="row">
+          <div class="field">
+            <label>Full name</label>
+            <input type="text" id="mFullName" placeholder="e.g., Jane Smith" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="mEmail" placeholder="e.g., jane@school.org" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <label class="pill" style="cursor:pointer;">
+            <input type="checkbox" id="mIsActive" checked style="accent-color: var(--accent);" />
+            Active
+          </label>
+          <label class="pill" style="cursor:pointer;">
+            <input type="checkbox" id="mIsOnDuty" style="accent-color: var(--warn);" />
+            On duty
+          </label>
+        </div>
+        <div class="muted" style="margin-top:10px;">
+          Teacher login is email-based. Password setup is via “set-password link” (recommended) rather than admin setting a password.
+        </div>
+      </div>
+      <div class="mft">
+        <button class="btn" id="cancelAddBtn" type="button">Cancel</button>
+        <button class="btn primary" id="confirmAddBtn" type="button">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Teacher Confirm Modal -->
+  <div class="modalMask" id="deleteMask">
+    <div class="modal">
+      <div class="mhd">
+        <div class="h">Delete Teacher</div>
+        <button class="btn" id="deleteCancelBtn" type="button">Close</button>
+      </div>
+      <div class="mbd">
+        <div class="dangerBox">
+          This will permanently delete <b id="deleteTeacherName">this teacher</b>.
+          <div style="margin-top:8px;">
+            If this teacher has submissions or student assignments, the server may reject the delete (recommended).
+          </div>
+        </div>
+        <div class="muted" style="margin-top:10px;">
+          Suggested v1 policy: use “Deactivate” instead of delete unless you are certain there are no dependencies.
+        </div>
+      </div>
+      <div class="mft">
+        <button class="btn" id="deleteCancelBtn2" type="button">Cancel</button>
+        <button class="btn danger" id="deleteConfirmBtn" type="button">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes Modal (List + Add/Edit/Delete) -->
+  <div class="modalMask" id="notesMask">
+    <div class="modal">
+      <div class="mhd">
+        <div class="h">Notes</div>
+        <button class="btn" id="notesCloseBtn" type="button">Close</button>
+      </div>
+
+      <div class="mbd">
+        <div class="muted" id="notesContextLine" style="margin-bottom:10px;">
+          Teacher: <span id="notesTeacherLabel" class="mono">—</span>
+        </div>
+
+        <div class="card" style="box-shadow:none; border-radius: 14px; margin-bottom:12px;">
+          <div class="bd" style="padding:12px;">
+            <div class="row" style="justify-content:space-between; align-items:center;">
+              <div style="font-weight:800;" id="notesFormTitle">Add note</div>
+              <div class="pill mono" id="notesEditingPill" style="display:none;">editing: —</div>
+            </div>
+
+            <div class="field" style="margin-top:10px; min-width:0;">
+              <label>Note</label>
+              <textarea id="notesFormText" placeholder="Write a note…"></textarea>
+            </div>
+
+            <div class="row" style="margin-top:10px; justify-content:space-between;">
+              <div class="row" style="gap:8px;">
+                <label class="pill" style="cursor:pointer;">
+                  <input type="checkbox" id="notesFormPinned" style="accent-color: var(--warn);" />
+                  Pin
+                </label>
+                <span class="muted">Pinned notes appear first.</span>
+              </div>
+
+              <div class="row" style="gap:8px;">
+                <button class="btn" id="notesFormCancelBtn" type="button" disabled>Cancel</button>
+                <button class="btn ok" id="notesFormSaveBtn" type="button" disabled>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div class="row" style="gap:8px; align-items:center;">
+            <div style="font-weight:800;">All notes</div>
+            <span class="pill mono" id="notesTotalPill">total: —</span>
+          </div>
+
+          <div class="row" style="gap:8px;">
+            <button class="btn small" id="notesRefreshBtn" type="button" disabled>Refresh</button>
+          </div>
+        </div>
+
+        <div id="notesList" class="list">
+          <div class="muted">Loading…</div>
+        </div>
+
+        <div class="row" style="justify-content:flex-end; margin-top:10px; gap:8px;">
+          <button class="btn small" id="notesPrevBtn" type="button" disabled>Prev</button>
+          <button class="btn small" id="notesNextBtn" type="button" disabled>Next</button>
+        </div>
+      </div>
+
+      <div class="mft">
+        <div class="muted" id="notesFooterHint" style="margin-right:auto;">
+          Tip: use pinned notes for evergreen context (e.g., constraints, preferences).
+        </div>
+        <button class="btn" id="notesDoneBtn" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes Delete Confirm Modal -->
+  <div class="modalMask" id="notesDeleteMask">
+    <div class="modal">
+      <div class="mhd">
+        <div class="h">Delete Note</div>
+        <button class="btn" id="notesDeleteCancelBtn" type="button">Close</button>
+      </div>
+      <div class="mbd">
+        <div class="dangerBox">
+          This will delete this note:
+          <div class="mono" id="notesDeleteMeta" style="margin-top:8px;">—</div>
+          <div style="margin-top:10px; white-space:pre-wrap;" id="notesDeleteText">—</div>
+        </div>
+        <div class="muted" style="margin-top:10px;">
+          Recommended: delete only if it is incorrect or duplicated; otherwise keep as history.
+        </div>
+      </div>
+      <div class="mft">
+        <button class="btn" id="notesDeleteCancelBtn2" type="button">Cancel</button>
+        <button class="btn danger" id="notesDeleteConfirmBtn" type="button" disabled>Delete</button>
+      </div>
+    </div>
+  </div>
+
+   <script src="/js/notes-api.js?v=20260110_1"></script>
+   <script src="/js/notes-widget.js?v=20260110_1"></script>
+   <script src="./AdminTeachers.js?v=20260110_1"></script>
+
+  <script src="./AdminTeachers.js?v=20260110_1"></script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Student Portal</title>
+  <link rel="stylesheet" href="/public/css/MSSStylesheet.css" />
+  <style>
+    .spWrap { display:flex; gap:16px; padding:16px; }
+    .spLeft { width:420px; border:1px solid #e5e7eb; border-radius:12px; padding:12px; }
+    .spRight { flex:1; border:1px solid #e5e7eb; border-radius:12px; padding:12px; min-height:520px; }
+    .spRow { padding:10px; border-radius:10px; cursor:pointer; border:1px solid transparent; }
+    .spRow:hover { border-color:#e5e7eb; background:#fafafa; }
+    .spRow.active { border-color:#111827; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #e5e7eb; }
+    .pill.off { opacity:.6; }
+    .muted { color:#6b7280; }
+    .grid2 { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; align-items:center; }
+    input[type="text"]{ width:100%; padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px; }
+    textarea{ width:100%; min-height:110px; padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px; }
+    .btn { padding:8px 12px; border:1px solid #e5e7eb; border-radius:10px; background:white; cursor:pointer; }
+    .btn.primary { background:#111827; color:white; border-color:#111827; }
+    .rowFlex { display:flex; gap:8px; align-items:center; }
+  </style>
+</head>
+<body>
+  <div style="padding:16px 16px 0 16px;">
+    <h2 style="margin:0;">Student Portal</h2>
+    <div id="status" class="muted" style="margin-top:6px;"></div>
+  </div>
+
+  <div class="spWrap">
+    <div class="spLeft">
+      <div class="rowFlex">
+        <input id="spQ" type="text" placeholder="Search: email, name, ID…" />
+        <button id="spSearchBtn" class="btn">Search</button>
+      </div>
+
+      <div class="rowFlex" style="margin-top:10px;">
+        <label class="muted"><input id="spActiveOnly" type="checkbox" checked /> Active only</label>
+        <input id="spTag" type="text" placeholder="Tag filter (optional)" />
+      </div>
+
+      <div style="margin-top:12px;">
+        <button id="spNewBtn" class="btn primary">＋ New Student</button>
+      </div>
+
+      <div id="spList" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="spRight">
+      <div id="spDetailEmpty" class="muted">Select a student to view details.</div>
+
+      <div id="spDetail" style="display:none;">
+        <div class="rowFlex" style="justify-content:space-between;">
+          <div>
+            <div id="dName" style="font-size:20px; font-weight:600;"></div>
+            <div class="muted" id="dEmail"></div>
+          </div>
+          <div id="dActivePill" class="pill"></div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;" />
+
+        <div class="grid2">
+          <div class="muted">Student ID</div><div id="dId"></div>
+          <div class="muted">Phone</div><div id="dPhone"></div>
+          <div class="muted">External ID</div><div id="dExternal"></div>
+          <div class="muted">L1</div><div id="dL1"></div>
+          <div class="muted">Date started</div><div id="dStarted"></div>
+          <div class="muted">Tags</div><div id="dTags"></div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <div class="muted" style="margin-bottom:6px;">Summary</div>
+          <textarea id="dSummary" placeholder="Teacher notes summary…"></textarea>
+        </div>
+
+        <div class="rowFlex" style="margin-top:12px;">
+          <button id="dSaveBtn" class="btn primary">Save Profile</button>
+          <button id="dToggleActiveBtn" class="btn">Toggle Active</button>
+        </div>
+
+        <div style="margin-top:14px;" class="muted" id="dStats"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/public/js/StudentPortal.js"></script>
+</body>
+</html>

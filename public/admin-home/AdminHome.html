@@ -133,11 +133,36 @@
       <div><span class="label">Role:</span> <span id="admin-role">—</span></div>
     </section>
 
+
+
+    <!-- Super Admin: School Context Picker (Option 3) -->
+    <section class="admin-meta" id="school-picker-wrap" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span class="label">School context:</span>
+
+          <select id="admin-school-select" style="padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; min-width:260px;">
+            <option value="" selected disabled>— Select a school —</option>
+          </select>
+
+          <span class="badge" id="admin-school-slug-pill" title="Selected school slug">slug: —</span>
+        </div>
+
+        <button class="admin-btn secondary" id="btn-school-refresh" type="button" style="padding:8px 12px; font-size:13px;">
+          Refresh schools
+        </button>
+      </div>
+
+      <div style="margin-top:8px; color:#64748b; font-size:13px;">
+        Your selection applies to Teacher Admin, School Portal, Config, Questions, and other  school-scoped tools.
+      </div>
+    </section>
+
     <div class="status" id="admin-status"></div>
 
     <section class="admin-buttons">
       <button class="admin-btn" id="btn-portal">School Portal</button>
-
+      <button class="admin-btn" id="teacherAdminBtn">Teacher Admin</button>
       
        <!-- Super admin only (shown via AdminHome.js) -->
       <button class="admin-btn secondary" id="btn-school-signup" style="display:none;">

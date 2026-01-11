@@ -1,5 +1,5 @@
 // /public/admin-home/AdminHome.js
-// v1.4 — stable wiring + token/legacy fallback
+// v1.5 — Super Admin must choose a school (no persistence) + token/legacy fallback
 console.log("✅ AdminHome.js loaded");
 
 (function () {
@@ -41,6 +41,20 @@ console.log("✅ AdminHome.js loaded");
     }
   }
 
+  // Unified fetch that carries either Bearer token OR legacy x-admin-key
+  async function adminFetch(url, opts = {}) {
+    const auth = readAuthArtifact();
+    const headers = new Headers(opts.headers || {});
+
+    if (auth.type === "token") {
+      headers.set("Authorization", "Bearer " + auth.value);
+    } else if (auth.type === "legacy") {
+      headers.set("x-admin-key", auth.value);
+    }
+
+    return fetch(url, { ...opts, headers });
+  }
+
   function setStatus(msg, isError = false) {
     const el = $("admin-status");
     if (!el) return;
@@ -58,16 +72,17 @@ console.log("✅ AdminHome.js loaded");
 
     if (flag === true) return true;
 
-    // Optional heuristic fallback (keep if you like)
+    // Optional heuristic fallback
     const email = String(session.email || "");
     return /@mss\.com$/i.test(email);
   }
 
   function populateMeta(session, auth) {
-    $("admin-email").textContent = session.email || "—";
-    $("admin-id").textContent = session.adminId != null ? String(session.adminId) : "—";
-
     const superAdmin = isSuperAdmin(session);
+
+    $("admin-email").textContent = session.email || "—";
+    $("admin-id").textContent =
+      session.adminId != null ? String(session.adminId) : "—";
     $("admin-role").textContent = superAdmin ? "Super admin" : "Admin";
 
     const badge = $("admin-key-badge");
@@ -93,8 +108,6 @@ console.log("✅ AdminHome.js loaded");
   }
 
   function openInViewer(title, src) {
-    // If you decide to stop using the viewer, you can replace this
-    // with: window.location.href = src;
     if (!window.MSSViewer || typeof window.MSSViewer.open !== "function") {
       window.location.href = src;
       return;
@@ -102,7 +115,97 @@ console.log("✅ AdminHome.js loaded");
     window.MSSViewer.open({ title, src });
   }
 
-  function init() {
+  // Buttons that require a school slug context
+  function setSchoolScopedButtonsEnabled(enabled) {
+    const ids = ["btn-portal", "teacherAdminBtn", "btn-config", "btn-questions"];
+    ids.forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !enabled;
+    });
+  }
+
+  function setSlugPill(slug) {
+    const pill = $("admin-school-slug-pill"); // if present in HTML
+    if (!pill) return;
+    pill.textContent = "slug: " + (slug || "—");
+  }
+
+  // Super Admin: load schools into dropdown, but DO NOT auto-select.
+  // Requirement: force the super admin to pick a school each session (no persistence).
+  async function loadSchoolsForSuperAdmin(session) {
+    const wrap = $("school-picker-wrap");
+    const sel = $("admin-school-select");
+    const btnRefresh = $("btn-school-refresh");
+
+    if (!wrap || !sel) return;
+
+    wrap.style.display = "block";
+
+    async function refresh() {
+      sel.disabled = true;
+      sel.innerHTML = '<option value="" selected>Loading schools…</option>';
+
+      const url =
+        "/api/admin/my-schools?email=" +
+        encodeURIComponent(session.email || "") +
+        "&adminId=" +
+        encodeURIComponent(String(session.adminId ?? session.id ?? ""));
+
+      const res = await adminFetch(url, { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok || body.ok === false) {
+        sel.innerHTML = '<option value="" selected>(Failed to load schools)</option>';
+        setSlugPill("");
+        setSchoolScopedButtonsEnabled(false);
+        throw new Error("Failed to load schools: " + (body.error || res.status));
+      }
+
+      const schools = Array.isArray(body.schools) ? body.schools : [];
+
+      if (!schools.length) {
+        sel.innerHTML = '<option value="" selected>(No schools found)</option>';
+        setSlugPill("");
+        setSchoolScopedButtonsEnabled(false);
+        return;
+      }
+
+      // Required placeholder first
+      const opts =
+        '<option value="" selected disabled>— Select a school —</option>' +
+        schools
+          .map((s) => {
+            const slug = String(s.slug || "").trim();
+            const name = String(s.name || s.slug || "(Unnamed school)").trim();
+            const label = slug && name ? `${name} (${slug})` : (name || slug);
+            return `<option value="${slug.replace(/"/g, "&quot;")}">${label}</option>`;
+          })
+          .join("");
+
+      sel.innerHTML = opts;
+      sel.disabled = false;
+
+      // Force selection
+      setSlugPill("");
+      setSchoolScopedButtonsEnabled(false);
+    }
+
+    // Wire refresh
+    btnRefresh?.addEventListener("click", async () => {
+      try {
+        await refresh();
+        setStatus("Schools refreshed. Select a school to continue.", false);
+      } catch (e) {
+        console.warn(e);
+        setStatus("Failed to refresh schools.", true);
+      }
+    });
+
+    // Initial load
+    await refresh();
+  }
+
+  async function init() {
     const session = readSession();
     const auth = readAuthArtifact();
 
@@ -114,40 +217,102 @@ console.log("✅ AdminHome.js loaded");
     const superAdmin = isSuperAdmin(session);
     populateMeta(session, auth);
 
-    setStatus(
-      auth.type !== "none"
-        ? "You are signed in. Use the buttons below to open each tool."
-        : "You are signed in, but your admin token/key is missing. Please log in again.",
-      auth.type === "none"
-    );
+    // Slug context:
+    // - Admin: can use URL slug or default mss-demo
+    // - Super Admin: MUST choose on this page (no default, no persistence)
+    let SLUG = "";
+
+    // Super Admin school picker handling
+    if (superAdmin) {
+      try {
+        await loadSchoolsForSuperAdmin(session);
+      } catch (e) {
+        console.warn("[AdminHome] loadSchoolsForSuperAdmin failed", e);
+      }
+
+      // enforce selection
+      SLUG = "";
+      setSlugPill("");
+      setSchoolScopedButtonsEnabled(false);
+      setStatus("Select a school to continue.", false);
+
+      const sel = $("admin-school-select");
+      sel?.addEventListener("change", () => {
+        const chosen = String(sel.value || "").trim();
+        SLUG = chosen;
+        setSlugPill(SLUG);
+        setSchoolScopedButtonsEnabled(!!SLUG);
+        if (SLUG) setStatus("School selected. You may open tools.", false);
+        else setStatus("Select a school to continue.", true);
+      });
+    } else {
+      // Regular admin flow
+      const params = new URLSearchParams(window.location.search);
+      SLUG = (params.get("slug") || "mss-demo").trim();
+      setSlugPill(SLUG);
+      setSchoolScopedButtonsEnabled(true);
+    }
+
+    // Auth status
+    if (auth.type === "none") {
+      setStatus(
+        "You are signed in, but your admin token/key is missing. Please log in again.",
+        true
+      );
+    } else if (!superAdmin) {
+      setStatus("You are signed in. Use the buttons below to open each tool.", false);
+    } else {
+      // super admin status already set above (“Select a school…”)
+      // keep as-is
+    }
 
     const btnPortal = $("btn-portal");
     const btnConfig = $("btn-config");
     const btnQuestions = $("btn-questions");
-    const btnPrompts = $("btn-prompts");
     const btnInviteSchoolSignup = $("btn-invite-school-signup");
     const btnManageSchools = $("btn-manage-schools");
     const btnSchoolSignup = $("btn-school-signup");
     const btnLogout = $("btn-logout");
+    const btnTeacherAdmin = $("teacherAdminBtn");
+
+    function requireSlugOrWarn() {
+      if (!SLUG) {
+        setStatus("Please select a school first.", true);
+        return null;
+      }
+      return SLUG;
+    }
+
+    // School-scoped tools (carry slug)
+    btnTeacherAdmin?.addEventListener("click", () => {
+      const s = requireSlugOrWarn();
+      if (!s) return;
+      window.location.href =
+        "/admin-teachers/AdminTeachers.html?slug=" + encodeURIComponent(s);
+    });
 
     btnPortal?.addEventListener("click", () => {
-      window.location.href = "/admin/SchoolPortal.html";
+      const s = requireSlugOrWarn();
+      if (!s) return;
+      window.location.href =
+        "/admin/SchoolPortal.html?slug=" + encodeURIComponent(s);
     });
 
     btnConfig?.addEventListener("click", () => {
-      window.location.href = "/config-admin/ConfigAdmin.html";
+      const s = requireSlugOrWarn();
+      if (!s) return;
+      window.location.href =
+        "/config-admin/ConfigAdmin.html?slug=" + encodeURIComponent(s);
     });
 
     btnQuestions?.addEventListener("click", () => {
-      window.location.href = "/questions-admin/WidgetSurvey.html";
+      const s = requireSlugOrWarn();
+      if (!s) return;
+      window.location.href =
+        "/questions-admin/WidgetSurvey.html?slug=" + encodeURIComponent(s);
     });
 
-    btnPrompts?.addEventListener("click", () => {
-      // keep it simple for now (viewer + fixed slug)
-      window.location.href = "/admin-prompt/PromptAdmin.html?slug=demo";
-    });
-
-    // Super admin only — Invite School Signup
+    // Super admin only
     if (btnInviteSchoolSignup) {
       btnInviteSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
       if (superAdmin) {
@@ -157,18 +322,15 @@ console.log("✅ AdminHome.js loaded");
       }
     }
 
-    // Super admin only — Manage Schools
     if (btnManageSchools) {
       btnManageSchools.style.display = superAdmin ? "inline-flex" : "none";
       if (superAdmin) {
         btnManageSchools.addEventListener("click", () => {
-          // If you don't want viewer: window.location.href = MANAGE_SCHOOLS_URL;
           openInViewer("Manage Schools", MANAGE_SCHOOLS_URL);
         });
       }
     }
 
-    // Super admin only — School Sign Up
     if (btnSchoolSignup) {
       btnSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
       if (superAdmin) {
@@ -184,5 +346,10 @@ console.log("✅ AdminHome.js loaded");
     });
   }
 
-  document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", () => {
+    init().catch((e) => {
+      console.error("[AdminHome] init failed", e);
+      setStatus("Error loading Admin Home.", true);
+    });
+  });
 })();

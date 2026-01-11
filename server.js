@@ -155,8 +155,58 @@ function requireAdminAuth(req, res, next) {
       return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
     }
 
-    const payload = jwt.verify(token, process.env.MSS_ADMIN_JWT_SECRET);
-    req.admin = payload;
+    const payload = jwt.verify(token, process.env.MSS_ADMIN_JWT_SECRET) || {};
+
+    // Keep original claims (handy for debugging / backward compatibility)
+    // AND normalize to canonical keys expected by the rest of the API.
+    const admin_id = Number(
+      payload.admin_id ??
+      payload.adminId ??
+      payload.aid ??        // <-- your token uses "aid"
+      payload.id ??
+      payload.user_id ??
+      0
+    );
+
+    const admin_email = String(
+      payload.admin_email ??
+      payload.adminEmail ??
+      payload.email ??
+      ""
+    ).trim().toLowerCase();
+
+    const is_superadmin = !!(
+      payload.is_superadmin ||
+      payload.isSuperadmin ||
+      payload.isSuperAdmin || // <-- your token uses "isSuperAdmin"
+      payload.isSuper ||
+      payload.superadmin
+    );
+
+    req.admin = {
+      admin_id,
+      adminEmail: admin_email,
+      admin_email,
+      is_superadmin,
+      isSuperAdmin: is_superadmin,
+      school_id: payload.schoolId ?? payload.school_id ?? null,
+      _claims: payload
+    };
+
+    // ADD THESE 3 LINES Jan 10
+    req.admin.id = admin_id;
+    req.adminId = admin_id;
+    req.admin.email = admin_email;
+
+    if (!admin_id || !admin_email) {
+      console.warn("[requireAdminAuth] admin ctx missing after normalize", {
+        keys: Object.keys(payload || {}),
+        admin_id,
+        hasEmail: !!admin_email
+      });
+      return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
+    }
+
     return next();
   } catch (e) {
     console.warn("[requireAdminAuth] jwt verify failed", { name: e?.name, message: e?.message });
@@ -4149,81 +4199,58 @@ app.put(
   }
 );
 /* ------------------------------------------------------------------
-   STUDENT ENROLLMENT
+   STUDENT ENROLLMENT (regen Jan 8 - on-duty + lead tag + logs)
    POST /api/student/enroll
    Body: { slug, submissionId, name?, full_name?, email }
+
    - Finds school by slug
    - Upserts student (students table, UNIQUE (school_id,email))
-   - Links submission to student (submissions.student_id)
+   - Links submission to student (submissions.student_pk [+ optional student_ref_id])
    - Enriches submissions.meta->student with basic info
+   - Ensures student_profiles row and tags includes "lead"
+   - Auto-assigns to ON-DUTY teacher if:
+       (a) teacher exists with is_on_duty=true AND is_active=true, AND
+       (b) student has no existing PRIMARY teacher_students row (regardless of active)
+   - Writes student_logs entries:
+       - lead_enroll
+       - lead_auto_assigned (if assigned)
    ------------------------------------------------------------------ */
 app.post("/api/student/enroll", async (req, res) => {
+  const client = await pool.connect();
   try {
     const body = req.body || {};
 
-    const slug          = (body.slug || "").trim();
+    const slug = String(body.slug || "").trim();
     const submissionRaw = body.submissionId ?? body.submission_id;
-    const fullNameRaw   = body.full_name || body.name || "";
-    const emailRaw      = body.email || "";
+    const fullNameRaw = body.full_name || body.name || "";
+    const emailRaw = body.email || "";
 
-    const email = emailRaw.trim().toLowerCase();
-    const fullName = fullNameRaw.trim();
+    const email = String(emailRaw || "").trim().toLowerCase();
+    const fullName = String(fullNameRaw || "").trim();
     const submissionId = Number(submissionRaw);
 
-    // --- Basic validation ----------------------------------------------------
-    if (!slug) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_slug",
-        message: "slug is required",
-      });
-    }
-
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug", message: "slug is required" });
     if (!Number.isInteger(submissionId) || submissionId <= 0) {
-      return res.status(400).json({
-        ok: false,
-        error: "invalid_submission_id",
-        message: "submissionId must be a positive integer",
-      });
+      return res.status(400).json({ ok: false, error: "invalid_submission_id", message: "submissionId must be a positive integer" });
     }
+    if (!email) return res.status(400).json({ ok: false, error: "missing_email", message: "email is required" });
+    if (!fullName) return res.status(400).json({ ok: false, error: "missing_name", message: "full name is required" });
 
-    if (!email) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_email",
-        message: "email is required",
-      });
-    }
+    await client.query("BEGIN");
 
-    if (!fullName) {
-      return res.status(400).json({
-        ok: false,
-        error: "missing_name",
-        message: "full name is required",
-      });
-    }
-
-    // --- 1) Look up school by slug ------------------------------------------
-    const schoolRes = await pool.query(
-      `SELECT id
-         FROM schools
-        WHERE slug = $1
-        LIMIT 1`,
+    // 1) School
+    const schoolRes = await client.query(
+      `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
       [slug]
     );
-
     if (!schoolRes.rowCount) {
-      return res.status(404).json({
-        ok: false,
-        error: "school_not_found",
-        message: `No school found for slug ${slug}`,
-      });
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "school_not_found", message: `No school found for slug ${slug}` });
     }
+    const schoolId = Number(schoolRes.rows[0].id);
 
-    const schoolId = schoolRes.rows[0].id;
-
-    // --- 2) Upsert student in students table --------------------------------
-    const studentRes = await pool.query(
+    // 2) Student upsert
+    const studentRes = await client.query(
       `
       INSERT INTO students (school_id, email, full_name)
       VALUES ($1, $2, $3)
@@ -4231,25 +4258,19 @@ app.post("/api/student/enroll", async (req, res) => {
       DO UPDATE SET
         full_name  = EXCLUDED.full_name,
         updated_at = NOW()
-      RETURNING
-        id,
-        school_id,
-        email,
-        full_name,
-        created_at,
-        updated_at
+      RETURNING id, school_id, email, full_name, created_at, updated_at
       `,
       [schoolId, email, fullName]
     );
-
     const student = studentRes.rows[0];
+    const studentId = Number(student.id);
 
-    // --- 3) Link submission to this student ---------------------------------
-    const submissionUpdateRes = await pool.query(
+    // 3) Link submission -> student
+    const submissionUpdateRes = await client.query(
       `
       UPDATE submissions
-         SET student_id = $3,
-             updated_at = NOW(),
+         SET student_pk     = $3,
+             student_ref_id = $3,
              meta = COALESCE(meta, '{}'::jsonb) || jsonb_build_object(
                       'student',
                       jsonb_build_object(
@@ -4262,27 +4283,141 @@ app.post("/api/student/enroll", async (req, res) => {
          AND school_id = $1
        RETURNING id
       `,
-      [schoolId, submissionId, student.id, student.full_name, student.email]
+      [schoolId, submissionId, studentId, student.full_name, student.email]
     );
 
     if (!submissionUpdateRes.rowCount) {
+      await client.query("ROLLBACK");
       return res.status(404).json({
         ok: false,
         error: "submission_not_found",
-        message:
-          "Submission not found for this school. It may belong to a different slug or be missing.",
+        message: "Submission not found for this school. It may belong to a different slug or be missing.",
       });
     }
 
-    const updatedSubmissionId = submissionUpdateRes.rows[0].id;
+    // 4) Ensure profile + lead tag
+    await client.query(
+      `
+      INSERT INTO student_profiles (student_id, tags)
+      VALUES ($1, '[]'::jsonb)
+      ON CONFLICT (student_id) DO NOTHING
+      `,
+      [studentId]
+    );
 
-    // --- 4) Success ----------------------------------------------------------
+    await client.query(
+      `
+      UPDATE student_profiles
+         SET tags = CASE
+                    WHEN COALESCE(tags, '[]'::jsonb) @> '["lead"]'::jsonb
+                      THEN COALESCE(tags, '[]'::jsonb)
+                    ELSE COALESCE(tags, '[]'::jsonb) || '["lead"]'::jsonb
+                   END,
+             updated_at = NOW()
+       WHERE student_id = $1
+      `,
+      [studentId]
+    );
+
+    // 4b) Log: lead enrolled
+    await client.query(
+      `
+      INSERT INTO student_logs (school_id, student_id, note_type, note_text)
+      VALUES ($1, $2, 'lead_enroll', $3)
+      `,
+      [
+        schoolId,
+        studentId,
+        `Lead enrolled via funnel. submission_id=${submissionId}; name="${fullName}"; email="${email}".`,
+      ]
+    );
+
+    // 5) Auto-assign to on-duty teacher (only if no existing PRIMARY row of any kind)
+    const existingPrimaryAny = await client.query(
+      `
+      SELECT 1
+        FROM teacher_students
+       WHERE school_id = $1
+         AND student_id = $2
+         AND is_primary = true
+       LIMIT 1
+      `,
+      [schoolId, studentId]
+    );
+
+    let assignedTeacherId = null;
+
+    if (!existingPrimaryAny.rowCount) {
+      const onDuty = await client.query(
+        `
+        SELECT id
+          FROM teachers
+         WHERE school_id = $1
+           AND is_active = true
+           AND is_on_duty = true
+         LIMIT 1
+        `,
+        [schoolId]
+      );
+
+      if (onDuty.rowCount) {
+        assignedTeacherId = Number(onDuty.rows[0].id);
+
+        // CRITICAL: clear any existing primary flags (defensive; also supports future reassignment)
+        await client.query(
+          `
+          UPDATE teacher_students
+             SET is_primary = false,
+                 updated_at = NOW()
+           WHERE school_id = $1
+             AND student_id = $2
+             AND is_primary = true
+          `,
+          [schoolId, studentId]
+        );
+
+        // Create / re-activate link
+        await client.query(
+          `
+          INSERT INTO teacher_students (
+            school_id, teacher_id, student_id,
+            role, is_primary, is_active
+          )
+          VALUES ($1, $2, $3, 'coach', true, true)
+          ON CONFLICT (teacher_id, student_id)
+          DO UPDATE SET
+            is_active  = true,
+            is_primary = true,
+            updated_at = NOW()
+          `,
+          [schoolId, assignedTeacherId, studentId]
+        );
+
+        // Log: auto assigned
+        await client.query(
+          `
+          INSERT INTO student_logs (school_id, student_id, teacher_id, note_type, note_text)
+          VALUES ($1, $2, $3, 'lead_auto_assigned', $4)
+          `,
+          [
+            schoolId,
+            studentId,
+            assignedTeacherId,
+            `Auto-assigned to on-duty teacher_id=${assignedTeacherId}.`,
+          ]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+
     return res.json({
       ok: true,
       schoolId,
-      submissionId: updatedSubmissionId,
+      submissionId: Number(submissionUpdateRes.rows[0].id),
+      assignedTeacherId,
       student: {
-        id: student.id,
+        id: studentId,
         email: student.email,
         full_name: student.full_name,
         created_at: student.created_at,
@@ -4290,15 +4425,17 @@ app.post("/api/student/enroll", async (req, res) => {
       },
     });
   } catch (err) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
     console.error("❌ POST /api/student/enroll error:", err);
     return res.status(500).json({
       ok: false,
       error: "enroll_failed",
-      message: err.message || "Server error while enrolling student",
+      message: err?.message || "Server error while enrolling student",
     });
+  } finally {
+    client.release();
   }
 });
-
 /* ---------- LOGGING ENDPOINT MT---------- */
 
 function csvEscape(v) {
@@ -6506,5 +6643,581 @@ app.delete("/api/admin/reports/:slug/:submission_id/:prompt_id", requireAdminAut
     const code = status === 500 ? "delete_failed" : String(err.message || "error");
     if (status === 500) console.error("❌ /api/admin/reports delete error:", err);
     return res.status(status).json({ ok: false, error: code, message: err?.message });
+  }
+});
+
+// =====================================================================
+// Teacher Student Portal + Teacher Admin (Server.js) — CLEAN REGEN (Jan 8)
+// =====================================================================
+//
+// Assumptions (v1):
+// - We reuse the existing Admin JWT (requireAdminAuth) as the auth primitive.
+// - “Teacher identity” is resolved/created from the logged-in admin’s email
+//   within the school identified by slug.
+// - Authorization: non-superadmin must have admin_schools access to that school.
+//
+// NOTE:
+// - Remove any older/duplicate requireTeacherCtx() definitions from server.js.
+// - Ensure these routes are mounted AFTER pool, jwt, requireAdminAuth exist.
+//
+
+// ---------------------------------------------------------------------
+// Helper: Resolve school + teacher context from (admin JWT + slug)
+// Returns: { schoolId, teacherId, adminId, adminEmail, isSuper }
+// On failure: sends response and returns null.
+// ---------------------------------------------------------------------
+async function requireTeacherCtxFromAdmin(req, res, slug) {
+  const a = req.admin || {};
+
+  const adminId = Number(
+    a.adminId ??
+    a.admin_id ??
+    a.aid ??          // ✅ important
+    a.id ??
+    a.user_id ??
+    0
+  );
+
+  const adminEmail = String(
+    a.email ??
+    a.adminEmail ??
+    a.admin_email ??
+    a.email_address ??
+    ""
+  ).trim().toLowerCase();
+
+  const isSuper = !!(
+    a.is_superadmin ||
+    a.isSuperadmin ||
+    a.isSuperAdmin ||  // ✅ important
+    a.isSuper ||
+    a.superadmin
+  );
+
+  if (!adminId || !adminEmail) {
+    res.status(401).json({
+      ok: false,
+      error: "missing_admin_ctx",
+      debug: {
+        hasAdmin: !!req.admin,
+        keys: Object.keys(a || {}),
+        adminId,
+        adminEmail: adminEmail ? "(present)" : "(missing)",
+      },
+    });
+    return null;
+  }
+
+  const s = await pool.query(
+    `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
+  if (!s.rowCount) {
+    res.status(404).json({ ok: false, error: "school_not_found" });
+    return null;
+  }
+  const schoolId = Number(s.rows[0].id);
+
+  if (!isSuper) {
+    const ok = await pool.query(
+      `SELECT 1 FROM admin_schools WHERE admin_id = $1 AND school_id = $2 LIMIT 1`,
+      [adminId, schoolId]
+    );
+    if (!ok.rowCount) {
+      res.status(403).json({ ok: false, error: "forbidden_school" });
+      return null;
+    }
+  }
+
+  const t = await pool.query(
+    `SELECT id FROM teachers WHERE school_id = $1 AND lower(email) = $2 LIMIT 1`,
+    [schoolId, adminEmail]
+  );
+
+  let teacherId = t.rowCount ? Number(t.rows[0].id) : null;
+
+  if (!teacherId) {
+    const fullName = String(
+      a.full_name ??
+      a.fullName ??
+      a.name ??
+      ""
+    ).trim() || null;
+
+    const ins = await pool.query(
+      `INSERT INTO teachers (school_id, email, full_name, is_active)
+       VALUES ($1, $2, $3, TRUE)
+       RETURNING id`,
+      [schoolId, adminEmail, fullName]
+    );
+    teacherId = Number(ins.rows[0].id);
+  }
+
+  return { schoolId, teacherId, adminId, adminEmail, isSuper };
+}
+// ---------------------------------------------------------------------
+// Teacher Student Portal - v1 (list + detail + profile upsert)
+// ---------------------------------------------------------------------
+
+// GET /api/teacher/students?slug=...&q=...&activeOnly=1&tag=...&limit=200&offset=0
+app.get("/api/teacher/students", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const q = (req.query.q != null ? String(req.query.q) : "").trim() || null;
+
+    const activeOnlyRaw = req.query.activeOnly;
+    const activeOnly =
+      activeOnlyRaw == null
+        ? true
+        : String(activeOnlyRaw) === "1" ||
+          String(activeOnlyRaw).toLowerCase() === "true";
+
+    const tag = (req.query.tag != null ? String(req.query.tag) : "").trim() || null;
+
+    const limit = Math.min(Math.max(Number(req.query.limit || 200), 1), 500);
+    const offset = Math.max(Number(req.query.offset || 0), 0);
+
+    const sql = `
+      SELECT * FROM public.sp_students_for_teacher(
+        p_school_id    := $1,
+        p_teacher_id   := $2,
+        p_q            := $3,
+        p_active_only  := $4,
+        p_tag          := $5,
+        p_limit        := $6,
+        p_offset       := $7
+      )
+    `;
+    const { rows } = await pool.query(sql, [
+      ctx.schoolId,
+      ctx.teacherId,
+      q,
+      activeOnly,
+      tag,
+      limit,
+      offset,
+    ]);
+
+    return res.json({ ok: true, students: rows });
+  } catch (err) {
+    console.error("GET /api/teacher/students failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
+
+// GET /api/teacher/students/:studentId?slug=...
+app.get("/api/teacher/students/:studentId", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const studentId = Number(req.params.studentId);
+    if (!Number.isFinite(studentId) || studentId <= 0) {
+      return res.status(400).json({ ok: false, error: "bad_student_id" });
+    }
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const sql = `
+      SELECT * FROM public.sp_student_get_for_teacher(
+        p_school_id   := $1,
+        p_teacher_id  := $2,
+        p_student_id  := $3
+      )
+    `;
+    const { rows } = await pool.query(sql, [ctx.schoolId, ctx.teacherId, studentId]);
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    return res.json({ ok: true, student: rows[0] });
+  } catch (err) {
+    console.error("GET /api/teacher/students/:studentId failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
+
+// PUT /api/teacher/students/:studentId/profile?slug=...
+// body: { phone?, date_started?, summary?, tags?[] }
+app.put(
+  "/api/teacher/students/:studentId/profile",
+  requireAdminAuth,
+  async (req, res) => {
+    try {
+      const slug = String(req.query.slug || "").trim();
+      if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+      const studentId = Number(req.params.studentId);
+      if (!Number.isFinite(studentId) || studentId <= 0) {
+        return res.status(400).json({ ok: false, error: "bad_student_id" });
+      }
+
+      const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+      if (!ctx) return;
+
+      const phone = req.body.phone != null ? String(req.body.phone).trim() : "";
+      const summary = req.body.summary != null ? String(req.body.summary).trim() : "";
+
+      // null or 'YYYY-MM-DD'
+      const dateStartedRaw = req.body.date_started;
+      const dateStarted =
+        dateStartedRaw == null || String(dateStartedRaw).trim() === ""
+          ? null
+          : String(dateStartedRaw).trim();
+
+      // tags: array of strings => jsonb array
+      let tags = [];
+      if (Array.isArray(req.body.tags)) {
+        tags = req.body.tags
+          .map((t) => String(t || "").trim())
+          .filter((t) => t.length > 0)
+          .slice(0, 50);
+      }
+
+      const sql = `
+        SELECT * FROM public.sp_student_profile_upsert(
+          p_school_id     := $1,
+          p_teacher_id    := $2,
+          p_student_id    := $3,
+          p_phone         := $4,
+          p_date_started  := $5::date,
+          p_summary       := $6,
+          p_tags          := $7::jsonb
+        )
+      `;
+      const { rows } = await pool.query(sql, [
+        ctx.schoolId,
+        ctx.teacherId,
+        studentId,
+        phone,
+        dateStarted,
+        summary,
+        JSON.stringify(tags),
+      ]);
+
+      const out = rows && rows[0] ? rows[0] : null;
+      if (!out || out.ok !== true) {
+        return res.status(400).json({ ok: false, error: "upsert_failed", detail: out || null });
+      }
+
+      return res.json({ ok: true, profile: out });
+    } catch (err) {
+      console.error("PUT /api/teacher/students/:studentId/profile failed", err);
+      return res.status(500).json({ ok: false, error: "internal_error" });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------
+// Teacher Admin - v1 (list + upsert)
+// ---------------------------------------------------------------------
+
+// GET /api/admin/teachers?slug=...&q=...&activeOnly=1&limit=200&offset=0
+app.get("/api/admin/teachers", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const q = (req.query.q != null ? String(req.query.q) : "").trim() || null;
+
+    const activeOnlyRaw = req.query.activeOnly;
+    const activeOnly =
+      activeOnlyRaw == null
+        ? true
+        : String(activeOnlyRaw) === "1" ||
+          String(activeOnlyRaw).toLowerCase() === "true";
+
+    const limit = Math.min(Math.max(Number(req.query.limit || 200), 1), 500);
+    const offset = Math.max(Number(req.query.offset || 0), 0);
+
+    const sql = `
+      SELECT * FROM public.sp_teachers_for_school(
+        p_school_id   := $1,
+        p_q           := $2,
+        p_active_only := $3,
+        p_limit       := $4,
+        p_offset      := $5
+      )
+    `;
+    const { rows } = await pool.query(sql, [ctx.schoolId, q, activeOnly, limit, offset]);
+
+    return res.json({ ok: true, teachers: rows });
+  } catch (err) {
+    console.error("GET /api/admin/teachers failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
+
+// PUT /api/admin/teachers?slug=...
+// body: { teacher_id?, email, full_name?, is_active? }
+// PUT /api/admin/teachers?slug=...
+// body: { teacher_id?, email, full_name?, is_active?, is_on_duty? }
+app.put("/api/admin/teachers", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const teacherId = req.body.teacher_id != null ? Number(req.body.teacher_id) : null;
+    const email = String(req.body.email || "").trim();
+    const fullName =
+      (req.body.full_name != null ? String(req.body.full_name) : "").trim() || null;
+
+    const isActiveRaw = req.body.is_active;
+    const isActive =
+      isActiveRaw == null
+        ? true
+        : String(isActiveRaw) === "1" || String(isActiveRaw).toLowerCase() === "true";
+
+    const isOnDutyRaw = req.body.is_on_duty;
+    const isOnDuty =
+      isOnDutyRaw == null
+        ? false
+        : String(isOnDutyRaw) === "1" || String(isOnDutyRaw).toLowerCase() === "true";
+
+    if (!email) return res.status(400).json({ ok: false, error: "missing_email" });
+
+    const sql = `
+      SELECT * FROM public.sp_teacher_upsert(
+        p_school_id   := $1,
+        p_email       := $2,
+        p_teacher_id  := $3,
+        p_full_name   := $4,
+        p_is_active   := $5,
+        p_is_on_duty  := $6
+      )
+    `;
+
+    const { rows } = await pool.query(sql, [
+      ctx.schoolId,
+      email,
+      teacherId,
+      fullName,
+      isActive,
+      isOnDuty,
+    ]);
+
+    const out = rows && rows[0] ? rows[0] : null;
+    if (!out || out.ok !== true) {
+      return res.status(400).json({ ok: false, error: "upsert_failed", detail: out || null });
+    }
+
+    return res.json({ ok: true, teacher: out });
+  } catch (err) {
+    console.error("PUT /api/admin/teachers failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
+
+// ---------------------------------------------------------------------
+// Teacher Admin — On Duty (v1) (simple)
+// ---------------------------------------------------------------------
+//
+// Behavior:
+// - At most one on-duty teacher per school (enforced by partial unique index)
+// - Setting on-duty clears previous on-duty teacher in that school
+// - Can clear all (teacher_id omitted OR is_on_duty=false)
+// - Reject setting on-duty for an inactive teacher
+//
+
+app.get("/api/admin/teachers/on-duty", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const cur = await pool.query(
+      `
+      SELECT
+        id,
+        email,
+        full_name,
+        is_active,
+        is_on_duty,
+        created_at AS on_duty_since
+      FROM teachers
+      WHERE school_id = $1
+        AND is_on_duty = true
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [ctx.schoolId]
+    );
+
+    return res.json({ ok: true, onDuty: cur.rowCount ? cur.rows[0] : null });
+  } catch (err) {
+    console.error("GET /api/admin/teachers/on-duty failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
+// PUT /api/admin/teachers/on-duty?slug=...
+// body: { teacher_id?, is_on_duty? }  // if teacher_id missing OR is_on_duty false => clear all on-duty
+app.put("/api/admin/teachers/on-duty", requireAdminAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const teacherId =
+      req.body.teacher_id != null ? Number(req.body.teacher_id) :
+      req.body.teacherId != null ? Number(req.body.teacherId) :
+      null;
+
+    const isOnDutyRaw = req.body.is_on_duty ?? req.body.isOnDuty;
+    const isOnDuty =
+      isOnDutyRaw == null
+        ? true
+        : String(isOnDutyRaw) === "1" || String(isOnDutyRaw).toLowerCase() === "true";
+
+    await client.query("BEGIN");
+
+    // clear any existing on-duty teacher (school-scoped)
+    await client.query(
+      `UPDATE teachers
+          SET is_on_duty = false
+        WHERE school_id = $1
+          AND is_on_duty = true`,
+      [ctx.schoolId]
+    );
+
+    let newOnDuty = null;
+
+    // set new on-duty (optional)
+    if (isOnDuty && Number.isInteger(teacherId) && teacherId > 0) {
+      const t = await client.query(
+        `SELECT id, email, full_name, is_active
+           FROM teachers
+          WHERE school_id = $1
+            AND id = $2
+          LIMIT 1`,
+        [ctx.schoolId, teacherId]
+      );
+
+      if (!t.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "teacher_not_found" });
+      }
+
+      if (t.rows[0].is_active !== true) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ ok: false, error: "teacher_inactive" });
+      }
+
+      const upd = await client.query(
+        `UPDATE teachers
+            SET is_on_duty = true
+          WHERE school_id = $1
+            AND id = $2
+          RETURNING id, email, full_name, is_active, is_on_duty, created_at`,
+        [ctx.schoolId, teacherId]
+      );
+
+      newOnDuty = upd.rows[0] || null;
+    }
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, onDuty: newOnDuty });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
+    console.error("PUT /api/admin/teachers/on-duty failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  } finally {
+    client.release();
+  }
+});
+// =================. NOTES .=====================//
+// GET /api/admin/notes?slug=...&entity_type=teacher&entity_id=9&status=open&limit=50&offset=0
+app.get("/api/admin/notes", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const entityType = String(req.query.entity_type || "").trim();
+    const entityId = Number(req.query.entity_id || 0);
+    if (!entityType) return res.status(400).json({ ok: false, error: "missing_entity_type" });
+    if (!Number.isFinite(entityId) || entityId <= 0) return res.status(400).json({ ok: false, error: "bad_entity_id" });
+
+    const status = (req.query.status != null ? String(req.query.status) : "").trim() || null;
+    const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 200);
+    const offset = Math.max(Number(req.query.offset || 0), 0);
+
+    const sql = `SELECT * FROM public.sp_notes_for_entity($1,$2,$3,$4,$5,$6)`;
+    const { rows } = await pool.query(sql, [ctx.schoolId, entityType, entityId, status, limit, offset]);
+
+    return res.json({ ok: true, notes: rows });
+  } catch (err) {
+    console.error("GET /api/admin/notes failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
+
+// POST /api/admin/notes?slug=...
+// body: { entity_type, entity_id, body, due_at?, tags?, meta? }
+app.post("/api/admin/notes", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return;
+
+    const adminId = (req.admin?.id || req.adminId || null);
+    if (!adminId) return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
+
+    const entityType = String(req.body.entity_type || "").trim();
+    const entityId = Number(req.body.entity_id || 0);
+    const body = String(req.body.body || "").trim();
+
+    if (!entityType) return res.status(400).json({ ok: false, error: "missing_entity_type" });
+    if (!Number.isFinite(entityId) || entityId <= 0) return res.status(400).json({ ok: false, error: "bad_entity_id" });
+    if (!body) return res.status(400).json({ ok: false, error: "missing_body" });
+
+    const dueAtRaw = req.body.due_at;
+    const dueAt = (dueAtRaw == null || String(dueAtRaw).trim() === "") ? null : String(dueAtRaw);
+
+    const tags = Array.isArray(req.body.tags) ? req.body.tags : [];
+    const meta = (req.body.meta && typeof req.body.meta === "object") ? req.body.meta : {};
+
+    const sql = `SELECT * FROM public.sp_note_create($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`;
+    const { rows } = await pool.query(sql, [
+      ctx.schoolId,
+      entityType,
+      entityId,
+      body,
+      adminId,
+      dueAt,
+      JSON.stringify(tags),
+      JSON.stringify(meta),
+    ]);
+
+    const out = rows && rows[0] ? rows[0] : null;
+    if (!out || out.ok !== true) {
+      return res.status(400).json({ ok: false, error: out?.error || "create_failed" });
+    }
+
+    return res.json({ ok: true, note_id: out.note_id });
+  } catch (err) {
+    console.error("POST /api/admin/notes failed", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
   }
 });
