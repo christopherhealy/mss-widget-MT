@@ -2240,23 +2240,35 @@ function httpError(status, message) {
 // Superadmin: always allowed.
 
 function assertSchoolScope(req, requiredSchoolId) {
-  const admin = req?.admin || null;
-  if (!admin) throw httpError(401, "missing_admin_context");
+  const admin = req.admin;
+  if (!admin) {
+    const err = new Error("missing_admin_context");
+    err.status = 401;
+    throw err;
+  }
 
   // Superadmin bypass
-  if (admin.isSuperAdmin === true || admin.is_superadmin === true) return true;
+  if (admin.is_superadmin === true) return true;
 
-  // Prefer DB-authoritative school_id; accept legacy aliases too
-  const adminSchoolId = Number(
-    admin.school_id ?? admin.schoolId ?? admin.schoolID ?? adminAuth?.schoolId ?? 0
-  );
-
+  const tokenSchoolId = Number(admin.school_id || 0);
   const need = Number(requiredSchoolId || 0);
 
-  if (!adminSchoolId) throw httpError(403, "missing_school_scope");
-  if (!need) throw httpError(500, "bad_required_school_id");
+  if (!tokenSchoolId) {
+    const err = new Error("missing_school_scope");
+    err.status = 403;
+    throw err;
+  }
+  if (!need) {
+    const err = new Error("bad_required_school_id");
+    err.status = 500;
+    throw err;
+  }
 
-  if (adminSchoolId !== need) throw httpError(403, "forbidden_school_scope");
+  if (tokenSchoolId !== need) {
+    const err = new Error("forbidden_school_scope");
+    err.status = 403;
+    throw err;
+  }
 
   return true;
 }
@@ -6516,6 +6528,79 @@ app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res)
     return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });
+
+// ---------------------------------------------------------------------
+// AI Prompts - suggest prompt text by school slug
+// POST /api/admin/ai-prompts/:slug/suggest
+// body: { language?, notes?, selected_metrics?, ... }
+// ---------------------------------------------------------------------
+
+app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
+
+    const languageRaw = String(req.body?.language || "").trim();
+    const language = languageRaw === "" ? null : languageRaw;
+
+    const notes = String(req.body?.notes || "").trim();
+    const selectedMetrics = req.body?.selected_metrics ?? req.body?.metrics ?? null;
+
+    const suggestion = await openAiSuggestPrompt({
+      schoolId,
+      slug: schoolSlug,
+      language,
+      notes,
+      selectedMetrics,
+      admin: req.admin,
+    });
+
+    // Normalize to a string no matter what openAiSuggestPrompt returns
+    const promptText =
+      (typeof suggestion === "string" ? suggestion : null) ||
+      suggestion?.prompt_text ||
+      suggestion?.text ||
+      "";
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug,
+      schoolId,
+
+      // IMPORTANT: what FE likely expects
+      prompt_text: promptText,
+
+      // keep your newer naming too (harmless)
+      suggested_prompt_text: promptText,
+
+      // keep raw object for debugging/expansion
+      suggestion,
+    });
+  } catch (err) {
+    const status = err?.status || 500;
+    const code = status === 500 ? "suggest_failed" : String(err.message || "error");
+    if (status === 500) console.error("❌ /api/admin/ai-prompts/:slug/suggest failed:", err);
+    return res.status(status).json({ ok: false, error: code, message: err?.message });
+  }
+});
+///helper
+async function openAiSuggestPrompt({ language, notes }) {
+  const langLine = language ? `Helper language: ${language}\n` : "";
+  return {
+    prompt_text:
+`${langLine}You are an expert speaking coach and language instructor.
+
+Your task is to generate personalized feedback for a student’s spoken response using ONLY the data provided.
+
+Admin goals/notes:
+${notes || "(none)"}
+
+Return the output in Markdown using our standard sections.`,
+  };
+}
 
 // =====================================================================
 // AI REPORTS
