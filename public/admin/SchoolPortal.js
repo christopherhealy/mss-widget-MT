@@ -230,6 +230,12 @@ function getLegacyAdminKey() {
   return k || null;
 }
 
+/**
+ * adminFetch
+ * - Attaches Bearer JWT
+ * - Redirects to login ONLY on 401
+ * - Throws structured errors for 403+other non-OK, so caller can show UI messages
+ */
 async function adminFetch(url, opts = {}) {
   const token = getAdminJwtToken();
   const legacyKey = getLegacyAdminKey(); // keep if you still need it for old endpoints
@@ -240,17 +246,14 @@ async function adminFetch(url, opts = {}) {
   if (opts.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-
   headers.set("Accept", "application/json");
 
   // JWT Bearer only
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
+  if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  // OPTIONAL: only if you still have endpoints that require a legacy key.
-  // If you don't use legacy-key auth anymore, delete this entirely.
-  // headers.set("X-Admin-Key", legacyKey || "");
+  // OPTIONAL legacy key (only if some endpoints still require it)
+  // If not needed, delete the next line entirely.
+  // if (legacyKey) headers.set("x-admin-key", legacyKey);
 
   // QA logging — include first 12 chars so you can confirm which path is used
   try {
@@ -262,7 +265,83 @@ async function adminFetch(url, opts = {}) {
     });
   } catch (_) {}
 
-  return fetch(url, { ...opts, headers });
+  let res;
+  try {
+    res = await fetch(url, { ...opts, headers, cache: opts.cache || "no-store" });
+  } catch (err) {
+    const e = new Error("network_error");
+    e.status = 0;
+    e.cause = err;
+    throw e;
+  }
+
+  // ---- AUTH handling policy ----
+  // 401 = not authenticated / expired token => go to login
+  if (res.status === 401) {
+    // Clear storage to prevent loops
+    try {
+      localStorage.removeItem(LS_TOKEN_KEY);
+      localStorage.removeItem(LS_SESSION_KEY);
+      localStorage.removeItem(LS_LEGACY_KEY);
+    } catch (_) {}
+
+    // IMPORTANT: use your real login route
+    window.location.href = "/admin-login/AdminLogin.html";
+    throw new Error("unauthorized");
+  }
+
+  // Non-OK responses: try to parse JSON body for { error, message }
+  if (!res.ok) {
+    let body = {};
+    try {
+      body = await res.clone().json();
+    } catch (_) {}
+
+    const errCode = String(body.error || ("http_" + res.status));
+    const msg = String(body.message || body.error || res.statusText || "Request failed");
+
+    const e = new Error(msg);
+    e.status = res.status;
+    e.error = errCode;
+    e.body = body;
+
+    // 403 = authenticated but not permitted (do NOT redirect)
+    // Caller should catch and show a permission message
+    throw e;
+  }
+
+  return res;
+}
+
+// ---------------------------------
+// AI Prompts loader (permission-aware)
+// ---------------------------------
+async function loadAiPrompts(slug) {
+  try {
+    const res = await adminFetch(
+      `/api/admin/ai-prompts/${encodeURIComponent(slug)}`
+    );
+    const data = await res.json().catch(() => ({}));
+    return data.prompts || [];
+  } catch (e) {
+    if (e && e.status === 403) {
+      // Admin is authenticated but not permitted
+      setStatus(
+        "You are signed in, but you do not have permission to access AI prompts.",
+        true
+      );
+
+      // IMPORTANT: do NOT redirect
+      disableGenerateReportUi(true); // hide or disable Generate Report
+      return [];
+    }
+
+    setStatus(
+      "Failed to load AI prompts: " + (e.message || "error"),
+      true
+    );
+    return [];
+  }
 }
 
 // Keep this for debugging only (not used by adminFetch now)
@@ -279,8 +358,9 @@ function getLegacySession() {
     return null;
   }
 }
-  const DEFAULT_ADMIN_HOME_URL = "/admin/AdminHome.html"; // change if needed
 
+// FIX: your actual AdminHome path (based on your latest AdminHome.js location)
+const DEFAULT_ADMIN_HOME_URL = "/admin-home/AdminHome.html";
  // -----------------------------------------------------------------------
   // Query params
   // -----------------------------------------------------------------------
@@ -641,31 +721,38 @@ async function loadAiPromptsForSchool() {
     return { ok: true, prompts: [] };
   }
 
-  const res = await adminFetch(
-    `/api/admin/ai-prompts/${encodeURIComponent(CURRENT_SLUG)}`,
-    { method: "GET" }
-  );
+  try {
+    const res = await adminFetch(
+      `/api/admin/ai-prompts/${encodeURIComponent(CURRENT_SLUG)}`,
+      { method: "GET" }
+    );
 
-  if (res.status === 401 || res.status === 403) {
-    aiPromptsCache = [];
-    return { ok: false, auth: true, status: res.status, prompts: [] };
-  }
+    const data = await res.json().catch(() => ({}));
+    aiPromptsCache = Array.isArray(data.prompts) ? data.prompts : [];
+    return { ok: true, prompts: aiPromptsCache };
 
-  const data = await res.json().catch(() => ({}));
+  } catch (e) {
+    // 401 never returns here (adminFetch already redirected), but keep it defensive.
+    if (e && e.status === 401) {
+      return { ok: false, auth: true, status: 401, prompts: [] };
+    }
 
-  if (!res.ok || data.ok === false) {
+    // THIS is the important change:
+    if (e && e.status === 403) {
+      aiPromptsCache = [];
+      return { ok: false, forbidden: true, status: 403, prompts: [] };
+    }
+
     return {
       ok: false,
       auth: false,
-      status: res.status,
-      error: data.error || `http_${res.status}`,
+      status: e?.status || 0,
+      error: e?.error || e?.message || "load_prompts_failed",
       prompts: []
     };
   }
-
-  aiPromptsCache = Array.isArray(data.prompts) ? data.prompts : [];
-  return { ok: true, prompts: aiPromptsCache };
 }
+
 function populateAiPromptSelect() {
   const sel = $("aiPromptSelect");
   const hint = $("aiPromptHint");
@@ -1628,86 +1715,123 @@ function openReportViewerForSubmission(submissionId) {
     return;
   }
 
-  // Reset viewer state/UI
-  $("reportTitle").textContent = "Generate Report";
-  $("reportMeta").textContent =
-    `submission_id=${currentSubmissionId} • slug=${CURRENT_SLUG || "—"}`;
-  $("reportOutput").textContent = "";
+  // ---------- DOM refs (defensive) ----------
+  const ov = $("reportOverlay");
+  const titleEl = $("reportTitle");
+  const metaEl = $("reportMeta");
+  const outEl = $("reportOutput");
+  const btnRun = $("btnRunReport");
+  const btnDelete = $("btnReportDelete");
+  const btnClose = $("btnReportClose");
+  const btnX = $("reportCloseX");
+  const sel = $("aiPromptSelect");
+
+  if (!ov) return;
+
+  // ---------- Reset viewer state/UI ----------
+  if (titleEl) titleEl.textContent = "Generate Report";
+  if (metaEl) {
+    metaEl.textContent = `submission_id=${currentSubmissionId} • slug=${CURRENT_SLUG || "—"}`;
+  }
+  if (outEl) outEl.textContent = "";
   setReportStatus("");
 
   // Reset report-specific state (prevents stale prompt/report flags)
   reportViewerPromptId = 0;
   reportViewerHasCachedReport = false;
 
-  // Hide delete button until we confirm a cached report exists
-  const btnDelete = $("btnReportDelete");
-  if (btnDelete) btnDelete.style.display = "none";
+  // Hide delete until we confirm cached report exists
+  if (btnDelete) {
+    btnDelete.style.display = "none";
+    btnDelete.disabled = false;
+  }
 
-  // Ensure Generate is enabled on open
-  const btnRun = $("btnRunReport");
+  // Default: enable Generate (we may disable it after prompt permission check)
   if (btnRun) btnRun.disabled = false;
 
-  const ov = $("reportOverlay");
-  if (!ov) return;
-
-  // ---- NEW: lock background scroll while modal is open ----
+  // ---------- Show modal ----------
   document.body.classList.add("modal-open");
-
-  // Show modal
   ov.classList.remove("hidden");
   ov.setAttribute("aria-hidden", "false");
-
-  // ---- NEW: ensure overlay actually captures pointer events ----
-  // (helps when other containers have transforms/stacking contexts)
   ov.style.pointerEvents = "auto";
 
-  // Re-bind report viewer events every open (safe + avoids “stub bound once”)
-  const btnClose = $("btnReportClose");
-  const btnX = $("reportCloseX");
+  // ---------- Re-bind report viewer events (your pattern) ----------
+  // NOTE: Avoid doing this if you can make wireReportViewerEvents() truly idempotent.
+  // But if you keep it, reset flags consistently.
   if (btnRun) btnRun._mssBound = false;
   if (btnClose) btnClose._mssBound = false;
   if (btnX) btnX._mssBound = false;
   if (btnDelete) btnDelete._mssBound = false;
+
   wireReportViewerEvents();
 
-  // ---- NEW: move focus inside the modal reliably ----
-  // Prefer the first real control in the viewer.
+  // ---------- Focus assist ----------
   setTimeout(() => {
     const first =
       $("aiPromptSelect") ||
       $("btnRunReport") ||
       ov.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if (first && typeof first.focus === "function") first.focus();
+
+    try { first?.focus?.(); } catch (_) {}
   }, 0);
 
-  // Load prompts (once per session) then STOP — let user choose
+  // ---------- Load prompts and apply permission rules ----------
   (async () => {
     try {
       setReportStatus("Loading prompts…");
 
-      // Always attempt to load (but the loader is non-destructive and returns status)
       const result = await loadAiPromptsForSchool();
+      // EXPECTED SHAPES (per our earlier fix):
+      // { ok:true, prompts:[...] }
+      // { ok:false, forbidden:true, status:403 }
+      // { ok:false, auth:true, status:401 }
+      // { ok:false, error:"..." }
 
       if (!result || result.ok !== true) {
-        // Auth expired/invalid: keep this behavior localized to the viewer
-        if (result && result.auth) {
+        // 401: adminFetch usually already redirected, but keep defensive
+        if (result?.auth) {
           setReportStatus("Session expired. Please sign in again.", true);
           clearAdminSessionAndRedirect();
           return;
         }
 
-        // Non-auth failure: show error and keep modal open
+        // 403: stay in modal and disable Generate Report feature
+        if (result?.forbidden) {
+          setReportStatus(
+            "You are signed in, but you do not have permission to access AI prompts for this school.",
+            true
+          );
+
+          // Disable Generate and make prompt selector inert/clear
+          if (btnRun) btnRun.disabled = true;
+          if (btnDelete) btnDelete.style.display = "none";
+
+          if (sel) {
+            sel.innerHTML = `<option value="">Not permitted</option>`;
+            sel.disabled = true;
+          }
+
+          // Optional: explain next action
+          // (You can also hide the action in the row menu for non-super admins.)
+          return;
+        }
+
+        // Other failure: keep modal open, show error
         const msg =
-          (result && (result.error || result.message)) ||
+          result?.error ||
+          result?.message ||
           "Unable to load AI prompts.";
+
         setReportStatus(msg, true);
+        if (btnRun) btnRun.disabled = true; // safer: prevent generate without prompts
         return;
       }
 
+      // OK: prompts loaded
+      if (sel) sel.disabled = false;
       populateAiPromptSelect();
 
-      // Bind change handler ONCE (avoid stacking listeners)
-      const sel = $("aiPromptSelect");
+      // Bind change handler ONCE
       if (sel && !sel._mssBound) {
         sel.addEventListener("change", () => {
           refreshReportForSelection().catch(() => {});
@@ -1716,12 +1840,17 @@ function openReportViewerForSubmission(submissionId) {
       }
 
       setReportStatus("");
+
+      // Optional: immediately check cache for the default prompt selection
+      // (uncomment if you want "Not generated yet" vs "Loaded cached" automatically)
+      // await refreshReportForSelection();
+
     } catch (e) {
       setReportStatus(`Unable to load prompts: ${e?.message || "unknown"}`, true);
+      if (btnRun) btnRun.disabled = true;
     }
   })();
 }
-
 function closeReportViewer() {
   const ov = $("reportOverlay");
   if (!ov) return;

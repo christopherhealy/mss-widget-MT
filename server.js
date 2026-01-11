@@ -155,7 +155,7 @@ async function requireAdminAuth(req, res, next) {
 
     const token = auth.slice(7).trim();
     if (!hasSecret) {
-      console.error("[requireAdminAuth] MSS_ADMIN_JWT_SECRET missing (Vercel env)");
+      console.error("[requireAdminAuth] MSS_ADMIN_JWT_SECRET missing");
       return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
     }
 
@@ -180,13 +180,20 @@ async function requireAdminAuth(req, res, next) {
       ""
     ).trim().toLowerCase();
 
+    // note: we do NOT trust this for auth decisions; DB is authoritative
     const is_superadmin_claim = !!(
       payload.is_superadmin ||
-      payload.isSuperadmin ||
+      payload.isSuperadmin ||   // keep legacy misspelling
       payload.isSuperAdmin ||
       payload.isSuper ||
       payload.superadmin
     );
+
+    const school_id_claim = (() => {
+      const v = payload.school_id ?? payload.schoolId ?? payload.schoolID ?? null;
+      const n = Number(v || 0);
+      return n || null;
+    })();
 
     if (!admin_id) {
       console.warn("[requireAdminAuth] missing admin id in token", {
@@ -194,9 +201,6 @@ async function requireAdminAuth(req, res, next) {
       });
       return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
     }
-
-    // NOTE: we no longer *require* admin_email_claim here because DB is authoritative.
-    // Still keep it for diagnostics if present.
 
     // -----------------------------
     // 2) DB override (AUTHORITATIVE)
@@ -224,7 +228,6 @@ async function requireAdminAuth(req, res, next) {
 
     const admin_email_db = String(db.email || "").trim().toLowerCase();
     const admin_email = admin_email_db || admin_email_claim; // DB wins; claim only as fallback
-    const is_superadmin_db = !!db.is_superadmin;
 
     if (!admin_email) {
       console.warn("[requireAdminAuth] missing admin email (db+token)", {
@@ -235,47 +238,55 @@ async function requireAdminAuth(req, res, next) {
       return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
     }
 
+    const is_superadmin_db = !!db.is_superadmin;
+
+    // DB wins. If DB school_id is null (rare), fall back to claim for continuity.
+    const school_id = Number(db.school_id || 0) || school_id_claim || null;
+    const schoolId = school_id; // canonical alias
+
     // -----------------------------
     // 3) Canonical context object (req.admin)
     // -----------------------------
     req.admin = {
-      // canonical
+      // canonical / DB-aligned fields
+      id: admin_id,
       admin_id,
+      email: admin_email,
       admin_email,
+      full_name: db.full_name || null,
+      school_id,
       is_superadmin: is_superadmin_db,
 
-      // common aliases used across your codebase
-      id: admin_id,
+      // common aliases used across the codebase
       adminId: admin_id,
-      email: admin_email,
       adminEmail: admin_email,
+      schoolId,
       isSuperAdmin: is_superadmin_db,
 
-      // authoritative DB fields
-      full_name: db.full_name || null,
-      school_id: db.school_id ?? (payload.schoolId ?? payload.school_id ?? null),
-
-      // debugging only
-      _claims: payload,
-      _is_superadmin_claim: is_superadmin_claim,
+      // diagnostics (safe, minimal; do NOT attach raw claims)
+      _token_has_superadmin_claim: is_superadmin_claim,
+      _token_has_school_claim: !!school_id_claim,
     };
 
     // -----------------------------
     // 4) Backward-compat aliases (avoid touching other modules)
     // -----------------------------
-    req.adminId = admin_id; // some routes reference req.adminId
+    req.adminId = admin_id;
 
     // Older code may expect req.adminAuth.*
     req.adminAuth = {
       adminId: admin_id,
       email: admin_email,
       isSuperAdmin: is_superadmin_db,
-      schoolId: req.admin.school_id ?? null,
+      schoolId,
     };
 
     return next();
   } catch (err) {
-    console.warn("[requireAdminAuth] jwt verify failed", { name: err?.name, message: err?.message });
+    console.warn("[requireAdminAuth] jwt verify failed", {
+      name: err?.name,
+      message: err?.message,
+    });
     return res.status(401).json({ ok: false, error: "bad_token" });
   }
 }
@@ -2219,6 +2230,36 @@ function deriveVoxScore(row) {
   return Number.isNaN(n) ? null : n;
 }
 
+function httpError(status, message) {
+  const e = new Error(message || "error");
+  e.status = status;
+  return e;
+}
+
+// Normal admin: must match schoolId exactly.
+// Superadmin: always allowed.
+
+function assertSchoolScope(req, requiredSchoolId) {
+  const admin = req?.admin || null;
+  if (!admin) throw httpError(401, "missing_admin_context");
+
+  // Superadmin bypass
+  if (admin.isSuperAdmin === true || admin.is_superadmin === true) return true;
+
+  // Prefer DB-authoritative school_id; accept legacy aliases too
+  const adminSchoolId = Number(
+    admin.school_id ?? admin.schoolId ?? admin.schoolID ?? adminAuth?.schoolId ?? 0
+  );
+
+  const need = Number(requiredSchoolId || 0);
+
+  if (!adminSchoolId) throw httpError(403, "missing_school_scope");
+  if (!need) throw httpError(500, "bad_required_school_id");
+
+  if (adminSchoolId !== need) throw httpError(403, "forbidden_school_scope");
+
+  return true;
+}
 /* ---------- defaults (legacy) ---------- */
 const defaultForm = {
   headline: "Practice TOEFL Speaking Test",
@@ -6132,15 +6173,6 @@ app.get("/api/funnel/verify", async (req, res) => {
 // - Unique constraint exists on ai_reports(submission_id, prompt_id)
 // - Helper fns exist: renderPromptTemplate(), sha256(), openAiGenerateReport()
 
-function assertSchoolScope(req, schoolId) {
-  if (req.admin?.isSuperAdmin) return;
-  if (Number(req.admin?.schoolId) !== Number(schoolId)) {
-    const err = new Error("forbidden_school_scope");
-    err.status = 403;
-    throw err;
-  }
-}
-
 async function resolveSchoolBySlug(slug) {
   const s = await pool.query(
     `SELECT id, slug, name
@@ -6287,6 +6319,7 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
   }
 });
 
+
 // ---------------------------------------------------------------------
 // AI Prompts - update by slug + id
 // PUT /api/admin/ai-prompts/:slug/:id
@@ -6304,9 +6337,12 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
     assertSchoolScope(req, schoolId);
 
+    // Ensure prompt belongs to this school
     await assertPromptBelongsToSchool(id, schoolId);
 
+    // ----------------------------
     // Build partial update
+    // ----------------------------
     const fields = [];
     const values = [];
     let idx = 1;
@@ -6342,16 +6378,27 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
       values.push(req.body.is_active === false ? false : true);
     }
 
-    if (req.body?.is_default !== undefined) {
+    // is_default: if true, we will also clear other defaults in the school
+    const wantsDefault =
+      req.body?.is_default !== undefined ? (req.body.is_default === true) : null;
+
+    if (wantsDefault !== null) {
       fields.push(`is_default = $${idx++}`);
-      values.push(req.body.is_default === true ? true : false);
+      values.push(wantsDefault);
     }
 
     if (req.body?.sort_order !== undefined) {
       const sortOrder =
-        req.body.sort_order === null || req.body.sort_order === ""
+        req.body.sort_order === null ||
+        req.body.sort_order === undefined ||
+        req.body.sort_order === ""
           ? null
           : Number(req.body.sort_order);
+
+      if (sortOrder !== null && Number.isNaN(sortOrder)) {
+        return res.status(400).json({ ok: false, error: "invalid_sort_order" });
+      }
+
       fields.push(`sort_order = $${idx++}`);
       values.push(sortOrder);
     }
@@ -6360,12 +6407,14 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
       return res.status(400).json({ ok: false, error: "no_fields_to_update" });
     }
 
+    // Always touch updated_at
     fields.push(`updated_at = NOW()`);
 
-    values.push(id);
-    values.push(schoolId);
+    // WHERE params
+    values.push(id);       // $idx
+    values.push(schoolId); // $idx+1
 
-    const sql = `
+    const updateSql = `
       UPDATE ai_prompts
       SET ${fields.join(", ")}
       WHERE id = $${idx++} AND school_id = $${idx++}
@@ -6374,62 +6423,68 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
         is_default, is_active, sort_order, created_at, updated_at
     `;
 
-// --- DROP-IN: update prompt + invalidate cached reports (transaction-safe) ---
+    // ----------------------------
+    // Transaction:
+    // 1) If is_default=true, clear other defaults in this school
+    // 2) Update prompt
+    // 3) Invalidate cached reports for this prompt in this school
+    // ----------------------------
+    await pool.query("BEGIN");
 
-let upd;
-let inv;
+    try {
+      if (wantsDefault === true) {
+        // Clear other defaults (keep this prompt as the only default)
+        await pool.query(
+          `UPDATE ai_prompts
+           SET is_default = FALSE, updated_at = NOW()
+           WHERE school_id = $1 AND id <> $2 AND is_default = TRUE`,
+          [schoolId, id]
+        );
+      }
 
-try {
-  await pool.query("BEGIN");
+      const upd = await pool.query(updateSql, values);
+      if (!upd.rowCount) {
+        await pool.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "prompt_not_found" });
+      }
 
-  upd = await pool.query(sql, values);
-  if (!upd.rowCount) {
-    await pool.query("ROLLBACK");
-    return res.status(500).json({ ok: false, error: "update_failed" });
-  }
+      const inv = await pool.query(
+        `DELETE FROM ai_reports ar
+         USING submissions s
+         WHERE ar.prompt_id = $1
+           AND ar.submission_id = s.id
+           AND s.school_id = $2
+           AND s.deleted_at IS NULL`,
+        [id, schoolId]
+      );
 
-  // Invalidate cached reports for this prompt (all submissions in this school)
-  inv = await pool.query(
-    `DELETE FROM ai_reports ar
-     USING submissions s
-     WHERE ar.prompt_id = $1
-       AND ar.submission_id = s.id
-       AND s.school_id = $2
-       AND s.deleted_at IS NULL`,
-    [id, schoolId]
-  );
+      await pool.query("COMMIT");
 
-  await pool.query("COMMIT");
-
-  return res.json({
-    ok: true,
-    slug,
-    schoolId,
-    prompt: upd.rows[0],
-    invalidated_reports: inv.rowCount,
-  });
-} catch (err) {
-  try { await pool.query("ROLLBACK"); } catch (_) {}
-  throw err; // let your outer catch handle logging + 500
-}
-    // FIX 2: prompt changed -> cached reports are stale
-    const invalidated = await invalidateReportsForPromptInSchool(id, schoolId);
-
-    return res.json({
-      ok: true,
-      slug: schoolSlug,
-      schoolId,
-      prompt: upd.rows[0],
-      invalidated_reports: invalidated,
-    });
+      return res.json({
+        ok: true,
+        slug: schoolSlug,
+        schoolId,
+        prompt: upd.rows[0],
+        invalidated_reports: inv.rowCount,
+      });
+    } catch (errTx) {
+      try { await pool.query("ROLLBACK"); } catch (_) {}
+      throw errTx;
+    }
   } catch (err) {
     const status = err?.status || 500;
-    const code = status === 500 ? "prompts_update_failed" : String(err.message || "error");
+    const code =
+      status === 500 ? "prompts_update_failed" : String(err.message || "error");
+
     if (status === 500) console.error("❌ [ai-prompts] update failed:", err);
-    return res.status(status).json({ ok: false, error: code, message: err?.message });
+
+    return res.status(status).json({
+      ok: false,
+      error: code,
+      message: err?.message,
+    });
   }
 });
-
 // ---------------------------------------------------------------------
 // AI Prompts - delete by slug + id
 // DELETE /api/admin/ai-prompts/:slug/:id
