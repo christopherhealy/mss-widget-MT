@@ -129,17 +129,21 @@ function readAdminTokenFromRequest(req) {
 
 
 function requireSuperAdmin(req, res, next) {
-  if (!req.adminAuth?.isSuperAdmin) {
-    return res.status(403).json({
-      ok: false,
-      error: "forbidden",
-      message: "Super admin required.",
-    });
+  const a = req.admin || {};
+  const legacy = req.adminAuth || {};
+
+  const isSuper =
+    (a && a.is_superadmin === true) ||
+    (a && a.isSuperAdmin === true) ||
+    (legacy && legacy.isSuperAdmin === true);
+
+  if (!isSuper) {
+    return res.status(403).json({ ok: false, error: "superadmin_required" });
   }
   return next();
 }
 
-function requireAdminAuth(req, res, next) {
+async function requireAdminAuth(req, res, next) {
   try {
     const auth = String(req.headers.authorization || "");
     const hasSecret = !!process.env.MSS_ADMIN_JWT_SECRET;
@@ -155,61 +159,123 @@ function requireAdminAuth(req, res, next) {
       return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
     }
 
+    // -----------------------------
+    // 1) Verify JWT + normalize claims (best-effort)
+    // -----------------------------
     const payload = jwt.verify(token, process.env.MSS_ADMIN_JWT_SECRET) || {};
 
-    // Keep original claims (handy for debugging / backward compatibility)
-    // AND normalize to canonical keys expected by the rest of the API.
     const admin_id = Number(
       payload.admin_id ??
       payload.adminId ??
-      payload.aid ??        // <-- your token uses "aid"
+      payload.aid ??        // common in your tokens
       payload.id ??
       payload.user_id ??
       0
     );
 
-    const admin_email = String(
+    const admin_email_claim = String(
       payload.admin_email ??
       payload.adminEmail ??
       payload.email ??
       ""
     ).trim().toLowerCase();
 
-    const is_superadmin = !!(
+    const is_superadmin_claim = !!(
       payload.is_superadmin ||
       payload.isSuperadmin ||
-      payload.isSuperAdmin || // <-- your token uses "isSuperAdmin"
+      payload.isSuperAdmin ||
       payload.isSuper ||
       payload.superadmin
     );
 
-    req.admin = {
-      admin_id,
-      adminEmail: admin_email,
-      admin_email,
-      is_superadmin,
-      isSuperAdmin: is_superadmin,
-      school_id: payload.schoolId ?? payload.school_id ?? null,
-      _claims: payload
-    };
-
-    // ADD THESE 3 LINES Jan 10
-    req.admin.id = admin_id;
-    req.adminId = admin_id;
-    req.admin.email = admin_email;
-
-    if (!admin_id || !admin_email) {
-      console.warn("[requireAdminAuth] admin ctx missing after normalize", {
+    if (!admin_id) {
+      console.warn("[requireAdminAuth] missing admin id in token", {
         keys: Object.keys(payload || {}),
-        admin_id,
-        hasEmail: !!admin_email
       });
       return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
     }
 
+    // NOTE: we no longer *require* admin_email_claim here because DB is authoritative.
+    // Still keep it for diagnostics if present.
+
+    // -----------------------------
+    // 2) DB override (AUTHORITATIVE)
+    // -----------------------------
+    let db = null;
+    try {
+      const r = await pool.query(
+        `SELECT id, email, full_name, is_superadmin, is_active, school_id
+           FROM public.admins
+          WHERE id = $1
+          LIMIT 1`,
+        [admin_id]
+      );
+      db = r.rowCount ? r.rows[0] : null;
+    } catch (err) {
+      console.warn("[requireAdminAuth] admins lookup failed", {
+        admin_id,
+        message: err?.message,
+      });
+      return res.status(500).json({ ok: false, error: "admin_lookup_failed" });
+    }
+
+    if (!db) return res.status(401).json({ ok: false, error: "admin_not_found" });
+    if (db.is_active === false) return res.status(401).json({ ok: false, error: "admin_inactive" });
+
+    const admin_email_db = String(db.email || "").trim().toLowerCase();
+    const admin_email = admin_email_db || admin_email_claim; // DB wins; claim only as fallback
+    const is_superadmin_db = !!db.is_superadmin;
+
+    if (!admin_email) {
+      console.warn("[requireAdminAuth] missing admin email (db+token)", {
+        admin_id,
+        hasDbEmail: !!admin_email_db,
+        hasClaimEmail: !!admin_email_claim,
+      });
+      return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
+    }
+
+    // -----------------------------
+    // 3) Canonical context object (req.admin)
+    // -----------------------------
+    req.admin = {
+      // canonical
+      admin_id,
+      admin_email,
+      is_superadmin: is_superadmin_db,
+
+      // common aliases used across your codebase
+      id: admin_id,
+      adminId: admin_id,
+      email: admin_email,
+      adminEmail: admin_email,
+      isSuperAdmin: is_superadmin_db,
+
+      // authoritative DB fields
+      full_name: db.full_name || null,
+      school_id: db.school_id ?? (payload.schoolId ?? payload.school_id ?? null),
+
+      // debugging only
+      _claims: payload,
+      _is_superadmin_claim: is_superadmin_claim,
+    };
+
+    // -----------------------------
+    // 4) Backward-compat aliases (avoid touching other modules)
+    // -----------------------------
+    req.adminId = admin_id; // some routes reference req.adminId
+
+    // Older code may expect req.adminAuth.*
+    req.adminAuth = {
+      adminId: admin_id,
+      email: admin_email,
+      isSuperAdmin: is_superadmin_db,
+      schoolId: req.admin.school_id ?? null,
+    };
+
     return next();
-  } catch (e) {
-    console.warn("[requireAdminAuth] jwt verify failed", { name: e?.name, message: e?.message });
+  } catch (err) {
+    console.warn("[requireAdminAuth] jwt verify failed", { name: err?.name, message: err?.message });
     return res.status(401).json({ ok: false, error: "bad_token" });
   }
 }
@@ -7220,4 +7286,20 @@ app.post("/api/admin/notes", requireAdminAuth, async (req, res) => {
     console.error("POST /api/admin/notes failed", err);
     return res.status(500).json({ ok: false, error: "internal_error" });
   }
+});
+
+//Auth and role check Jan 11
+// GET /api/admin/me  (authoritative admin context from DB-backed requireAdminAuth)
+app.get("/api/admin/me", requireAdminAuth, async (req, res) => {
+  const a = req.admin || {};
+  return res.json({
+    ok: true,
+    admin: {
+      id: a.id ?? a.admin_id ?? null,
+      email: a.email ?? a.admin_email ?? null,
+      full_name: a.full_name ?? null,
+      is_superadmin: a.is_superadmin === true,
+      school_id: a.school_id ?? null
+    }
+  });
 });

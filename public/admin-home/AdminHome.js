@@ -1,5 +1,10 @@
 // /public/admin-home/AdminHome.js
-// v1.5 — Super Admin must choose a school (no persistence) + token/legacy fallback
+// v1.6 — DB-authoritative role via /api/admin/me + superadmin school picker (hide when only 1)
+// - Never derives superadmin from email.
+// - Uses token (Bearer) or legacy key for adminFetch.
+// - If superadmin has 1 school: auto-select + hide picker.
+// - If superadmin has 2+ schools: force selection each session.
+
 console.log("✅ AdminHome.js loaded");
 
 (function () {
@@ -22,6 +27,18 @@ console.log("✅ AdminHome.js loaded");
     } catch (e) {
       console.warn("[AdminHome] Failed to read/parse session:", e);
       return null;
+    }
+  }
+
+  function safeWriteSession(patch) {
+    try {
+      const s = readSession() || {};
+      const next = { ...s, ...patch };
+      localStorage.setItem(LS_SESSION_KEY, JSON.stringify(next));
+      return true;
+    } catch (e) {
+      console.warn("[AdminHome] Failed to write session:", e);
+      return false;
     }
   }
 
@@ -52,7 +69,13 @@ console.log("✅ AdminHome.js loaded");
       headers.set("x-admin-key", auth.value);
     }
 
-    return fetch(url, { ...opts, headers });
+    return fetch(url, { ...opts, headers, cache: "no-store" });
+  }
+
+  async function adminFetchJson(url, opts = {}) {
+    const res = await adminFetch(url, opts);
+    const body = await res.json().catch(() => ({}));
+    return { res, body };
   }
 
   function setStatus(msg, isError = false) {
@@ -60,40 +83,6 @@ console.log("✅ AdminHome.js loaded");
     if (!el) return;
     el.textContent = msg || "";
     el.classList.toggle("error", !!isError);
-  }
-
-  function isSuperAdmin(session) {
-    if (!session) return false;
-    const flag =
-      session.isSuperAdmin ??
-      session.isSuperadmin ??
-      session.is_super_admin ??
-      false;
-
-    if (flag === true) return true;
-
-    // Optional heuristic fallback
-    const email = String(session.email || "");
-    return /@mss\.com$/i.test(email);
-  }
-
-  function populateMeta(session, auth) {
-    const superAdmin = isSuperAdmin(session);
-
-    $("admin-email").textContent = session.email || "—";
-    $("admin-id").textContent =
-      session.adminId != null ? String(session.adminId) : "—";
-    $("admin-role").textContent = superAdmin ? "Super admin" : "Admin";
-
-    const badge = $("admin-key-badge");
-    if (badge) {
-      if (auth.type === "token") badge.textContent = "token: present";
-      else if (auth.type === "legacy") badge.textContent = "key: present";
-      else badge.textContent = "token: none";
-    }
-
-    const superBadge = $("admin-super-badge");
-    if (superBadge) superBadge.style.display = superAdmin ? "inline-flex" : "none";
   }
 
   function logout() {
@@ -125,14 +114,58 @@ console.log("✅ AdminHome.js loaded");
   }
 
   function setSlugPill(slug) {
-    const pill = $("admin-school-slug-pill"); // if present in HTML
+    const pill = $("admin-school-slug-pill");
     if (!pill) return;
     pill.textContent = "slug: " + (slug || "—");
   }
 
-  // Super Admin: load schools into dropdown, but DO NOT auto-select.
-  // Requirement: force the super admin to pick a school each session (no persistence).
-  async function loadSchoolsForSuperAdmin(session) {
+  function setSuperBadgeVisible(isSuper) {
+    const superBadge = $("admin-super-badge");
+    if (superBadge) superBadge.style.display = isSuper ? "inline-flex" : "none";
+  }
+
+  function populateMeta({ email, adminId, isSuperadmin }, auth) {
+    $("admin-email").textContent = email || "—";
+    $("admin-id").textContent = adminId != null ? String(adminId) : "—";
+    $("admin-role").textContent = isSuperadmin ? "Super admin" : "Admin";
+
+    const badge = $("admin-key-badge");
+    if (badge) {
+      if (auth.type === "token") badge.textContent = "token: present";
+      else if (auth.type === "legacy") badge.textContent = "key: present";
+      else badge.textContent = "token: none";
+    }
+
+    setSuperBadgeVisible(!!isSuperadmin);
+  }
+
+  // -----------------------------
+  // Authoritative "me" (DB-backed)
+  // Requires server route:
+  //   GET /api/admin/me  -> { ok:true, admin:{ id,email,full_name,is_superadmin,school_id } }
+  // -----------------------------
+  async function fetchMe() {
+    const { res, body } = await adminFetchJson("/api/admin/me?ts=" + Date.now());
+    if (!res.ok || body.ok === false) {
+      const err = body.error || ("http_" + res.status);
+      throw new Error("me_failed:" + err);
+    }
+    const a = body.admin || {};
+    return {
+      adminId: a.id ?? a.adminId ?? a.admin_id ?? null,
+      email: (a.email || a.admin_email || "").trim().toLowerCase(),
+      isSuperadmin: !!(a.is_superadmin || a.isSuperAdmin),
+      schoolId: a.school_id ?? null,
+      fullName: a.full_name || a.fullName || ""
+    };
+  }
+
+  // -----------------------------
+  // Super Admin school picker
+  // - If 1 school: hide picker, auto-select.
+  // - If 2+: show picker, force selection (no persistence).
+  // -----------------------------
+  async function loadSchoolsForSuperAdmin(session, onSelectSlug) {
     const wrap = $("school-picker-wrap");
     const sel = $("admin-school-select");
     const btnRefresh = $("btn-school-refresh");
@@ -145,14 +178,15 @@ console.log("✅ AdminHome.js loaded");
       sel.disabled = true;
       sel.innerHTML = '<option value="" selected>Loading schools…</option>';
 
+      // Prefer a server route that uses req.admin.id rather than query params.
+      // If you keep /api/admin/my-schools?email=&adminId=, it should still DB-check server-side.
       const url =
         "/api/admin/my-schools?email=" +
         encodeURIComponent(session.email || "") +
         "&adminId=" +
         encodeURIComponent(String(session.adminId ?? session.id ?? ""));
 
-      const res = await adminFetch(url, { cache: "no-store" });
-      const body = await res.json().catch(() => ({}));
+      const { res, body } = await adminFetchJson(url);
 
       if (!res.ok || body.ok === false) {
         sel.innerHTML = '<option value="" selected>(Failed to load schools)</option>';
@@ -167,10 +201,24 @@ console.log("✅ AdminHome.js loaded");
         sel.innerHTML = '<option value="" selected>(No schools found)</option>';
         setSlugPill("");
         setSchoolScopedButtonsEnabled(false);
-        return;
+        return { schools: [] };
       }
 
-      // Required placeholder first
+      // If exactly one school: hide picker UI and auto-select
+      if (schools.length === 1) {
+        const only = schools[0] || {};
+        const slug = String(only.slug || "").trim();
+
+        // Hide entire picker line (as requested)
+        wrap.style.display = "none";
+
+        onSelectSlug(slug);
+        return { schools, autoSelected: true };
+      }
+
+      // Else: show picker and force selection
+      wrap.style.display = "block";
+
       const opts =
         '<option value="" selected disabled>— Select a school —</option>' +
         schools
@@ -185,12 +233,11 @@ console.log("✅ AdminHome.js loaded");
       sel.innerHTML = opts;
       sel.disabled = false;
 
-      // Force selection
-      setSlugPill("");
-      setSchoolScopedButtonsEnabled(false);
+      // Force selection each session
+      onSelectSlug("");
+      return { schools, autoSelected: false };
     }
 
-    // Wire refresh
     btnRefresh?.addEventListener("click", async () => {
       try {
         await refresh();
@@ -201,8 +248,13 @@ console.log("✅ AdminHome.js loaded");
       }
     });
 
-    // Initial load
-    await refresh();
+    // Selection handler (only relevant when schools.length > 1)
+    sel?.addEventListener("change", () => {
+      const chosen = String(sel.value || "").trim();
+      onSelectSlug(chosen);
+    });
+
+    return refresh();
   }
 
   async function init() {
@@ -214,58 +266,66 @@ console.log("✅ AdminHome.js loaded");
       return;
     }
 
-    const superAdmin = isSuperAdmin(session);
-    populateMeta(session, auth);
+    if (auth.type === "none") {
+      setStatus("Missing admin token/key. Please log in again.", true);
+      logout();
+      return;
+    }
+
+    // 1) Authoritative role from server (DB)
+    let me;
+    try {
+      me = await fetchMe();
+    } catch (e) {
+      console.warn("[AdminHome] fetchMe failed:", e?.message || e);
+      setStatus("Session invalid or expired. Please log in again.", true);
+      logout();
+      return;
+    }
+
+    // Keep local session consistent (avoid role drift)
+    safeWriteSession({
+      adminId: me.adminId,
+      email: me.email,
+      isSuperadmin: me.isSuperadmin,
+      isSuperAdmin: me.isSuperadmin
+    });
+
+    const superAdmin = !!me.isSuperadmin;
+    populateMeta({ email: me.email, adminId: me.adminId, isSuperadmin: superAdmin }, auth);
 
     // Slug context:
     // - Admin: can use URL slug or default mss-demo
-    // - Super Admin: MUST choose on this page (no default, no persistence)
+    // - Super Admin: must choose (unless only 1 school -> auto-selected)
     let SLUG = "";
 
-    // Super Admin school picker handling
+    function applySlug(slug) {
+      SLUG = String(slug || "").trim();
+      setSlugPill(SLUG);
+      setSchoolScopedButtonsEnabled(!!SLUG);
+
+      if (superAdmin) {
+        if (SLUG) setStatus("School selected. You may open tools.", false);
+        else setStatus("Select a school to continue.", false);
+      } else {
+        setStatus("You are signed in. Use the buttons below to open each tool.", false);
+      }
+    }
+
     if (superAdmin) {
+      // Force choose each session unless there is only one school
       try {
-        await loadSchoolsForSuperAdmin(session);
+        await loadSchoolsForSuperAdmin({ email: me.email, adminId: me.adminId }, applySlug);
       } catch (e) {
         console.warn("[AdminHome] loadSchoolsForSuperAdmin failed", e);
+        applySlug("");
       }
-
-      // enforce selection
-      SLUG = "";
-      setSlugPill("");
-      setSchoolScopedButtonsEnabled(false);
-      setStatus("Select a school to continue.", false);
-
-      const sel = $("admin-school-select");
-      sel?.addEventListener("change", () => {
-        const chosen = String(sel.value || "").trim();
-        SLUG = chosen;
-        setSlugPill(SLUG);
-        setSchoolScopedButtonsEnabled(!!SLUG);
-        if (SLUG) setStatus("School selected. You may open tools.", false);
-        else setStatus("Select a school to continue.", true);
-      });
     } else {
-      // Regular admin flow
       const params = new URLSearchParams(window.location.search);
-      SLUG = (params.get("slug") || "mss-demo").trim();
-      setSlugPill(SLUG);
-      setSchoolScopedButtonsEnabled(true);
+      applySlug((params.get("slug") || "mss-demo").trim());
     }
 
-    // Auth status
-    if (auth.type === "none") {
-      setStatus(
-        "You are signed in, but your admin token/key is missing. Please log in again.",
-        true
-      );
-    } else if (!superAdmin) {
-      setStatus("You are signed in. Use the buttons below to open each tool.", false);
-    } else {
-      // super admin status already set above (“Select a school…”)
-      // keep as-is
-    }
-
+    // Wire buttons
     const btnPortal = $("btn-portal");
     const btnConfig = $("btn-config");
     const btnQuestions = $("btn-questions");
@@ -283,36 +343,31 @@ console.log("✅ AdminHome.js loaded");
       return SLUG;
     }
 
-    // School-scoped tools (carry slug)
     btnTeacherAdmin?.addEventListener("click", () => {
       const s = requireSlugOrWarn();
       if (!s) return;
-      window.location.href =
-        "/admin-teachers/AdminTeachers.html?slug=" + encodeURIComponent(s);
+      window.location.href = "/admin-teachers/AdminTeachers.html?slug=" + encodeURIComponent(s);
     });
 
     btnPortal?.addEventListener("click", () => {
       const s = requireSlugOrWarn();
       if (!s) return;
-      window.location.href =
-        "/admin/SchoolPortal.html?slug=" + encodeURIComponent(s);
+      window.location.href = "/admin/SchoolPortal.html?slug=" + encodeURIComponent(s);
     });
 
     btnConfig?.addEventListener("click", () => {
       const s = requireSlugOrWarn();
       if (!s) return;
-      window.location.href =
-        "/config-admin/ConfigAdmin.html?slug=" + encodeURIComponent(s);
+      window.location.href = "/config-admin/ConfigAdmin.html?slug=" + encodeURIComponent(s);
     });
 
     btnQuestions?.addEventListener("click", () => {
       const s = requireSlugOrWarn();
       if (!s) return;
-      window.location.href =
-        "/questions-admin/WidgetSurvey.html?slug=" + encodeURIComponent(s);
+      window.location.href = "/questions-admin/WidgetSurvey.html?slug=" + encodeURIComponent(s);
     });
 
-    // Super admin only
+    // Super admin only buttons
     if (btnInviteSchoolSignup) {
       btnInviteSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
       if (superAdmin) {
