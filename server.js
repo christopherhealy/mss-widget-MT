@@ -2272,8 +2272,14 @@ function assertSchoolScope(req, requiredSchoolId) {
     throw err;
   }
 
-  // Superadmin bypass
-  if (admin.is_superadmin === true) return true;
+  // Tolerant superadmin bypass
+  const isSuper = !!(
+    admin.is_superadmin === true ||
+    admin.isSuperadmin === true ||
+    admin.isSuperAdmin === true ||
+    admin.superadmin === true
+  );
+  if (isSuper) return true;
 
   const tokenSchoolId = Number(admin.school_id || 0);
   const need = Number(requiredSchoolId || 0);
@@ -2283,15 +2289,23 @@ function assertSchoolScope(req, requiredSchoolId) {
     err.status = 403;
     throw err;
   }
+
   if (!need) {
+    console.error("[SCOPE] bad_required_school_id", {
+      url: req.originalUrl,
+      requiredSchoolId,
+      tokenSchoolId,
+      adminKeys: Object.keys(admin || {}),
+    });
     const err = new Error("bad_required_school_id");
-    err.status = 500;
+    err.status = 400; // was 500
     throw err;
   }
 
   if (tokenSchoolId !== need) {
     const err = new Error("forbidden_school_scope");
     err.status = 403;
+    err.debug = { tokenSchoolId, need };
     throw err;
   }
 
@@ -6349,12 +6363,43 @@ async function loadLegacySuggestPreamble({ schoolId }) {
 }
 
 async function getOrCreateSuggestSettings({ schoolId }) {
+  // Normalize + validate once
+  const sid = Number(schoolId || 0);
+  if (!Number.isFinite(sid) || sid <= 0) {
+    const err = new Error("bad_school_id");
+    err.status = 400;
+    throw err;
+  }
+
+  // Helper to normalize jsonb metrics to an array of strings
+  const normalizeMetrics = (v) => {
+    // pg jsonb often returns already-parsed JS types
+    if (Array.isArray(v)) return v.map(x => String(x || "").trim()).filter(Boolean);
+
+    // If it's null/undefined, return empty
+    if (v == null) return [];
+
+    // If it's a JSON string (rare but possible), parse it
+    if (typeof v === "string") {
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed)) return parsed.map(x => String(x || "").trim()).filter(Boolean);
+      } catch {
+        // If it's a comma-separated string fallback
+        return v.split(",").map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    // Any other type (object/number/bool) -> empty for safety
+    return [];
+  };
+
   const r = await pool.query(
     `SELECT id, preamble_text, default_language, default_notes, default_metrics
-     FROM ai_prompt_preamble
-     WHERE school_id = $1
-     LIMIT 1`,
-    [schoolId]
+       FROM ai_prompt_preamble
+      WHERE school_id = $1
+      LIMIT 1`,
+    [sid]
   );
 
   if (r.rowCount) {
@@ -6364,25 +6409,32 @@ async function getOrCreateSuggestSettings({ schoolId }) {
       preamble: String(row.preamble_text || ""),
       default_language: String(row.default_language || ""),
       default_notes: String(row.default_notes || ""),
-      default_selected_metrics: Array.isArray(row.default_metrics) ? row.default_metrics : [],
+      default_selected_metrics: normalizeMetrics(row.default_metrics),
       exists: true,
     };
   }
 
-  // Seed: legacy > env/default
-  const legacy = await loadLegacySuggestPreamble({ schoolId });
-  const seed = {
-    preamble: legacy?.preamble || String(DEFAULT_SUGGEST_PREAMBLE || "").trim(),
-    default_language: legacy?.default_language || "",
-    default_notes: legacy?.default_notes || "",
-    default_selected_metrics: legacy?.default_selected_metrics || [],
-  };
+  // Seed: legacy > env/default (sanitize everything)
+  const legacy = await loadLegacySuggestPreamble({ schoolId: sid });
+
+  const seedPreamble = String(
+    legacy?.preamble || String(DEFAULT_SUGGEST_PREAMBLE || "")
+  ).trim();
+
+  const seedLanguage = String(legacy?.default_language || "").trim();
+  const seedNotes = String(legacy?.default_notes || "").trim();
+
+  const seedMetrics = normalizeMetrics(
+    legacy?.default_selected_metrics ?? legacy?.default_metrics ?? []
+  );
 
   const ins = await pool.query(
-    `INSERT INTO ai_prompt_preamble (school_id, preamble_text, default_language, default_notes, default_metrics)
-     VALUES ($1, $2, $3, $4, $5::jsonb)
+    `INSERT INTO ai_prompt_preamble
+        (school_id, preamble_text, default_language, default_notes, default_metrics)
+     VALUES
+        ($1, $2, $3, $4, $5::jsonb)
      RETURNING id, preamble_text, default_language, default_notes, default_metrics`,
-    [schoolId, seed.preamble, seed.default_language, seed.default_notes, JSON.stringify(seed.default_selected_metrics)]
+    [sid, seedPreamble, seedLanguage, seedNotes, JSON.stringify(seedMetrics)]
   );
 
   const row = ins.rows[0];
@@ -6391,12 +6443,18 @@ async function getOrCreateSuggestSettings({ schoolId }) {
     preamble: String(row.preamble_text || ""),
     default_language: String(row.default_language || ""),
     default_notes: String(row.default_notes || ""),
-    default_selected_metrics: Array.isArray(row.default_metrics) ? row.default_metrics : [],
+    default_selected_metrics: normalizeMetrics(row.default_metrics),
     exists: false,
   };
 }
-
 async function upsertSuggestSettings({ schoolId, preamble, default_language, default_notes, default_selected_metrics }) {
+
+   if (!Number.isFinite(Number(schoolId)) || Number(schoolId) <= 0) {
+     const err = new Error("bad_school_id");
+     err.status = 400;
+     throw err;
+   }
+
   const metrics = Array.isArray(default_selected_metrics)
     ? default_selected_metrics.map(x => String(x || "").trim()).filter(Boolean)
     : [];
@@ -6430,6 +6488,139 @@ async function upsertSuggestSettings({ schoolId, preamble, default_language, def
     default_selected_metrics: Array.isArray(row.default_metrics) ? row.default_metrics : [],
   };
 }
+//is this the right place for this function??
+function buildSuggestedPromptTemplate({ preamble, language, notes, selectedMetrics }) {
+  const pre = String(preamble || "").trim();
+  const helperLanguage = String(language || "").trim();
+  const adminNotes = String(notes || "").trim();
+
+  // Normalize metrics to a simple array of strings
+  let sel = [];
+  if (Array.isArray(selectedMetrics)) {
+    sel = selectedMetrics.map(x => String(x || "").trim()).filter(Boolean);
+  } else if (selectedMetrics && typeof selectedMetrics === "object") {
+    sel = Object.keys(selectedMetrics).filter(k => !!selectedMetrics[k]);
+  } else if (typeof selectedMetrics === "string") {
+    sel = selectedMetrics.split(",").map(s => s.trim()).filter(Boolean);
+  }
+
+  const helperRule = helperLanguage
+    ? [
+        "HELPER LANGUAGE POLICY:",
+        `- Use ${helperLanguage} only to explain concepts and instructions when helpful.`,
+        "- Keep ALL student evidence in English (quotes, words/phrases, pronunciation examples).",
+      ].join("\n")
+    : "";
+
+  const metricsLine = sel.length
+    ? `Selected metrics (use ONLY these; omit any missing at runtime): ${sel.join(", ")}`
+    : "Selected metrics: (none provided) — use a safe core MSS set if available, and omit missing.";
+
+  const parts = [];
+  if (pre) parts.push(pre);
+  if (helperRule) parts.push(helperRule);
+
+  parts.push(
+    [
+      "TASK:",
+      "Generate a teacher-usable PROMPT TEMPLATE to give feedback on a student's spoken response.",
+      "The output must be a single prompt template (not JSON).",
+      "",
+      "RUNTIME VARIABLES AVAILABLE:",
+      "- {{question}}",
+      "- {{transcript}}",
+      "- {{student}}",
+      "- {{wpm}}",
+      "- {{mss_fluency}}, {{mss_pron}}, {{mss_grammar}}, {{mss_vocab}}, {{mss_cefr}}, {{mss_toefl}}",
+      "",
+      metricsLine,
+      "",
+      adminNotes ? `Admin notes:\n${adminNotes}` : "",
+      "",
+      "REQUIRED OUTPUT STRUCTURE (Markdown):",
+      "1) Quick Summary (2–3 bullets)",
+      "2) Strengths (2–4 bullets)",
+      "3) Priority Improvements (2–4 bullets)",
+      "4) Exercises (3–6 items) tied to selected metrics",
+      "5) Next Attempt Plan (short checklist)",
+      "",
+      "CONSTRAINTS:",
+      "- Use ONLY the metrics selected above.",
+      "- Do NOT invent scores or facts.",
+      "- If a metric is missing or blank at runtime, omit it and do not mention it.",
+      "",
+      "Return ONLY the final prompt template text.",
+    ].filter(Boolean).join("\n")
+  );
+
+  return parts.join("\n\n").trim();
+}
+
+// =====================================================================
+// SUGGEST (Generate a prompt template using OpenAI)
+// POST /api/admin/ai-prompts/:slug/suggest
+// body: { language?, notes?, selected_metrics? }
+// Also accepts: selectedMetrics, metrics, default_selected_metrics (tolerant)
+// =====================================================================
+
+app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
+
+    // 1) Load per-school defaults
+    const ss = await getOrCreateSuggestSettings({ schoolId });
+
+    // 2) Accept request overrides
+    const language =
+      req.body?.language != null ? String(req.body.language).trim() :
+      req.body?.default_language != null ? String(req.body.default_language).trim() :
+      String(ss.default_language || "").trim();
+
+    const notes =
+      req.body?.notes != null ? String(req.body.notes).trim() :
+      req.body?.default_notes != null ? String(req.body.default_notes).trim() :
+      String(ss.default_notes || "").trim();
+
+    const selectedMetrics =
+      req.body?.selected_metrics ??
+      req.body?.selectedMetrics ??
+      req.body?.metrics ??
+      req.body?.default_selected_metrics ??
+      req.body?.default_metrics ??
+      ss.default_selected_metrics ??
+      [];
+
+    const metaPrompt = buildSuggestedPromptTemplate({
+      preamble: ss.preamble,
+      language,
+      notes,
+      selectedMetrics,
+    });
+
+    const ai = await openAiGenerateReport({
+      promptText: metaPrompt,
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_output_tokens: 900,
+    });
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug,     // or just slug
+      schoolId,
+      prompt_text: ai.text,
+      suggested_prompt_text: ai.text,
+      model: ai.model,
+    });
+  } catch (e) {
+    console.error("POST /suggest failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
 // ---------------------------------------------------------------------
 // PUT suggest-settings
 // Body: { preamble, default_language, default_notes, default_selected_metrics }
@@ -7369,8 +7560,8 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
     if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
     if (!promptText) return res.status(400).json({ ok: false, error: "missing_prompt_text" });
 
-    const school = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, school.id);
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
     const isDefault = req.body.is_default === true;
     const isActive = req.body.is_active !== false; // default true
@@ -7384,7 +7575,7 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
     if (isDefault) {
       await client.query(
         `UPDATE ai_prompts SET is_default=false, updated_at=now() WHERE school_id=$1`,
-        [school.id]
+        [schoolId]
       );
     }
 
@@ -7394,7 +7585,7 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, notes, language, created_at, updated_at
       `,
-      [school.id, name, promptText, isDefault, isActive, sortOrder, notes, language]
+      [schoolId, name, promptText, isDefault, isActive, sortOrder, notes, language]
     );
 
     await client.query("COMMIT");
@@ -7402,7 +7593,6 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
   } catch (e) {
     try { await client.query("ROLLBACK"); } catch {}
 
-    // unique constraint ux_ai_prompts_school_name
     if (String(e.message || "").includes("ux_ai_prompts_school_name")) {
       return res.status(409).json({ ok: false, error: "duplicate_name" });
     }
@@ -7418,19 +7608,21 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
   try {
     const slug = String(req.params.slug || "").trim();
     const id = Number(req.params.id || 0);
+
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
 
-    const school = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, school.id);
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
     // Ensure prompt belongs to school
     const exists = await client.query(
       `SELECT id, is_default FROM ai_prompts WHERE id=$1 AND school_id=$2 LIMIT 1`,
-      [id, school.id]
+      [id, schoolId]
     );
     if (!exists.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
 
+    // Field builder
     const fields = [];
     const vals = [];
     let n = 1;
@@ -7440,6 +7632,10 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
       vals.push(v);
     };
 
+    // ✅ DEFINE wantsDefault (this is your crash today)
+    const wantsDefault = req.body?.is_default === true;
+
+    // Build updates (only set fields that were provided)
     if (req.body.name != null) setField("name", String(req.body.name).trim());
     if (req.body.prompt_text != null) setField("prompt_text", String(req.body.prompt_text).trim());
     if (req.body.notes != null) setField("notes", String(req.body.notes));
@@ -7447,38 +7643,38 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     if (req.body.sort_order != null) setField("sort_order", Number(req.body.sort_order));
     if (req.body.is_active != null) setField("is_active", req.body.is_active === true);
 
-    const wantsDefault = req.body.is_default === true;
-
     await client.query("BEGIN");
 
     if (wantsDefault) {
       // clear all defaults for this school
       await client.query(
         `UPDATE ai_prompts SET is_default=false, updated_at=now() WHERE school_id=$1`,
-        [school.id]
+        [schoolId]
       );
       setField("is_default", true);
-      // Optional: ensure default is active
-      setField("is_active", true);
+      setField("is_active", true); // keep default active
     } else if (req.body.is_default === false) {
+      // explicitly turning default off
       setField("is_default", false);
     }
 
-    setField("updated_at", new Date()); // or now() via SQL, but easiest here
+    // Always touch updated_at if *anything* changes
+    if (fields.length) setField("updated_at", new Date());
 
     if (!fields.length) {
       await client.query("ROLLBACK");
       return res.json({ ok: true, prompt: exists.rows[0], unchanged: true });
     }
 
-    vals.push(id, school.id);
+    // WHERE params
+    vals.push(id, schoolId);
 
     const upd = await client.query(
       `
       UPDATE ai_prompts
-      SET ${fields.join(", ")}
-      WHERE id=$${n++} AND school_id=$${n++}
-      RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, notes, language, created_at, updated_at
+         SET ${fields.join(", ")}
+       WHERE id=$${n++} AND school_id=$${n++}
+       RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, notes, language, created_at, updated_at
       `,
       vals
     );
@@ -7492,8 +7688,7 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
       return res.status(409).json({ ok: false, error: "duplicate_name" });
     }
 
-    const status = e.status || 500;
-    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   } finally {
     client.release();
   }
@@ -7573,15 +7768,14 @@ app.post("/api/admin/ai-prompts/:slug/:id/set-default", requireAdminAuth, async 
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
 
-    const school = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, school.id);
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
 
     await client.query("BEGIN");
 
-    // Ensure prompt belongs to school
     const p = await client.query(
       `SELECT id FROM ai_prompts WHERE id=$1 AND school_id=$2 LIMIT 1`,
-      [id, school.id]
+      [id, schoolId]
     );
     if (!p.rowCount) {
       await client.query("ROLLBACK");
@@ -7590,21 +7784,21 @@ app.post("/api/admin/ai-prompts/:slug/:id/set-default", requireAdminAuth, async 
 
     await client.query(
       `UPDATE ai_prompts SET is_default=false, updated_at=now() WHERE school_id=$1`,
-      [school.id]
+      [schoolId]
     );
+
     const upd = await client.query(
       `UPDATE ai_prompts SET is_default=true, is_active=true, updated_at=now()
        WHERE id=$1 AND school_id=$2
        RETURNING id, school_id, name, is_default, is_active, updated_at`,
-      [id, school.id]
+      [id, schoolId]
     );
 
     await client.query("COMMIT");
     return res.json({ ok: true, prompt: upd.rows[0] });
   } catch (e) {
     try { await client.query("ROLLBACK"); } catch {}
-    const status = e.status || 500;
-    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   } finally {
     client.release();
   }
@@ -7720,4 +7914,43 @@ app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async 
     console.error("PUT suggest-settings failed:", e);
     return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   }
+});
+//bug tracking
+
+// Deep route probe: recursively traverses nested routers
+function collectRoutes(stack, prefix = "") {
+  const out = [];
+
+  for (const layer of stack || []) {
+    // Direct route (app.get/post/etc)
+    if (layer.route && layer.route.path) {
+      const methods = Object.keys(layer.route.methods || {})
+        .filter(Boolean)
+        .map(m => m.toUpperCase())
+        .join(",");
+      out.push(`${methods} ${prefix}${layer.route.path}`);
+      continue;
+    }
+
+    // Nested router (app.use(...router))
+    if (layer.name === "router" && layer.handle && layer.handle.stack) {
+      // layer.regexp is not trivial to stringify; keep prefix as-is.
+      // We still descend and collect children routes.
+      out.push(...collectRoutes(layer.handle.stack, prefix));
+    }
+  }
+  return out;
+}
+
+app.get("/api/__routes_probe", (req, res) => {
+  const routes = collectRoutes(app._router?.stack || []);
+  const ai = routes.filter(r => r.includes("ai-prompts"));
+  const hasSuggest = ai.some(r => r.includes("POST /api/admin/ai-prompts/:slug/suggest"));
+  res.json({
+    ok: true,
+    total: routes.length,
+    ai_count: ai.length,
+    hasSuggest,
+    ai_routes: ai.sort()
+  });
 });
