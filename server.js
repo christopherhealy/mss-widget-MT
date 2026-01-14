@@ -728,12 +728,37 @@ async function openAiGenerateReport({ promptText, model = "gpt-4o-mini", tempera
 }
 // Helper: normalize transcript text into a clean single-line string
 function renderPromptTemplate(template, vars = {}) {
-  const t = String(template || "");
-  return t.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+  let t = String(template || "");
+
+  const isPresent = (val) => {
+    if (val === null || val === undefined) return false;
+    return String(val).trim().length > 0;
+  };
+
+  // {{#if key}} ... {{/if}}
+  const ifRe = /\{\{\s*#if\s+([a-zA-Z0-9_]+)\s*\}\}([\s\S]*?)\{\{\s*\/if\s*\}\}/g;
+
+  let guard = 0;
+  while (guard++ < 25) {
+    ifRe.lastIndex = 0;            // IMPORTANT: reset for global regex
+    if (!ifRe.test(t)) break;      // no more if-blocks
+
+    t = t.replace(ifRe, (_, key, body) => {
+      const v = Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : "";
+      return isPresent(v) ? body : "";
+    });
+  }
+
+  // {{key}}
+  t = t.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
     const v = Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : "";
-    if (v === null || v === undefined) return "";
-    return String(v);
+    return v === null || v === undefined ? "" : String(v);
   });
+
+  // Keep Markdown readability; only collapse excessive blank lines
+  t = t.replace(/\n{3,}/g, "\n\n").trim();
+
+  return t;
 }
 
 // ---------------------------------------------------------------------
@@ -6186,25 +6211,40 @@ app.get("/api/funnel/verify", async (req, res) => {
 // - Helper fns exist: renderPromptTemplate(), sha256(), openAiGenerateReport()
 
 async function resolveSchoolBySlug(slug) {
+  const cleanSlug = String(slug || "").trim().toLowerCase();
+  if (!cleanSlug) {
+    const err = new Error("missing_slug");
+    err.status = 400;
+    err.error = "missing_slug";
+    throw err;
+  }
+
   const s = await pool.query(
     `SELECT id, slug, name
      FROM schools
      WHERE slug = $1
      LIMIT 1`,
-    [slug]
+    [cleanSlug]
   );
+
   if (!s.rowCount) {
     const err = new Error("school_not_found");
     err.status = 404;
+    err.error = "school_not_found";
+    err.slug = cleanSlug;
     throw err;
   }
+
+  const row = s.rows[0];
+
   return {
-    schoolId: Number(s.rows[0].id),
-    schoolSlug: String(s.rows[0].slug || slug),
-    schoolName: String(s.rows[0].name || ""),
+    schoolId: Number(row.id),
+    schoolSlug: String(row.slug || cleanSlug),
+    schoolName: String(row.name || ""),
+    // Optional: include row for future expansion without extra queries
+    school: row,
   };
 }
-
 async function assertPromptBelongsToSchool(promptId, schoolId) {
   const pr = await pool.query(
     `SELECT 1 FROM ai_prompts WHERE id = $1 AND school_id = $2 LIMIT 1`,
@@ -6247,361 +6287,202 @@ async function invalidateReportsForPromptInSchool(promptId, schoolId) {
 }
 
 // =====================================================================
-// AI PROMPTS
+// SUGGEST SETTINGS (per-school) — stored in ai_prompt_preamble
 // =====================================================================
 
-// ---------------------------------------------------------------------
-// AI Prompts - list by school slug
-// GET /api/admin/ai-prompts/:slug
-// ---------------------------------------------------------------------
-app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+const DEFAULT_SUGGEST_PREAMBLE = [
+  "SYSTEM ROLE:",
+  "You are an accomplished, thoughtful, and kind ESL teacher and instructional coach.",
+  "You have assessment results for a student's spoken response and want to provide clear, concise feedback with practical suggestions the student can try immediately.",
+  "If you are using a helper language, only use it to explain concepts and support instructions; keep student evidence in English.",
+  "",
+  "TASK:",
+  "Generate a teacher-usable AI prompt TEMPLATE for feedback on a student's spoken response.",
+  "This template will be stored and later used with real submission data.",
+  "",
+  "CONSTRAINTS:",
+  "- Use ONLY the metrics the admin selected.",
+  "- Do NOT invent scores or facts.",
+  "- If a metric is missing/blank, gracefully omit it (do not mention it).",
+  "- Be practical: actionable exercises, encouraging, teacher-friendly.",
+  "- Output must be a single prompt template (not JSON).",
+  "",
+  "AVAILABLE RUNTIME VARIABLES (placeholders):",
+  "- {{question}}",
+  "- {{transcript}} (clean transcript)",
+  "- {{student}} (if present)",
+  "- {{wpm}} (if selected)",
+  "- Selected MSS scores: {{mss_fluency}}, {{mss_pron}}, {{mss_grammar}}, {{mss_vocab}}, {{mss_cefr}}, {{mss_toefl}}",
+  "",
+  "REQUIRED OUTPUT STRUCTURE (Markdown):",
+  "1) Quick Summary (2–3 bullets)",
+  "2) Strengths (2–4 bullets)",
+  "3) Priority Improvements (2–4 bullets)",
+  "4) Exercises (3–6 items) tied to selected metrics",
+  "5) Next Attempt Plan (short checklist)",
+  "",
+  "TONE:",
+  "Supportive, specific, teacher-friendly, and concise."
+].join("\n");
 
-    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
+// Optional: migrate from legacy ai_prompts row if it exists
+const LEGACY_SUGGEST_PREAMBLE_NAME = "__SUGGEST_PREAMBLE__";
 
-    const r = await pool.query(
-      `SELECT id, name, prompt_text, notes, language, is_default, is_active, sort_order, updated_at
-       FROM ai_prompts
-       WHERE school_id = $1
-       ORDER BY
-         COALESCE(sort_order, 999999) ASC,
-         is_default DESC,
-         name ASC`,
-      [schoolId]
-    );
+async function loadLegacySuggestPreamble({ schoolId }) {
+  const r = await pool.query(
+    `SELECT id, prompt_text, notes, language
+     FROM ai_prompts
+     WHERE school_id = $1 AND name = $2
+     LIMIT 1`,
+    [schoolId, LEGACY_SUGGEST_PREAMBLE_NAME]
+  );
+  if (!r.rowCount) return null;
 
-    return res.json({ ok: true, slug: schoolSlug, schoolId, prompts: r.rows });
-  } catch (err) {
-    const status = err?.status || 500;
-    const code = status === 500 ? "ai_prompts_failed" : String(err.message || "error");
-    if (status === 500) console.error("❌ /api/admin/ai-prompts/:slug failed:", err);
-    return res.status(status).json({ ok: false, error: code });
-  }
-});
-
-// ---------------------------------------------------------------------
-// AI Prompts - create by school slug
-// POST /api/admin/ai-prompts/:slug
-// body: { name, prompt_text, notes?, language?, is_active?, is_default?, sort_order? }
-// ---------------------------------------------------------------------
-app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-
-    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
-
-    const name = String(req.body?.name || "").trim();
-    const promptText = String(req.body?.prompt_text || "").trim();
-    const notes = String(req.body?.notes || "").trim();
-
-    if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
-    if (!promptText) return res.status(400).json({ ok: false, error: "missing_prompt_text" });
-
-    const langRaw = String(req.body?.language || "").trim();
-    const language = langRaw === "" ? null : langRaw;
-
-    const isActive = req.body?.is_active === false ? false : true;
-    const isDefault = req.body?.is_default === true ? true : false;
-
-    const sortOrder =
-      req.body?.sort_order === null || req.body?.sort_order === undefined || req.body?.sort_order === ""
-        ? null
-        : Number(req.body.sort_order);
-
-    const ins = await pool.query(
-      `
-      INSERT INTO ai_prompts (school_id, name, prompt_text, notes, language, is_default, is_active, sort_order)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, school_id, name, prompt_text, notes, language, is_default, is_active, sort_order, created_at, updated_at
-      `,
-      [schoolId, name, promptText, notes, language, isDefault, isActive, sortOrder]
-    );
-
-    return res.json({ ok: true, slug: schoolSlug, schoolId, prompt: ins.rows[0] });
-  } catch (err) {
-    const status = err?.status || 500;
-    const code = status === 500 ? "prompts_create_failed" : String(err.message || "error");
-    if (status === 500) console.error("❌ [ai-prompts] create failed:", err);
-    return res.status(status).json({ ok: false, error: code, message: err?.message });
-  }
-});
-
-
-// ---------------------------------------------------------------------
-// AI Prompts - update by slug + id
-// PUT /api/admin/ai-prompts/:slug/:id
-// body: { name?, prompt_text?, notes?, language?, is_active?, is_default?, sort_order? }
-// Side effect: invalidates cached reports for this prompt in this school.
-// ---------------------------------------------------------------------
-app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    const id = Number(req.params.id || 0);
-
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-    if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
-
-    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
-
-    // Ensure prompt belongs to this school
-    await assertPromptBelongsToSchool(id, schoolId);
-
-    // ----------------------------
-    // Build partial update
-    // ----------------------------
-    const fields = [];
-    const values = [];
-    let idx = 1;
-
-    if (req.body?.name !== undefined) {
-      const name = String(req.body.name || "").trim();
-      if (!name) return res.status(400).json({ ok: false, error: "invalid_name" });
-      fields.push(`name = $${idx++}`);
-      values.push(name);
-    }
-
-    if (req.body?.prompt_text !== undefined) {
-      const text = String(req.body.prompt_text || "").trim();
-      if (!text) return res.status(400).json({ ok: false, error: "invalid_prompt_text" });
-      fields.push(`prompt_text = $${idx++}`);
-      values.push(text);
-    }
-
-    if (req.body?.notes !== undefined) {
-      fields.push(`notes = $${idx++}`);
-      values.push(String(req.body.notes || ""));
-    }
-
-    if (req.body?.language !== undefined) {
-      const langRaw = String(req.body.language || "").trim();
-      const language = langRaw === "" ? null : langRaw;
-      fields.push(`language = $${idx++}`);
-      values.push(language);
-    }
-
-    if (req.body?.is_active !== undefined) {
-      fields.push(`is_active = $${idx++}`);
-      values.push(req.body.is_active === false ? false : true);
-    }
-
-    // is_default: if true, we will also clear other defaults in the school
-    const wantsDefault =
-      req.body?.is_default !== undefined ? (req.body.is_default === true) : null;
-
-    if (wantsDefault !== null) {
-      fields.push(`is_default = $${idx++}`);
-      values.push(wantsDefault);
-    }
-
-    if (req.body?.sort_order !== undefined) {
-      const sortOrder =
-        req.body.sort_order === null ||
-        req.body.sort_order === undefined ||
-        req.body.sort_order === ""
-          ? null
-          : Number(req.body.sort_order);
-
-      if (sortOrder !== null && Number.isNaN(sortOrder)) {
-        return res.status(400).json({ ok: false, error: "invalid_sort_order" });
-      }
-
-      fields.push(`sort_order = $${idx++}`);
-      values.push(sortOrder);
-    }
-
-    if (!fields.length) {
-      return res.status(400).json({ ok: false, error: "no_fields_to_update" });
-    }
-
-    // Always touch updated_at
-    fields.push(`updated_at = NOW()`);
-
-    // WHERE params
-    values.push(id);       // $idx
-    values.push(schoolId); // $idx+1
-
-    const updateSql = `
-      UPDATE ai_prompts
-      SET ${fields.join(", ")}
-      WHERE id = $${idx++} AND school_id = $${idx++}
-      RETURNING
-        id, school_id, name, prompt_text, notes, language,
-        is_default, is_active, sort_order, created_at, updated_at
-    `;
-
-    // ----------------------------
-    // Transaction:
-    // 1) If is_default=true, clear other defaults in this school
-    // 2) Update prompt
-    // 3) Invalidate cached reports for this prompt in this school
-    // ----------------------------
-    await pool.query("BEGIN");
-
-    try {
-      if (wantsDefault === true) {
-        // Clear other defaults (keep this prompt as the only default)
-        await pool.query(
-          `UPDATE ai_prompts
-           SET is_default = FALSE, updated_at = NOW()
-           WHERE school_id = $1 AND id <> $2 AND is_default = TRUE`,
-          [schoolId, id]
-        );
-      }
-
-      const upd = await pool.query(updateSql, values);
-      if (!upd.rowCount) {
-        await pool.query("ROLLBACK");
-        return res.status(404).json({ ok: false, error: "prompt_not_found" });
-      }
-
-      const inv = await pool.query(
-        `DELETE FROM ai_reports ar
-         USING submissions s
-         WHERE ar.prompt_id = $1
-           AND ar.submission_id = s.id
-           AND s.school_id = $2
-           AND s.deleted_at IS NULL`,
-        [id, schoolId]
-      );
-
-      await pool.query("COMMIT");
-
-      return res.json({
-        ok: true,
-        slug: schoolSlug,
-        schoolId,
-        prompt: upd.rows[0],
-        invalidated_reports: inv.rowCount,
-      });
-    } catch (errTx) {
-      try { await pool.query("ROLLBACK"); } catch (_) {}
-      throw errTx;
-    }
-  } catch (err) {
-    const status = err?.status || 500;
-    const code =
-      status === 500 ? "prompts_update_failed" : String(err.message || "error");
-
-    if (status === 500) console.error("❌ [ai-prompts] update failed:", err);
-
-    return res.status(status).json({
-      ok: false,
-      error: code,
-      message: err?.message,
-    });
-  }
-});
-// ---------------------------------------------------------------------
-// AI Prompts - delete by slug + id
-// DELETE /api/admin/ai-prompts/:slug/:id
-// Side effect: invalidates cached reports for this prompt in this school.
-// ---------------------------------------------------------------------
-app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    const id = Number(req.params.id || 0);
-
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-    if (!id) return res.status(400).json({ ok: false, error: "missing_id" });
-
-    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
-
-    await assertPromptBelongsToSchool(id, schoolId);
-
-    // Invalidate caches first (helps if FK constraints exist later)
-    const invalidated = await invalidateReportsForPromptInSchool(id, schoolId);
-
-    await pool.query(`DELETE FROM ai_prompts WHERE id = $1 AND school_id = $2`, [id, schoolId]);
-
-    return res.json({ ok: true, slug: schoolSlug, schoolId, invalidated_reports: invalidated });
-  } catch (err) {
-    const status = err?.status || 500;
-    const code = status === 500 ? "prompts_delete_failed" : String(err.message || "error");
-    if (status === 500) console.error("❌ [ai-prompts] delete failed:", err);
-    return res.status(status).json({ ok: false, error: code, message: err?.message });
-  }
-});
-
-// ---------------------------------------------------------------------
-// AI Prompts - suggest prompt text by school slug
-// POST /api/admin/ai-prompts/:slug/suggest
-// body: { language?, notes?, selected_metrics?, ... }
-// ---------------------------------------------------------------------
-
-app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-
-    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
-
-    const languageRaw = String(req.body?.language || "").trim();
-    const language = languageRaw === "" ? null : languageRaw;
-
-    const notes = String(req.body?.notes || "").trim();
-    const selectedMetrics = req.body?.selected_metrics ?? req.body?.metrics ?? null;
-
-    const suggestion = await openAiSuggestPrompt({
-      schoolId,
-      slug: schoolSlug,
-      language,
-      notes,
-      selectedMetrics,
-      admin: req.admin,
-    });
-
-    // Normalize to a string no matter what openAiSuggestPrompt returns
-    const promptText =
-      (typeof suggestion === "string" ? suggestion : null) ||
-      suggestion?.prompt_text ||
-      suggestion?.text ||
-      "";
-
-    return res.json({
-      ok: true,
-      slug: schoolSlug,
-      schoolId,
-
-      // IMPORTANT: what FE likely expects
-      prompt_text: promptText,
-
-      // keep your newer naming too (harmless)
-      suggested_prompt_text: promptText,
-
-      // keep raw object for debugging/expansion
-      suggestion,
-    });
-  } catch (err) {
-    const status = err?.status || 500;
-    const code = status === 500 ? "suggest_failed" : String(err.message || "error");
-    if (status === 500) console.error("❌ /api/admin/ai-prompts/:slug/suggest failed:", err);
-    return res.status(status).json({ ok: false, error: code, message: err?.message });
-  }
-});
-///helper
-async function openAiSuggestPrompt({ language, notes }) {
-  const langLine = language ? `Helper language: ${language}\n` : "";
+  const row = r.rows[0];
   return {
-    prompt_text:
-`${langLine}You are an expert speaking coach and language instructor.
-
-Your task is to generate personalized feedback for a student’s spoken response using ONLY the data provided.
-
-Admin goals/notes:
-${notes || "(none)"}
-
-Return the output in Markdown using our standard sections.`,
+    legacy_id: Number(row.id),
+    preamble: String(row.prompt_text || ""),
+    default_notes: String(row.notes || ""),
+    default_language: String(row.language || ""),
+    default_selected_metrics: [],
   };
 }
 
+async function getOrCreateSuggestSettings({ schoolId }) {
+  const r = await pool.query(
+    `SELECT id, preamble_text, default_language, default_notes, default_metrics
+     FROM ai_prompt_preamble
+     WHERE school_id = $1
+     LIMIT 1`,
+    [schoolId]
+  );
+
+  if (r.rowCount) {
+    const row = r.rows[0];
+    return {
+      id: Number(row.id),
+      preamble: String(row.preamble_text || ""),
+      default_language: String(row.default_language || ""),
+      default_notes: String(row.default_notes || ""),
+      default_selected_metrics: Array.isArray(row.default_metrics) ? row.default_metrics : [],
+      exists: true,
+    };
+  }
+
+  // Seed: legacy > env/default
+  const legacy = await loadLegacySuggestPreamble({ schoolId });
+  const seed = {
+    preamble: legacy?.preamble || String(DEFAULT_SUGGEST_PREAMBLE || "").trim(),
+    default_language: legacy?.default_language || "",
+    default_notes: legacy?.default_notes || "",
+    default_selected_metrics: legacy?.default_selected_metrics || [],
+  };
+
+  const ins = await pool.query(
+    `INSERT INTO ai_prompt_preamble (school_id, preamble_text, default_language, default_notes, default_metrics)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     RETURNING id, preamble_text, default_language, default_notes, default_metrics`,
+    [schoolId, seed.preamble, seed.default_language, seed.default_notes, JSON.stringify(seed.default_selected_metrics)]
+  );
+
+  const row = ins.rows[0];
+  return {
+    id: Number(row.id),
+    preamble: String(row.preamble_text || ""),
+    default_language: String(row.default_language || ""),
+    default_notes: String(row.default_notes || ""),
+    default_selected_metrics: Array.isArray(row.default_metrics) ? row.default_metrics : [],
+    exists: false,
+  };
+}
+
+async function upsertSuggestSettings({ schoolId, preamble, default_language, default_notes, default_selected_metrics }) {
+  const metrics = Array.isArray(default_selected_metrics)
+    ? default_selected_metrics.map(x => String(x || "").trim()).filter(Boolean)
+    : [];
+
+  const q = await pool.query(
+    `INSERT INTO ai_prompt_preamble (school_id, preamble_text, default_language, default_notes, default_metrics, updated_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, now())
+     ON CONFLICT (school_id)
+     DO UPDATE SET
+       preamble_text = EXCLUDED.preamble_text,
+       default_language = EXCLUDED.default_language,
+       default_notes = EXCLUDED.default_notes,
+       default_metrics = EXCLUDED.default_metrics,
+       updated_at = now()
+     RETURNING id, preamble_text, default_language, default_notes, default_metrics`,
+    [
+      schoolId,
+      String(preamble ?? ""),
+      String(default_language ?? ""),
+      String(default_notes ?? ""),
+      JSON.stringify(metrics),
+    ]
+  );
+
+  const row = q.rows[0];
+  return {
+    id: Number(row.id),
+    preamble: String(row.preamble_text || ""),
+    default_language: String(row.default_language || ""),
+    default_notes: String(row.default_notes || ""),
+    default_selected_metrics: Array.isArray(row.default_metrics) ? row.default_metrics : [],
+  };
+}
+// ---------------------------------------------------------------------
+// PUT suggest-settings
+// Body: { preamble, default_language, default_notes, default_selected_metrics }
+// Also accepts default_metrics (transition)
+// ---------------------------------------------------------------------
+app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
+
+    // fingerprint to confirm which handler is responding
+    console.log("[SUGGEST-SETTINGS v2] PUT", req.originalUrl, "schoolId=", schoolId);
+
+    // Required
+    const preamble = (req.body?.preamble != null) ? String(req.body.preamble) : null;
+    if (preamble == null) {
+      return res.status(400).json({ ok: false, error: "missing_preamble" });
+    }
+
+    // Optional
+    const default_language = (req.body?.default_language != null) ? String(req.body.default_language) : "";
+    const default_notes    = (req.body?.default_notes != null) ? String(req.body.default_notes) : "";
+
+    // Accept either key during transition
+    const default_selected_metrics = Array.isArray(req.body?.default_selected_metrics)
+      ? req.body.default_selected_metrics
+      : (Array.isArray(req.body?.default_metrics) ? req.body.default_metrics : []);
+
+    const saved = await upsertSuggestSettings({
+      schoolId,
+      preamble,
+      default_language,
+      default_notes,
+      default_selected_metrics,
+    });
+
+    return res.json({
+      ok: true,
+      id: saved.id,
+      preamble_prompt_id: saved.id, // keep FE stable
+      preamble: saved.preamble,
+      default_language: saved.default_language,
+      default_notes: saved.default_notes,
+      default_selected_metrics: Array.isArray(saved.default_selected_metrics) ? saved.default_selected_metrics : [],
+    });
+  } catch (e) {
+    console.error("PUT suggest-settings failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
 // =====================================================================
 // AI REPORTS
 // =====================================================================
@@ -7442,4 +7323,401 @@ app.get("/api/admin/me", requireAdminAuth, async (req, res) => {
       school_id: a.school_id ?? null
     }
   });
+});
+
+//=================== AI Prompt CRUD =======================//
+app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
+
+    const r = await pool.query(
+      `
+      SELECT id, school_id, name, prompt_text, is_default, is_active, sort_order,
+             notes, language, created_at, updated_at
+      FROM ai_prompts
+      WHERE school_id = $1
+        AND COALESCE(name, '') <> '__SUGGEST_PREAMBLE__'
+      ORDER BY 
+        COALESCE(sort_order, 999999) ASC,
+        is_default DESC,
+        updated_at DESC,
+        id DESC
+      `,
+      [schoolId]
+    );
+
+    return res.json({ ok: true, prompts: r.rows });
+  } catch (e) {
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+
+app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const name = String(req.body.name || "").trim();
+    const promptText = String(req.body.prompt_text || "").trim();
+
+    if (!name) return res.status(400).json({ ok: false, error: "missing_name" });
+    if (!promptText) return res.status(400).json({ ok: false, error: "missing_prompt_text" });
+
+    const school = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, school.id);
+
+    const isDefault = req.body.is_default === true;
+    const isActive = req.body.is_active !== false; // default true
+    const sortOrder = req.body.sort_order != null ? Number(req.body.sort_order) : null;
+    const notes = req.body.notes != null ? String(req.body.notes) : null;
+    const language = req.body.language != null ? String(req.body.language) : null;
+
+    await client.query("BEGIN");
+
+    // If creating as default, clear other defaults first
+    if (isDefault) {
+      await client.query(
+        `UPDATE ai_prompts SET is_default=false, updated_at=now() WHERE school_id=$1`,
+        [school.id]
+      );
+    }
+
+    const ins = await client.query(
+      `
+      INSERT INTO ai_prompts (school_id, name, prompt_text, is_default, is_active, sort_order, notes, language)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, notes, language, created_at, updated_at
+      `,
+      [school.id, name, promptText, isDefault, isActive, sortOrder, notes, language]
+    );
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, prompt: ins.rows[0] });
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+
+    // unique constraint ux_ai_prompts_school_name
+    if (String(e.message || "").includes("ux_ai_prompts_school_name")) {
+      return res.status(409).json({ ok: false, error: "duplicate_name" });
+    }
+
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+  } finally {
+    client.release();
+  }
+});
+app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const slug = String(req.params.slug || "").trim();
+    const id = Number(req.params.id || 0);
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const school = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, school.id);
+
+    // Ensure prompt belongs to school
+    const exists = await client.query(
+      `SELECT id, is_default FROM ai_prompts WHERE id=$1 AND school_id=$2 LIMIT 1`,
+      [id, school.id]
+    );
+    if (!exists.rowCount) return res.status(404).json({ ok: false, error: "prompt_not_found" });
+
+    const fields = [];
+    const vals = [];
+    let n = 1;
+
+    const setField = (col, v) => {
+      fields.push(`${col}=$${n++}`);
+      vals.push(v);
+    };
+
+    if (req.body.name != null) setField("name", String(req.body.name).trim());
+    if (req.body.prompt_text != null) setField("prompt_text", String(req.body.prompt_text).trim());
+    if (req.body.notes != null) setField("notes", String(req.body.notes));
+    if (req.body.language != null) setField("language", String(req.body.language));
+    if (req.body.sort_order != null) setField("sort_order", Number(req.body.sort_order));
+    if (req.body.is_active != null) setField("is_active", req.body.is_active === true);
+
+    const wantsDefault = req.body.is_default === true;
+
+    await client.query("BEGIN");
+
+    if (wantsDefault) {
+      // clear all defaults for this school
+      await client.query(
+        `UPDATE ai_prompts SET is_default=false, updated_at=now() WHERE school_id=$1`,
+        [school.id]
+      );
+      setField("is_default", true);
+      // Optional: ensure default is active
+      setField("is_active", true);
+    } else if (req.body.is_default === false) {
+      setField("is_default", false);
+    }
+
+    setField("updated_at", new Date()); // or now() via SQL, but easiest here
+
+    if (!fields.length) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true, prompt: exists.rows[0], unchanged: true });
+    }
+
+    vals.push(id, school.id);
+
+    const upd = await client.query(
+      `
+      UPDATE ai_prompts
+      SET ${fields.join(", ")}
+      WHERE id=$${n++} AND school_id=$${n++}
+      RETURNING id, school_id, name, prompt_text, is_default, is_active, sort_order, notes, language, created_at, updated_at
+      `,
+      vals
+    );
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, prompt: upd.rows[0] });
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+
+    if (String(e.message || "").includes("ux_ai_prompts_school_name")) {
+      return res.status(409).json({ ok: false, error: "duplicate_name" });
+    }
+
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+  } finally {
+    client.release();
+  }
+});
+app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const slug = String(req.params.slug || "").trim();
+    const id = Number(req.params.id || 0);
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const school = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, school.id);
+
+    await client.query("BEGIN");
+
+    const p = await client.query(
+      `SELECT id, is_default FROM ai_prompts WHERE id=$1 AND school_id=$2 LIMIT 1`,
+      [id, school.id]
+    );
+    if (!p.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    }
+
+    // Prevent deleting the default (force user to change default first)
+    if (p.rows[0].is_default) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ ok: false, error: "cannot_delete_default" });
+    }
+
+    const wantHard = String(req.query.hard || "") === "1";
+
+    if (wantHard) {
+      // only if not referenced
+      const ref = await client.query(
+        `SELECT 1 FROM ai_reports WHERE prompt_id=$1 LIMIT 1`,
+        [id]
+      );
+      if (ref.rowCount) {
+        // fall back to soft delete
+        const soft = await client.query(
+          `UPDATE ai_prompts SET is_active=false, updated_at=now() WHERE id=$1 AND school_id=$2 RETURNING id`,
+          [id, school.id]
+        );
+        await client.query("COMMIT");
+        return res.json({ ok: true, deleted: true, mode: "soft", id: soft.rows[0].id });
+      }
+
+      await client.query(`DELETE FROM ai_prompts WHERE id=$1 AND school_id=$2`, [id, school.id]);
+      await client.query("COMMIT");
+      return res.json({ ok: true, deleted: true, mode: "hard", id });
+    }
+
+    // default: soft delete
+    const soft = await client.query(
+      `UPDATE ai_prompts SET is_active=false, updated_at=now() WHERE id=$1 AND school_id=$2 RETURNING id`,
+      [id, school.id]
+    );
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, deleted: true, mode: "soft", id: soft.rows[0].id });
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+  } finally {
+    client.release();
+  }
+});
+app.post("/api/admin/ai-prompts/:slug/:id/set-default", requireAdminAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const slug = String(req.params.slug || "").trim();
+    const id = Number(req.params.id || 0);
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const school = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, school.id);
+
+    await client.query("BEGIN");
+
+    // Ensure prompt belongs to school
+    const p = await client.query(
+      `SELECT id FROM ai_prompts WHERE id=$1 AND school_id=$2 LIMIT 1`,
+      [id, school.id]
+    );
+    if (!p.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "prompt_not_found" });
+    }
+
+    await client.query(
+      `UPDATE ai_prompts SET is_default=false, updated_at=now() WHERE school_id=$1`,
+      [school.id]
+    );
+    const upd = await client.query(
+      `UPDATE ai_prompts SET is_default=true, is_active=true, updated_at=now()
+       WHERE id=$1 AND school_id=$2
+       RETURNING id, school_id, name, is_default, is_active, updated_at`,
+      [id, school.id]
+    );
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, prompt: upd.rows[0] });
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+  } finally {
+    client.release();
+  }
+});
+app.put("/api/admin/ai-prompts/:slug/reorder", requireAdminAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const slug = String(req.params.slug || "").trim();
+    const order = Array.isArray(req.body.order) ? req.body.order : [];
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const school = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, school.id);
+
+    await client.query("BEGIN");
+
+    for (const item of order) {
+      const id = Number(item?.id || 0);
+      const so = item?.sort_order == null ? null : Number(item.sort_order);
+      if (!id) continue;
+
+      await client.query(
+        `UPDATE ai_prompts SET sort_order=$1, updated_at=now()
+         WHERE id=$2 AND school_id=$3`,
+        [so, id, school.id]
+      );
+    }
+
+    await client.query("COMMIT");
+    return res.json({ ok: true });
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+  } finally {
+    client.release();
+  }
+});
+// ---------------------------------------------------------------------
+// AI Prompt Suggest Settings (per-school)
+// Stored in ai_prompt_preamble
+//
+// GET /api/admin/ai-prompts/:slug/suggest-settings
+// PUT /api/admin/ai-prompts/:slug/suggest-settings
+// body: { preamble, default_language, default_notes, default_selected_metrics }
+// also accepts: default_metrics (FE transition key)
+// ---------------------------------------------------------------------
+
+app.get("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
+
+    const s = await getOrCreateSuggestSettings({ schoolId });
+
+    return res.json({
+      ok: true,
+      id: s.id,
+      preamble_prompt_id: s.id, // keep FE stable (legacy name)
+      preamble: s.preamble,
+      default_language: s.default_language,
+      default_notes: s.default_notes,
+      default_selected_metrics: Array.isArray(s.default_selected_metrics) ? s.default_selected_metrics : [],
+      exists: !!s.exists,
+    });
+  } catch (e) {
+    console.error("GET suggest-settings failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+
+app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const { schoolId } = await resolveSchoolBySlug(slug);
+    assertSchoolScope(req, schoolId);
+
+    console.log("[SUGGEST-SETTINGS v2] PUT", req.originalUrl, "schoolId=", schoolId);
+
+    const preamble = req.body?.preamble != null ? String(req.body.preamble) : null;
+    if (preamble == null) return res.status(400).json({ ok: false, error: "missing_preamble" });
+
+    const default_language = req.body?.default_language != null ? String(req.body.default_language) : "";
+    const default_notes = req.body?.default_notes != null ? String(req.body.default_notes) : "";
+
+    const default_selected_metrics = Array.isArray(req.body?.default_selected_metrics)
+      ? req.body.default_selected_metrics
+      : (Array.isArray(req.body?.default_metrics) ? req.body.default_metrics : []);
+
+    const saved = await upsertSuggestSettings({
+      schoolId,
+      preamble,
+      default_language,
+      default_notes,
+      default_selected_metrics,
+    });
+
+    return res.json({
+      ok: true,
+      id: saved.id,
+      preamble_prompt_id: saved.id, // keep FE stable
+      preamble: saved.preamble,
+      default_language: saved.default_language,
+      default_notes: saved.default_notes,
+      default_selected_metrics: Array.isArray(saved.default_selected_metrics) ? saved.default_selected_metrics : [],
+    });
+  } catch (e) {
+    console.error("PUT suggest-settings failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
 });

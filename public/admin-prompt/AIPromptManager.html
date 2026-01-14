@@ -120,6 +120,186 @@
 
     /* Viewer modal text */
     .viewerText{ white-space:pre-wrap; font-size:13px; color:#0f172a; line-height:1.45; }
+
+/* Give sections breathing room */
+.section {
+  margin-top: 14px;
+}
+
+/* If your Suggest Settings is inside a .card, add inner padding consistency */
+.cardInner {
+  padding: 14px 16px;
+}
+
+/* Large textarea should not dominate initial viewport */
+.textarea.big,
+textarea.big {
+  min-height: 180px;
+}
+
+/* Tighten label spacing */
+.field label {
+  margin-bottom: 4px;
+}
+
+/* Make two-column fields align cleanly */
+.twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 980px) {
+  .twoCol { grid-template-columns: 1fr; }
+}
+
+/* ---------- Global rhythm ---------- */
+body { padding: 28px; }
+.shell { max-width: 1120px; }
+.topbar { margin-bottom: 18px; }
+
+h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+.meta { font-size: 14px; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 700;
+  border: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 1px 0 rgba(15,23,42,.04);
+}
+.btn.primary {
+  border: none;
+  box-shadow: 0 10px 25px rgba(26,92,255,.18);
+}
+
+/* ---------- Cards ---------- */
+.card {
+  border-radius: 18px;
+  border: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 18px 50px rgba(15,23,42,.08);
+}
+
+/* ---------- Suggest Settings area ---------- */
+.suggestCard textarea {
+  min-height: 220px !important;
+  max-height: 220px !important;
+  overflow: auto;
+  resize: none;
+}
+.suggestCard .twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 980px){ .suggestCard .twoCol { grid-template-columns: 1fr; } }
+
+/* ---------- Prompt list rows ---------- */
+.row {
+  border: 1px solid rgba(15,23,42,.08);
+  background: rgba(255,255,255,.92);
+  padding: 14px;
+}
+.preview { color: rgba(15,23,42,.70); }
+
+/* Make row buttons quieter */
+.rowBtns .btn {
+  padding: 8px 10px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+/* ---------- Modal polish ---------- */
+.overlay { backdrop-filter: blur(8px); }
+.modal { border-radius: 20px; }
+.textarea { min-height: 260px; }
+
+/* =========================================================
+   FINAL LAYOUT OVERRIDES (place at bottom of <style>)
+   ========================================================= */
+
+/* Page rhythm */
+body { padding: 28px; }
+.shell { max-width: 1120px; }
+.topbar { margin-bottom: 18px; }
+.card + .card { margin-top: 14px; }
+
+/* Typography */
+h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+.meta { font-size: 14px; }
+.cardTitle { margin: 0; font-size: 16px; font-weight: 900; letter-spacing: -0.01em; }
+.subTitle { font-weight: 900; font-size: 12px; color: rgba(15,23,42,.75); }
+
+/* Buttons: calmer, less “pill” */
+.btn{
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 700;
+  border: 1px solid rgba(15,23,42,.10);
+  box-shadow: 0 1px 0 rgba(15,23,42,.04);
+}
+.btn.primary{
+  border: none;
+  background: var(--blue);
+  box-shadow: 0 10px 25px rgba(26,92,255,.16);
+}
+
+/* Card anatomy */
+.card{
+  border-radius: 18px;
+  border: 1px solid rgba(15,23,42,.10);
+  box-shadow: 0 18px 50px rgba(15,23,42,.08);
+  overflow: hidden;
+}
+.cardHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(15,23,42,.08);
+  background: rgba(255,255,255,.9);
+}
+.cardHeadLeft{ min-width:0; }
+.cardHeadRight{ display:flex; align-items:center; gap:10px; }
+.cardBody{ padding: 14px 16px; }
+
+/* Suggest Settings specifics */
+.suggestCard .textarea.preamble{
+  min-height: 220px;
+  max-height: 320px;
+  resize: vertical;
+}
+.statusInline{
+  font-size: 13px;
+  color: var(--muted);
+  padding: 10px 12px;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 12px;
+  background: rgba(248,250,252,.9);
+}
+.statusInline.error{
+  color:#b91c1c;
+  border-color:#fecdd3;
+  background:#fff1f2;
+}
+
+/* Rows: quieter */
+.row{
+  border: 1px solid rgba(15,23,42,.10);
+  background: rgba(255,255,255,.94);
+  padding: 14px;
+}
+.preview{ color: rgba(15,23,42,.70); }
+.rowBtns .btn{
+  padding: 8px 10px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+/* Modal polish */
+.overlay{ backdrop-filter: blur(8px); }
+.modal{ border-radius: 20px; }
   </style>
 </head>
 
@@ -144,6 +324,77 @@
 
     <div id="status" class="status"></div>
 
+
+<!-- =========================================================
+     (C2) AI Suggest Settings (school-level defaults)
+     ========================================================= -->
+<div class="card suggestCard" id="suggestSettingsCard">
+  <div class="cardHead">
+    <div class="cardHeadLeft">
+      <h2 class="cardTitle">AI Suggest Settings</h2>
+      <div class="hint">
+        These defaults control the “Suggest AI Prompt” flow for this school
+        (stored in <code>schools.settings.ai_prompt_suggest</code>).
+      </div>
+    </div>
+
+    <div class="cardHeadRight">
+      <button class="btn primary" id="btnSaveSuggestSettings" type="button">Save</button>
+    </div>
+  </div>
+
+  <div class="cardBody">
+
+    <div class="field">
+      <label for="suggestPreamble">Preamble (used by AI Suggest to generate prompt templates)</label>
+      <textarea id="suggestPreamble" class="textarea preamble" rows="10"
+        placeholder="System role, constraints, structure…"></textarea>
+      <div class="hint">
+        Tip: keep this focused on constraints + output structure. Prompt-specific goals belong in “Admin Notes for Suggest”.
+      </div>
+    </div>
+
+    <div class="twoCol section">
+      <div class="field">
+        <label for="suggestDefaultLanguage">Default Helper Language</label>
+        <select id="suggestDefaultLanguage" class="select">
+          <option value="">None (English only)</option>
+          <option>Arabic</option>
+          <option>Hindi</option>
+          <option>French</option>
+          <option>German</option>
+          <option>Spanish</option>
+          <option>Italian</option>
+          <option>Portuguese</option>
+          <option>Korean</option>
+          <option>Japanese</option>
+          <option>Mandarin</option>
+        </select>
+        <div class="hint">Used as the default selection when opening the Suggest flow.</div>
+      </div>
+
+      <div class="field">
+        <label for="suggestDefaultNotes">Default Notes</label>
+        <input id="suggestDefaultNotes" class="input"
+          placeholder="Optional default goals/notes for Suggest…" />
+        <div class="hint">Optional. Can be overridden per prompt via “Admin Notes for Suggest”.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="subTitle">Default Metrics</div>
+      <div class="hint" style="margin-top:6px;">
+        These checkboxes set the default metrics selection when the Suggest dialog opens.
+      </div>
+      <div class="checklist" id="suggestDefaultMetrics" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="section">
+      <div id="suggestSettingsStatus" class="statusInline"></div>
+    </div>
+
+  </div>
+</div>
     <div class="card">
       <div id="list" class="list"></div>
     </div>
@@ -292,7 +543,7 @@
   <!-- =========================================================
        (G) Page Script
        ========================================================= -->
-  <script src="/admin-prompt/AIPromptManager.js?v=2025-12-28-03"></script>
+  <script src="/admin-prompt/AIPromptManager.js?v=2026_34"></script>
 
 </body>
 </html>

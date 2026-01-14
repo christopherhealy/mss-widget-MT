@@ -2670,77 +2670,63 @@ async function showAIReport(row) {
   // AI Prompt builder for a single submission row
   // -----------------------------------------------------------------------
 
-  function buildAIPromptFromRow(row) {
-    const safe = (v, fallback = "N/A") =>
-      v === null || v === undefined || v === "" ? fallback : v;
+// Server-owned prompts index (reuse existing aiPromptsCache defined earlier)
+let aiPromptsById = new Map();
 
-    const question = safe(row.question, "Not specified");
-    const studentId = safe(
-      row.student_email || row.studentEmail || row.student_name || row.studentName ||row.student_id,
-      "Unknown student"
-     );
+function setAiPromptsCache(prompts) {
+  aiPromptsCache = Array.isArray(prompts) ? prompts : [];
+  aiPromptsById = new Map(aiPromptsCache.map(p => [Number(p.id), p]));
+}
 
-    const taskScore = safe(row.task_score ?? row.task, "N/A");
-    const speedWpm = safe(row.speed_wpm ?? row.speed ?? row.wpm, "N/A");
+// Simple Mustache-like renderer: replaces {{var}} with value (or "")
+function renderTemplate(templateText, vars) {
+  const tpl = String(templateText || "");
+  return tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const v = vars[key];
+    if (v === null || v === undefined) return "";
+    return String(v);
+  });
+}
 
-    const fluency = safe(row.mss_fluency);
-    const pron = safe(row.mss_pron);
-    const grammar = safe(row.mss_grammar);
-    const vocab = safe(row.mss_vocab);
+// Normalize a submission row into the canonical placeholder set used by server templates
+function varsFromSubmissionRow(row) {
+  const pick = (...keys) => {
+    for (const k of keys) {
+      const v = row?.[k];
+      if (v !== null && v !== undefined && v !== "") return v;
+    }
+    return "";
+  };
 
-    const mssCefr = safe(row.mss_cefr ?? row.cefr);
-    const mssToefl = safe(row.mss_toefl ?? row.toefl);
-    const mssIelts = safe(row.mss_ielts ?? row.ielts);
-    const mssPte = safe(row.mss_pte ?? row.pte);
+  return {
+    question:  pick("question"),
+    transcript: pick("transcript", "transcript_clean", "clean_transcript", "transcriptClean"),
+    student:   pick("student", "student_email", "studentEmail", "student_name", "studentName", "student_id"),
 
-    const defaultGoal =
-      "reach a level of English that is strong enough for full-time work, admission to a college or university program, and higher scores on tests like TOEFL, IELTS, or PTE.";
+    // metrics
+    wpm:         pick("wpm", "speed_wpm", "speed"),
+    mss_fluency: pick("mss_fluency"),
+    mss_pron:    pick("mss_pron"),
+    mss_grammar: pick("mss_grammar"),
+    mss_vocab:   pick("mss_vocab"),
+    mss_cefr:    pick("mss_cefr", "cefr"),
+    mss_toefl:   pick("mss_toefl", "toefl"),
+    mss_ielts:   pick("mss_ielts", "ielts"),
+    mss_pte:     pick("mss_pte", "pte"),
+  };
+}
 
-    return `
-Act as an experienced English tutor speaking directly to a student who has just completed a speaking task on the topic:
+// NEW: Use ONLY the server prompt template (ai_prompts.prompt_text)
+function buildAIPromptFromRowUsingServerPrompt(row, promptId) {
+  const pid = Number(promptId || 0);
+  if (!pid) throw new Error("missing_prompt_id");
 
-"${question}"
+  const p = aiPromptsById.get(pid);
+  if (!p || !p.prompt_text) throw new Error("prompt_not_loaded");
 
-The submission belongs to: ${studentId}.
-
-Here are this student's MSS speaking results:
-
-- Speed: ${speedWpm} words per minute
-- Fluency: ${fluency} / 100
-- Pronunciation: ${pron} / 100
-- Grammar: ${grammar} / 100
-- Vocabulary: ${vocab} / 100
-- Overall level: CEFR ${mssCefr}
-- Estimated TOEFL Speaking: ${mssToefl} / 30
-- Estimated IELTS Speaking: ${mssIelts} / 9
-- Estimated PTE Speaking: ${mssPte} / 100
-
-The student's general goal is to ${defaultGoal}
-
-Please do TWO things:
-
-1) FEEDBACK REPORT  
-Write a structured feedback report directly to the student in the second person ("you"), in English.  
-Include:
-- Relevance of the answer to the question - is it logical and concise?
-- A short overall summary (2–3 sentences) of what these results mean.  
-- 2–3 clear strengths.  
-- 3–5 key areas for improvement, focusing especially on the lowest scores (for example pronunciation, fluency, etc.).  
-- Concrete practice suggestions the student can start this week (specific exercises, how often to practice, what to pay attention to).
-
-2) EMAIL TO THE STUDENT  
-Write a separate email that a teacher at the school could send to this student.  
-The email should:
-- Have a short, clear subject line.  
-- Greet the student politely.  
-- Briefly summarize their current level using simple language (for example: "You are around CEFR ${mssCefr}, which means…").  
-- Highlight why it would be helpful for them to work with a professional tutor at the school.  
-- Invite them to sign up for lessons, a consultation, or a short trial, and mention that improving their English will help them reach goals like study abroad, job interviews, or passing TOEFL/IELTS/PTE.  
-- End with a warm, encouraging closing.
-
-Tone: warm, encouraging, and professional. Be honest about the work needed, but remember that as a teacher you also depend on motivated students signing up for lessons.
-`.trim();
-  }
+  const vars = varsFromSubmissionRow(row);
+  return renderTemplate(p.prompt_text, vars).trim();
+}
 
   // -----------------------------------------------------------------------
   // Logout
