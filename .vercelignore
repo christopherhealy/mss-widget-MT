@@ -1,0 +1,8 @@
+server.js
+db.js
+scripts/
+sql/
+*.sql
+*.md
+.env
+.env.*
