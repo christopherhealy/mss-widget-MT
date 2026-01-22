@@ -1,10 +1,13 @@
 {
   "version": 2,
-  "outputDirectory": "public",
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://api.eslsuccess.club/api/:path*"
-    }
+  "builds": [
+    { "src": "public/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "^/api/(.*)$", "dest": "https://api.eslsuccess.club/api/$1" },
+
+    { "handle": "filesystem" },
+
+    { "src": "^(?!/api/).*$", "dest": "/index.html" }
   ]
 }
