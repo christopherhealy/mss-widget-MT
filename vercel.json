@@ -1,18 +1,12 @@
 {
   "version": 2,
+  "builds": [
+    { "src": "public/**", "use": "@vercel/static" }
+  ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://api.eslsuccess.club/api/:path*" },
 
-    { "source": "/admin-login/:path*",  "destination": "/public/admin-login/:path*" },
-    { "source": "/admin-home/:path*",   "destination": "/public/admin-home/:path*" },
-    { "source": "/config-admin/:path*", "destination": "/public/config-admin/:path*" },
-    { "source": "/admin-prompt/:path*", "destination": "/public/admin-prompt/:path*" },
-
-    { "source": "/js/:path*", "destination": "/public/js/:path*" },
-    { "source": "/css/:path*", "destination": "/public/css/:path*" },
-    { "source": "/images/:path*", "destination": "/public/images/:path*" },
-
-    { "source": "/", "destination": "/public/index.html" },
-    { "source": "/:path*", "destination": "/public/index.html" }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/:path*", "destination": "/index.html" }
   ]
 }
