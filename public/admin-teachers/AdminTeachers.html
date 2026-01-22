@@ -296,6 +296,9 @@
 #notesAddForm {
   flex: 0 0 auto;
 }
+
+.actions { align-items: flex-start; }
+.actions .btn { white-space: nowrap; }
   </style>
 </head>
 
@@ -363,7 +366,7 @@
               <label>Search</label>
               <input type="text" id="q" placeholder="name or email" />
             </div>
-            <div style="padding-top:18px;">
+            <div style="display:flex; align-items:flex-end; padding-bottom:2px;">
               <button class="btn" id="searchBtn" type="button">Search</button>
             </div>
           </div>
@@ -708,11 +711,14 @@
     </div>
   </div>
 </div>
+<!-- MUST load MSSClient first (auth + slug + apiFetch boot) -->
+<script src="/js/mss_client.js?v=20260117_44"></script>
 
-   <script src="/js/notes-api.js?v=20260110_1"></script>
-   <script src="/js/notes-widget.js?v=20260110_1"></script>
-   <script src="./AdminTeachers.js?v=20260110_1"></script>
+<!-- Optional helpers -->
+<script src="/js/notes-api.js?v=20260118_1"></script>
+<script src="/js/notes-widget.js?v=20260118_1"></script>
 
-  <script src="./AdminTeachers.js?v=20260110_1"></script>
+<!-- Page script last -->
+<script src="./AdminTeachers.js?v=20260118_1"></script>
 </body>
 </html>

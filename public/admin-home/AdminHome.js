@@ -1,61 +1,138 @@
 // /public/admin-home/AdminHome.js
-// v1.6 — DB-authoritative role via /api/admin/me + superadmin school picker (hide when only 1)
-// - Never derives superadmin from email.
-// - Uses token (Bearer) or legacy key for adminFetch.
-// - If superadmin has 1 school: auto-select + hide picker.
-// - If superadmin has 2+ schools: force selection each session.
+// v1.9 — Unified AdminHome (admin OR teacher) with deterministic slug + navigation
+//
+// Fixes:
+// - Deterministic navigation: ALWAYS preventDefault + ALWAYS append ?slug=
+// - Single canonical session/token readers (no duplicates)
+// - Teacher_admin (teacher actor with isTeacherAdmin) can access admin-capable tools
+// - Teacher (non-admin) gets limited menu
+//
+// Notes:
+// - Admin sessions call /api/admin/me for DB-authoritative flags.
+// - Teacher sessions do NOT call /api/admin/me.
+// - Slug resolution order:
+//   1) URL ?slug=...
+//   2) session.slug
+//   3) admin fallback (my-schools) / superadmin picker
+//   4) QA fallback: "mss-demo" (admin only)
 
-console.log("✅ AdminHome.js loaded");
+console.log("✅ AdminHome.js loaded (v1.9)");
 
 (function () {
   "use strict";
 
-  const LS_SESSION_KEY = "mssAdminSession";
-  const LS_TOKEN_KEY   = "mss_admin_token";
-  const LS_LEGACY_KEY  = "mss_admin_key";
+  // -----------------------------
+  // LocalStorage keys
+  // -----------------------------
+  // Canonical (actor) storage
+  const LS_SESSION_KEY = "mssSession";
+  const LS_TOKEN_KEY   = "mssActorToken";
 
+  // Legacy (migration-only fallbacks)
+  const LEGACY_SESSION_KEYS = ["mssAdminSession", "mss_admin_session"];
+  const LEGACY_TOKEN_KEYS   = ["mss_admin_token", "mssAdminToken", "mss_admin_jwt", "mss_admin_access_token"];
+  const LS_LEGACY_KEY       = "mss_admin_key"; // x-admin-key fallback
+
+  // -----------------------------
+  // URLs
+  // -----------------------------
   const LOGIN_URL = "/admin-login/AdminLogin.html";
   const SCHOOL_SIGNUP_URL = "/signup/SchoolSignUp.html";
   const MANAGE_SCHOOLS_URL = "/admin/ManageSchools.html";
 
+  // -----------------------------
+  // DOM helpers
+  // -----------------------------
   function $(id) { return document.getElementById(id); }
 
-  function readSession() {
-    try {
-      const raw = localStorage.getItem(LS_SESSION_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      console.warn("[AdminHome] Failed to read/parse session:", e);
-      return null;
-    }
+  function setText(id, text) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = text == null ? "" : String(text);
   }
 
-  function safeWriteSession(patch) {
+  function setVisible(id, on) {
+    const el = $(id);
+    if (!el) return;
+    el.style.display = on ? "inline-flex" : "none";
+  }
+
+  function setDisabled(id, disabled) {
+    const el = $(id);
+    if (!el) return;
+    el.disabled = !!disabled;
+  }
+
+  function setStatus(msg, isError = false) {
+    const el = $("admin-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.toggle("error", !!isError);
+  }
+
+  // -----------------------------
+  // Storage helpers (canonical + migration)
+  // -----------------------------
+  function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
+  function readLS(k) { try { return localStorage.getItem(k); } catch { return null; } }
+
+  function readSession() {
+    // 1) canonical
+    const raw = readLS(LS_SESSION_KEY);
+    const s1 = raw ? safeJsonParse(raw) : null;
+    if (s1) return s1;
+
+    // 2) legacy fallback
+    for (const k of LEGACY_SESSION_KEYS) {
+      const r = readLS(k);
+      const s = r ? safeJsonParse(r) : null;
+      if (s) return s;
+    }
+    return null;
+  }
+
+  function writeSession(nextSessionObj) {
     try {
-      const s = readSession() || {};
-      const next = { ...s, ...patch };
-      localStorage.setItem(LS_SESSION_KEY, JSON.stringify(next));
+      localStorage.setItem(LS_SESSION_KEY, JSON.stringify(nextSessionObj || {}));
       return true;
     } catch (e) {
-      console.warn("[AdminHome] Failed to write session:", e);
+      console.warn("[AdminHome] writeSession failed:", e);
       return false;
     }
   }
 
-  // Prefer JWT token; fallback to legacy key (so older pages keep working)
-  function readAuthArtifact() {
-    try {
-      const token = (localStorage.getItem(LS_TOKEN_KEY) || "").trim();
-      if (token) return { type: "token", value: token };
+  function safeWriteSession(patch) {
+    const s = readSession() || {};
+    const next = { ...s, ...(patch || {}) };
+    return writeSession(next);
+  }
 
-      const legacy = (localStorage.getItem(LS_LEGACY_KEY) || "").trim();
-      if (legacy) return { type: "legacy", value: legacy };
+  function readToken() {
+    // 1) canonical
+    const t1 = String(readLS(LS_TOKEN_KEY) || "").trim();
+    if (t1) return t1;
 
-      return { type: "none", value: "" };
-    } catch (e) {
-      console.warn("[AdminHome] Failed to read token/key:", e);
-      return { type: "none", value: "" };
+    // 2) legacy token fallbacks (admin jwt)
+    for (const k of LEGACY_TOKEN_KEYS) {
+      const t = String(readLS(k) || "").trim();
+      if (t) return t;
     }
+    return "";
+  }
+
+  function readLegacyKey() {
+    return String(readLS(LS_LEGACY_KEY) || "").trim();
+  }
+
+  // Prefer JWT token; fallback to legacy x-admin-key
+  function readAuthArtifact() {
+    const token = readToken();
+    if (token) return { type: "token", value: token };
+
+    const legacy = readLegacyKey();
+    if (legacy) return { type: "legacy", value: legacy };
+
+    return { type: "none", value: "" };
   }
 
   // Unified fetch that carries either Bearer token OR legacy x-admin-key
@@ -63,11 +140,8 @@ console.log("✅ AdminHome.js loaded");
     const auth = readAuthArtifact();
     const headers = new Headers(opts.headers || {});
 
-    if (auth.type === "token") {
-      headers.set("Authorization", "Bearer " + auth.value);
-    } else if (auth.type === "legacy") {
-      headers.set("x-admin-key", auth.value);
-    }
+    if (auth.type === "token") headers.set("Authorization", "Bearer " + auth.value);
+    else if (auth.type === "legacy") headers.set("x-admin-key", auth.value);
 
     return fetch(url, { ...opts, headers, cache: "no-store" });
   }
@@ -78,11 +152,89 @@ console.log("✅ AdminHome.js loaded");
     return { res, body };
   }
 
-  function setStatus(msg, isError = false) {
-    const el = $("admin-status");
-    if (!el) return;
-    el.textContent = msg || "";
-    el.classList.toggle("error", !!isError);
+  // -----------------------------
+  // Session type helpers
+  // -----------------------------
+  function isTeacherSession(session) {
+    return (
+      session &&
+      String(session.actorType || "").toLowerCase() === "teacher" &&
+      (session.teacherId != null || session.actorId != null || (session.actor && session.actor.actorId != null))
+    );
+  }
+
+  function isAdminSession(session) {
+    return (
+      session &&
+      String(session.actorType || "").toLowerCase() === "admin" &&
+      (session.adminId != null || session.actorId != null || (session.actor && session.actor.actorId != null))
+    );
+  }
+
+  // -----------------------------
+  // UI helpers
+  // -----------------------------
+  function setSlugPill(slug) {
+    const pill = $("admin-school-slug-pill");
+    if (!pill) return;
+    pill.textContent = "slug: " + (slug || "—");
+  }
+
+  function setSuperBadgeVisible(isSuper) {
+    const superBadge = $("admin-super-badge");
+    if (superBadge) superBadge.style.display = isSuper ? "inline-flex" : "none";
+  }
+
+  function populateMeta({ email, idLabel, roleLabel, isSuperadmin }, auth) {
+    setText("admin-email", email || "—");
+    setText("admin-id", idLabel != null ? String(idLabel) : "—");
+    setText("admin-role", roleLabel || (isSuperadmin ? "Super admin" : "Admin"));
+
+    const badge = $("admin-key-badge");
+    if (badge) {
+      if (auth.type === "token") badge.textContent = "token: present";
+      else if (auth.type === "legacy") badge.textContent = "key: present";
+      else badge.textContent = "token: none";
+    }
+
+    setSuperBadgeVisible(!!isSuperadmin);
+  }
+
+  function setSchoolScopedButtonsEnabled(enabled) {
+    const ids = ["btn-portal", "teacherAdminBtn", "btn-config", "btn-questions", "btn-student-portal"];
+    ids.forEach((id) => setDisabled(id, !enabled));
+  }
+
+  // Menu visibility policy:
+  // - Teacher (non-admin): Questions + Student Portal
+  // - Admin-capable (admin OR teacher_admin): all buttons
+  function applyRoleVisibility({ actorType, isTeacherAdmin }) {
+    const type = String(actorType || "").toLowerCase();
+    const isTeacher = type === "teacher";
+    const isAdmin = type === "admin";
+    const canUseAdminTools = isAdmin || (isTeacher && !!isTeacherAdmin);
+
+    // hide all
+    setVisible("btn-portal", false);
+    setVisible("teacherAdminBtn", false);
+    setVisible("btn-config", false);
+    setVisible("btn-questions", false);
+    setVisible("btn-student-portal", false);
+
+    if (isTeacher && !canUseAdminTools) {
+      setVisible("btn-questions", true);
+      setVisible("btn-student-portal", true);
+      return;
+    }
+
+    if (canUseAdminTools) {
+      setVisible("btn-portal", true);
+      setVisible("teacherAdminBtn", true);
+      setVisible("btn-config", true);
+      setVisible("btn-questions", true);
+      setVisible("btn-student-portal", true);
+      return;
+    }
   }
 
   function logout() {
@@ -91,7 +243,7 @@ console.log("✅ AdminHome.js loaded");
       localStorage.removeItem(LS_TOKEN_KEY);
       localStorage.removeItem(LS_LEGACY_KEY);
     } catch (e) {
-      console.warn("[AdminHome] Error clearing admin storage:", e);
+      console.warn("[AdminHome] Error clearing storage:", e);
     }
     window.location.href = LOGIN_URL;
   }
@@ -104,45 +256,8 @@ console.log("✅ AdminHome.js loaded");
     window.MSSViewer.open({ title, src });
   }
 
-  // Buttons that require a school slug context
-  function setSchoolScopedButtonsEnabled(enabled) {
-    const ids = ["btn-portal", "teacherAdminBtn", "btn-config", "btn-questions"];
-    ids.forEach((id) => {
-      const el = $(id);
-      if (el) el.disabled = !enabled;
-    });
-  }
-
-  function setSlugPill(slug) {
-    const pill = $("admin-school-slug-pill");
-    if (!pill) return;
-    pill.textContent = "slug: " + (slug || "—");
-  }
-
-  function setSuperBadgeVisible(isSuper) {
-    const superBadge = $("admin-super-badge");
-    if (superBadge) superBadge.style.display = isSuper ? "inline-flex" : "none";
-  }
-
-  function populateMeta({ email, adminId, isSuperadmin }, auth) {
-    $("admin-email").textContent = email || "—";
-    $("admin-id").textContent = adminId != null ? String(adminId) : "—";
-    $("admin-role").textContent = isSuperadmin ? "Super admin" : "Admin";
-
-    const badge = $("admin-key-badge");
-    if (badge) {
-      if (auth.type === "token") badge.textContent = "token: present";
-      else if (auth.type === "legacy") badge.textContent = "key: present";
-      else badge.textContent = "token: none";
-    }
-
-    setSuperBadgeVisible(!!isSuperadmin);
-  }
-
   // -----------------------------
-  // Authoritative "me" (DB-backed)
-  // Requires server route:
-  //   GET /api/admin/me  -> { ok:true, admin:{ id,email,full_name,is_superadmin,school_id } }
+  // Server: /api/admin/me (admin-only, DB-authoritative)
   // -----------------------------
   async function fetchMe() {
     const { res, body } = await adminFetchJson("/api/admin/me?ts=" + Date.now());
@@ -150,20 +265,19 @@ console.log("✅ AdminHome.js loaded");
       const err = body.error || ("http_" + res.status);
       throw new Error("me_failed:" + err);
     }
+
     const a = body.admin || {};
     return {
       adminId: a.id ?? a.adminId ?? a.admin_id ?? null,
-      email: (a.email || a.admin_email || "").trim().toLowerCase(),
+      email: String(a.email || a.admin_email || "").trim().toLowerCase(),
       isSuperadmin: !!(a.is_superadmin || a.isSuperAdmin),
       schoolId: a.school_id ?? null,
-      fullName: a.full_name || a.fullName || ""
+      fullName: a.full_name || a.fullName || "",
     };
   }
 
   // -----------------------------
   // Super Admin school picker
-  // - If 1 school: hide picker, auto-select.
-  // - If 2+: show picker, force selection (no persistence).
   // -----------------------------
   async function loadSchoolsForSuperAdmin(session, onSelectSlug) {
     const wrap = $("school-picker-wrap");
@@ -178,8 +292,6 @@ console.log("✅ AdminHome.js loaded");
       sel.disabled = true;
       sel.innerHTML = '<option value="" selected>Loading schools…</option>';
 
-      // Prefer a server route that uses req.admin.id rather than query params.
-      // If you keep /api/admin/my-schools?email=&adminId=, it should still DB-check server-side.
       const url =
         "/api/admin/my-schools?email=" +
         encodeURIComponent(session.email || "") +
@@ -204,20 +316,13 @@ console.log("✅ AdminHome.js loaded");
         return { schools: [] };
       }
 
-      // If exactly one school: hide picker UI and auto-select
       if (schools.length === 1) {
         const only = schools[0] || {};
         const slug = String(only.slug || "").trim();
-
-        // Hide entire picker line (as requested)
         wrap.style.display = "none";
-
-        onSelectSlug(slug);
+        await onSelectSlug(slug);
         return { schools, autoSelected: true };
       }
-
-      // Else: show picker and force selection
-      wrap.style.display = "block";
 
       const opts =
         '<option value="" selected disabled>— Select a school —</option>' +
@@ -225,7 +330,7 @@ console.log("✅ AdminHome.js loaded");
           .map((s) => {
             const slug = String(s.slug || "").trim();
             const name = String(s.name || s.slug || "(Unnamed school)").trim();
-            const label = slug && name ? `${name} (${slug})` : (name || slug);
+            const label = slug && name ? `${name} (${slug})` : name || slug;
             return `<option value="${slug.replace(/"/g, "&quot;")}">${label}</option>`;
           })
           .join("");
@@ -234,106 +339,200 @@ console.log("✅ AdminHome.js loaded");
       sel.disabled = false;
 
       // Force selection each session
-      onSelectSlug("");
+      await onSelectSlug("");
       return { schools, autoSelected: false };
     }
 
-    btnRefresh?.addEventListener("click", async () => {
+    btnRefresh?.addEventListener("click", async (e) => {
+      if (e && e.preventDefault) e.preventDefault();
       try {
         await refresh();
         setStatus("Schools refreshed. Select a school to continue.", false);
-      } catch (e) {
-        console.warn(e);
+      } catch (err) {
+        console.warn(err);
         setStatus("Failed to refresh schools.", true);
       }
     });
 
-    // Selection handler (only relevant when schools.length > 1)
-    sel?.addEventListener("change", () => {
+    sel?.addEventListener("change", async () => {
       const chosen = String(sel.value || "").trim();
-      onSelectSlug(chosen);
+      await onSelectSlug(chosen);
     });
 
     return refresh();
   }
 
+  // -----------------------------
+  // AdminHome init
+  // -----------------------------
   async function init() {
     const session = readSession();
     const auth = readAuthArtifact();
 
-    if (!session || !session.email || session.adminId == null) {
+    const sessionIsAdmin = isAdminSession(session);
+    const sessionIsTeacher = isTeacherSession(session);
+    const hasIdentity = sessionIsAdmin || sessionIsTeacher;
+
+    if (!session || !session.email || !hasIdentity) {
       logout();
       return;
     }
 
     if (auth.type === "none") {
-      setStatus("Missing admin token/key. Please log in again.", true);
+      setStatus("Missing token/key. Please log in again.", true);
       logout();
       return;
     }
 
-    // 1) Authoritative role from server (DB)
-    let me;
-    try {
-      me = await fetchMe();
-    } catch (e) {
-      console.warn("[AdminHome] fetchMe failed:", e?.message || e);
-      setStatus("Session invalid or expired. Please log in again.", true);
-      logout();
-      return;
+    // Canonical identity
+    let email = String(session.email || "").trim().toLowerCase();
+
+    const actor = session.actor || {};
+    const actorType = String(session.actorType || actor.actorType || "").toLowerCase();
+    const actorId = Number(session.actorId != null ? session.actorId : actor.actorId) || null;
+
+    let adminId =
+      sessionIsAdmin
+        ? Number(session.adminId != null ? session.adminId : actor.adminId != null ? actor.adminId : actorId) || null
+        : null;
+
+    let teacherId =
+      sessionIsTeacher
+        ? Number(session.teacherId != null ? session.teacherId : actor.teacherId != null ? actor.teacherId : actorId) || null
+        : null;
+
+    const teacherAdminAllowed = !!(session.isTeacherAdmin || actor.isTeacherAdmin || false);
+
+    // Admin-only: fetch authoritative admin flags
+    let isSuperadmin = false;
+
+    if (sessionIsAdmin) {
+      let me;
+      try {
+        me = await fetchMe();
+      } catch (e) {
+        console.warn("[AdminHome] fetchMe failed:", e?.message || e);
+        setStatus("Session invalid or expired. Please log in again.", true);
+        logout();
+        return;
+      }
+
+      adminId = me.adminId;
+      email = me.email;
+      isSuperadmin = !!me.isSuperadmin;
+
+      safeWriteSession({
+        actorType: "admin",
+        adminId,
+        email,
+        isSuperadmin,
+        isSuperAdmin: isSuperadmin, // legacy alias
+      });
+
+      populateMeta(
+        { email, idLabel: adminId, roleLabel: isSuperadmin ? "Super admin" : "Admin", isSuperadmin },
+        auth
+      );
+    } else {
+      // Teacher session: no /api/admin/me call
+      safeWriteSession({
+        actorType: "teacher",
+        email,
+        teacherId,
+        isSuperadmin: false,
+        isSuperAdmin: false,
+        isTeacherAdmin: teacherAdminAllowed,
+      });
+
+      populateMeta(
+        { email, idLabel: teacherId, roleLabel: teacherAdminAllowed ? "Teacher Admin" : "Teacher", isSuperadmin: false },
+        auth
+      );
     }
 
-    // Keep local session consistent (avoid role drift)
-    safeWriteSession({
-      adminId: me.adminId,
-      email: me.email,
-      isSuperadmin: me.isSuperadmin,
-      isSuperAdmin: me.isSuperadmin
-    });
-
-    const superAdmin = !!me.isSuperadmin;
-    populateMeta({ email: me.email, adminId: me.adminId, isSuperadmin: superAdmin }, auth);
-
-    // Slug context:
-    // - Admin: can use URL slug or default mss-demo
-    // - Super Admin: must choose (unless only 1 school -> auto-selected)
+    // -----------------------------
+    // Slug context
+    // -----------------------------
     let SLUG = "";
 
-    function applySlug(slug) {
+    async function applySlug(slug) {
       SLUG = String(slug || "").trim();
+
       setSlugPill(SLUG);
       setSchoolScopedButtonsEnabled(!!SLUG);
 
-      if (superAdmin) {
-        if (SLUG) setStatus("School selected. You may open tools.", false);
-        else setStatus("Select a school to continue.", false);
-      } else {
-        setStatus("You are signed in. Use the buttons below to open each tool.", false);
+      if (sessionIsTeacher) {
+        if (!SLUG) {
+          setStatus("Missing school context. Please log in again.", true);
+          logout();
+          return;
+        }
+
+        safeWriteSession({ slug: SLUG });
+
+        if (teacherAdminAllowed) applyRoleVisibility({ actorType: "admin", isTeacherAdmin: true });
+        else applyRoleVisibility({ actorType: "teacher", isTeacherAdmin: false });
+
+        setStatus("You are signed in. Use the buttons below.", false);
+        return;
       }
+
+      // Admin session
+      applyRoleVisibility({ actorType: "admin", isTeacherAdmin: false });
+
+      if (!SLUG) {
+        if (isSuperadmin) setStatus("Select a school to continue.", false);
+        else setStatus("You are signed in. Use the buttons below to open each tool.", false);
+        return;
+      }
+
+      safeWriteSession({ slug: SLUG });
+
+      if (isSuperadmin) setStatus("School selected. You may open tools.", false);
+      else setStatus("You are signed in. Use the buttons below to open each tool.", false);
     }
 
-    if (superAdmin) {
-      // Force choose each session unless there is only one school
+    // Determine slug
+    const params = new URLSearchParams(window.location.search);
+    const urlSlug = String(params.get("slug") || "").trim();
+    const sessionSlug = String(session.slug || "").trim();
+
+    if (sessionIsTeacher) {
+      await applySlug(urlSlug || sessionSlug);
+    } else if (isSuperadmin) {
       try {
-        await loadSchoolsForSuperAdmin({ email: me.email, adminId: me.adminId }, applySlug);
+        await loadSchoolsForSuperAdmin({ email, adminId }, applySlug);
       } catch (e) {
         console.warn("[AdminHome] loadSchoolsForSuperAdmin failed", e);
-        applySlug("");
+        await applySlug("");
       }
     } else {
-      const params = new URLSearchParams(window.location.search);
-      applySlug((params.get("slug") || "mss-demo").trim());
+      // Non-super admin
+      if (urlSlug) await applySlug(urlSlug);
+      else if (sessionSlug) await applySlug(sessionSlug);
+      else {
+        // QA fallback for admin-only
+        await applySlug("mss-demo");
+      }
     }
 
-    // Wire buttons
+    // -----------------------------
+    // Navigation wiring (DETERMINISTIC)
+    // -----------------------------
     const btnPortal = $("btn-portal");
+    const btnTeacherAdmin = $("teacherAdminBtn");
     const btnConfig = $("btn-config");
     const btnQuestions = $("btn-questions");
+    const btnStudentPortal = $("btn-student-portal");
+
     const btnInviteSchoolSignup = $("btn-invite-school-signup");
     const btnManageSchools = $("btn-manage-schools");
     const btnSchoolSignup = $("btn-school-signup");
     const btnLogout = $("btn-logout");
-    const btnTeacherAdmin = $("teacherAdminBtn");
+
+    function isTeacherBlockedFromAdminTools() {
+      return sessionIsTeacher && !teacherAdminAllowed;
+    }
 
     function requireSlugOrWarn() {
       if (!SLUG) {
@@ -343,64 +542,72 @@ console.log("✅ AdminHome.js loaded");
       return SLUG;
     }
 
-    btnTeacherAdmin?.addEventListener("click", () => {
+    function navTo(path, e) {
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+      if (isTeacherBlockedFromAdminTools()) return;
+
       const s = requireSlugOrWarn();
       if (!s) return;
-      window.location.href = "/admin-teachers/AdminTeachers.html?slug=" + encodeURIComponent(s);
-    });
 
-    btnPortal?.addEventListener("click", () => {
-      const s = requireSlugOrWarn();
-      if (!s) return;
-      window.location.href = "/admin/SchoolPortal.html?slug=" + encodeURIComponent(s);
-    });
+      const u = new URL(path, window.location.origin);
+      u.searchParams.set("slug", s);
+      window.location.href = u.pathname + "?" + u.searchParams.toString();
+    }
 
-    btnConfig?.addEventListener("click", () => {
-      const s = requireSlugOrWarn();
-      if (!s) return;
-      window.location.href = "/config-admin/ConfigAdmin.html?slug=" + encodeURIComponent(s);
-    });
+    btnTeacherAdmin?.addEventListener("click", (e) => navTo("/admin-teachers/AdminTeachers.html", e));
+    btnPortal?.addEventListener("click", (e) => navTo("/admin/SchoolPortal.html", e));
+    btnConfig?.addEventListener("click", (e) => navTo("/config-admin/ConfigAdmin.html", e));
 
-    btnQuestions?.addEventListener("click", () => {
+    // Questions is allowed for teacher too
+    btnQuestions?.addEventListener("click", (e) => {
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
       const s = requireSlugOrWarn();
       if (!s) return;
       window.location.href = "/questions-admin/WidgetSurvey.html?slug=" + encodeURIComponent(s);
     });
 
-    // Super admin only buttons
+    btnStudentPortal?.addEventListener("click", (e) => navTo("/admin/StudentPortal.html", e));
+
+    // Super-admin-only buttons
     if (btnInviteSchoolSignup) {
-      btnInviteSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
-      if (superAdmin) {
-        btnInviteSchoolSignup.addEventListener("click", () => {
+      btnInviteSchoolSignup.style.display = isSuperadmin ? "inline-flex" : "none";
+      if (isSuperadmin) {
+        btnInviteSchoolSignup.addEventListener("click", (e) => {
+          if (e && e.preventDefault) e.preventDefault();
           openInViewer("Invite School Sign-up", "/admin-invite/InviteSchoolSignup.html");
         });
       }
     }
 
     if (btnManageSchools) {
-      btnManageSchools.style.display = superAdmin ? "inline-flex" : "none";
-      if (superAdmin) {
-        btnManageSchools.addEventListener("click", () => {
+      btnManageSchools.style.display = isSuperadmin ? "inline-flex" : "none";
+      if (isSuperadmin) {
+        btnManageSchools.addEventListener("click", (e) => {
+          if (e && e.preventDefault) e.preventDefault();
           openInViewer("Manage Schools", MANAGE_SCHOOLS_URL);
         });
       }
     }
 
     if (btnSchoolSignup) {
-      btnSchoolSignup.style.display = superAdmin ? "inline-flex" : "none";
-      if (superAdmin) {
-        btnSchoolSignup.addEventListener("click", () => {
+      btnSchoolSignup.style.display = isSuperadmin ? "inline-flex" : "none";
+      if (isSuperadmin) {
+        btnSchoolSignup.addEventListener("click", (e) => {
+          if (e && e.preventDefault) e.preventDefault();
           openInViewer("School Sign Up", SCHOOL_SIGNUP_URL);
         });
       }
     }
 
     btnLogout?.addEventListener("click", (e) => {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       logout();
     });
   }
 
+  // -----------------------------
+  // Boot
+  // -----------------------------
   document.addEventListener("DOMContentLoaded", () => {
     init().catch((e) => {
       console.error("[AdminHome] init failed", e);

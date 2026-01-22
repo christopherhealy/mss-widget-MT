@@ -8,7 +8,7 @@
      - els: map of element IDs (from your HTML)
      - setStatus(msg, ok) optional
 */
-
+// NOTE: classic script (not ES module). Do not use `export` here.
 (function () {
   "use strict";
 

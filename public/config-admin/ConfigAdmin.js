@@ -104,70 +104,49 @@ console.log("✅ ConfigAdmin.js loaded");
     statusEl.classList.toggle("error", !!isError);
   }
 
-const ADMIN_TOKEN_LS_KEY = "mss_admin_key"; // AdminHome already uses this
-
-function getAdminToken() {
-  try {
-    return (window.localStorage.getItem(ADMIN_TOKEN_LS_KEY) || "").trim();
-  } catch (_) {
-    return "";
-  }
+// ------------------------------------------------------------------
+// AUTH ARTIFACT (token preferred; fallback legacy key)
+// ------------------------------------------------------------------
+// ------------------------------------------------------------------
+// AUTH + SESSION (MSSClient canonical)
+// Policy: ConfigAdmin is ADMIN-only (superadmin allowed). No teachers.
+// ------------------------------------------------------------------
+if (!window.MSSClient) {
+  console.error("[ConfigAdmin] MSSClient not loaded");
+  window.location.href = "/admin-login/AdminLogin.html?reason=mssclient_missing";
+  throw new Error("mssclient_missing");
 }
 
-function adminHeaders(extra) {
-  const h = { ...(extra || {}) };
+// Boot (validates token + session; redirects on failure via MSSClient)
+const boot = window.MSSClient.bootGuard({
+  allow: ["admin"],  // admin-only; superadmin is still actorType "admin"
+  requireSlug: true,
+});
 
-  const token = getAdminToken();
-  if (token) {
-    // server supports Authorization: Bearer <token>
-    h["Authorization"] = `Bearer ${token}`;
+const session = boot.session;
+const apiFetch = boot.apiFetch;
+
+// Single source of truth for slug for the rest of the file
+SLUG = String(boot.slug || "").trim() || null;
+
+console.log("[ConfigAdmin] boot ok", {
+  actorType: session.actorType,
+  actorId: session.actorId,
+  schoolId: session.schoolId,
+  isSuperAdmin: !!session.isSuperAdmin,
+  slug: SLUG,
+});
+
+// Helper: JSON fetch with auth attached + helpful error bubbling
+async function apiJson(url, opts) {
+  const res = await apiFetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = String(data?.error || data?.message || ("http_" + res.status));
+    throw new Error(err);
   }
-  return h;
+  return data;
 }
-  /* ------------------------------------------------------------------ */
-  /* ADMIN SESSION GUARD                                                */
-  /* ------------------------------------------------------------------ */
-
-  const ADMIN_LS_KEY = "mssAdminSession";
-
-  function getAdminSession() {
-    try {
-      const raw = window.localStorage.getItem(ADMIN_LS_KEY);
-      if (!raw) return null;
-      const session = JSON.parse(raw);
-      if (!session || !session.adminId || !session.email) return null;
-      return session;
-    } catch (e) {
-      console.warn("[ConfigAdmin] Failed to read admin session", e);
-      return null;
-    }
-  }
-
-  function requireAdminSession(reason) {
-    const session = getAdminSession();
-    if (session) return session;
-
-    const msg =
-      reason ||
-      "Your admin session has ended. Please sign in again to manage school settings.";
-
-    try {
-      setStatus(msg, true);
-    } catch (e) {
-      console.warn("[ConfigAdmin] Unable to show status for ended session", e);
-    }
-
-    window.location.href = "/admin-login/AdminLogin.html";
-
-    try {
-      window.close();
-    } catch (e) {
-      // some browsers block window.close()
-    }
-
-    throw new Error("Admin session missing – redirected to login.");
-  }
-
   /* ------------------------------------------------------------------ */
   /* ADMIN API BASE + URL HELPERS                                       */
   /* ------------------------------------------------------------------ */
@@ -215,13 +194,38 @@ function adminHeaders(extra) {
       console.warn("[ConfigAdmin] Could not update URL slug", e);
     }
   }
+// ------------------------------------------------------------------
+// Canonical admin fetch helpers (NO legacy adminHeaders/requireAdminSession)
+// ------------------------------------------------------------------
 
+// Build an API URL that targets Render when needed (Vercel -> Render),
+// otherwise same-origin for local/dev.
+function adminApiUrl(path) {
+  const p = String(path || "");
+  if (!p.startsWith("/")) throw new Error("adminApiUrl: path must start with '/'");
+  return `${ADMIN_API_BASE}${p}`; // ADMIN_API_BASE is "" (local) OR "https://...onrender.com"
+}
+
+// Use MSSClient.apiFetch so Authorization is always attached.
+// If you're calling same-origin endpoints and need slug, pass { ensureSlug: true }.
+async function adminApiFetch(path, opts = {}) {
+  const url = adminApiUrl(path);
+  return apiFetch(url, opts);
+}
+
+// Convenience JSON wrapper
+async function adminApiJson(path, opts = {}) {
+  const res = await adminApiFetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(String(data?.error || data?.message || ("http_" + res.status)));
+  return data;
+}
   /* ------------------------------------------------------------------ */
   /* SLUG + SCHOOL STATE                                                */
   /* ------------------------------------------------------------------ */
 
   const urlParams = new URLSearchParams(window.location.search);
-  SLUG = urlParams.get("slug") || null;
+// SLUG is already set from MSSClient.bootGuard above; do not overwrite it here.
 
   let CONFIG_SCHOOLS = [];   // [{id, slug, name, ...}]
   let CURRENT_SCHOOL = null;
@@ -450,96 +454,117 @@ function adminHeaders(extra) {
   /* ------------------------------------------------------------------ */
 
   async function fetchConfigSchoolsForAdmin() {
-    if (!schoolSelectEl) {
-      // layout without dropdown = pure single-school mode
+  if (!schoolSelectEl) return; // no dropdown layout -> single-school mode
+
+  const actor = session.actor || {};
+  const type = String(session.actorType || actor.actorType || "").toLowerCase();
+
+  
+  // Teacher-admin: we deprecated this role
+  if (type === "teacher") {
+    const params = new URLSearchParams(window.location.search);
+    const urlSlug = String(params.get("slug") || "").trim();
+    const sessionSlug = String(session.slug || actor.slug || "").trim();
+    const inferred = urlSlug || sessionSlug;
+
+    if (!inferred) {
+      setStatus("Missing school context (slug). Please open Config Admin from Admin Home.", true);
+      // leave dropdown disabled
+      schoolSelectEl.innerHTML = `<option value="" selected>(missing slug)</option>`;
+      schoolSelectEl.disabled = true;
       return;
     }
 
-    const session = requireAdminSession(
-      "Your admin session has ended. Please sign in again to manage school settings."
-    );
+    SLUG = inferred;
+    CONFIG_SCHOOLS = [{ id: null, slug: SLUG, name: SLUG }];
+    CURRENT_SCHOOL = CONFIG_SCHOOLS[0];
 
-    const ADMIN_EMAIL = session.email;
-    const ADMIN_ID    = session.adminId || session.id;
+    schoolSelectEl.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = SLUG;
+    opt.textContent = SLUG;
+    schoolSelectEl.appendChild(opt);
+    schoolSelectEl.value = SLUG;
+    schoolSelectEl.disabled = true;
 
-    try {
-      const qs = new URLSearchParams();
-      if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
-      if (ADMIN_ID)    qs.set("adminId", String(ADMIN_ID));
-
-      let url = `${ADMIN_API_BASE}/api/admin/my-schools`;
-      const query = qs.toString();
-      if (query) url += `?${query}`;
-
-      const res = await fetch(url, { headers: adminHeaders() });
-      const data = await res.json();
-
-      if (!res.ok || data.ok === false) {
-        console.warn("[ConfigAdmin] my-schools error:", data);
-        if (!SLUG) {
-          alert(
-            "No schools found for this admin, and no slug in the URL.\n" +
-            "Please contact support."
-          );
-        }
-        return;
-      }
-
-      CONFIG_SCHOOLS = Array.isArray(data.schools) ? data.schools : [];
-      schoolSelectEl.innerHTML = "";
-
-      if (!CONFIG_SCHOOLS.length) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = "No schools found";
-        schoolSelectEl.appendChild(opt);
-        schoolSelectEl.disabled = true;
-        return;
-      }
-
-      // Decide which slug we’re on:
-      if (!SLUG || !CONFIG_SCHOOLS.some((s) => String(s.slug) === String(SLUG))) {
-        CURRENT_SCHOOL = CONFIG_SCHOOLS[0];
-        SLUG = CURRENT_SCHOOL.slug;
-      } else {
-        CURRENT_SCHOOL =
-          CONFIG_SCHOOLS.find((s) => String(s.slug) === String(SLUG)) ||
-          CONFIG_SCHOOLS[0];
-        SLUG = CURRENT_SCHOOL.slug;
-      }
-
-      if (CONFIG_SCHOOLS.length === 1) {
-        const s = CONFIG_SCHOOLS[0];
-        const opt = document.createElement("option");
-        opt.value = s.slug;
-        opt.textContent = s.name || s.slug;
-        schoolSelectEl.appendChild(opt);
-        schoolSelectEl.disabled = true;
-        schoolSelectEl.value = s.slug;
-      } else {
-        CONFIG_SCHOOLS.forEach((s) => {
-          const opt = document.createElement("option");
-          opt.value = s.slug;
-          opt.textContent = s.name || s.slug;
-          schoolSelectEl.appendChild(opt);
-        });
-        schoolSelectEl.disabled = false;
-        schoolSelectEl.value = SLUG;
-      }
-
-      updateSlugInUrl(SLUG);
-      syncSlugUi();
-    } catch (err) {
-      console.error("[ConfigAdmin] fetchConfigSchoolsForAdmin failed", err);
-      if (!SLUG) {
-        alert(
-          "Unable to load schools for this admin and no slug was provided.\n" +
-          "Please contact support."
-        );
-      }
-    }
+    updateSlugInUrl(SLUG);
+    syncSlugUi();
+    return;
   }
 
+  // Admin: normal my-schools behavior
+  const ADMIN_EMAIL = String(session.email || "").trim().toLowerCase();
+  const ADMIN_ID = Number(session.adminId || actor.adminId || session.id || actor.id || 0) || null;
+
+  if (!ADMIN_EMAIL || !ADMIN_ID) {
+    console.warn("[ConfigAdmin] Admin session missing adminId; redirecting to login");
+    window.location.href = "/admin-login/AdminLogin.html";
+    return;
+  }
+
+  try {
+    const qs = new URLSearchParams();
+    qs.set("email", ADMIN_EMAIL);
+    qs.set("adminId", String(ADMIN_ID));
+
+    let url = `${ADMIN_API_BASE}/api/admin/my-schools?${qs.toString()}`;
+
+    const res = await apiFetch(url, { method: "GET" });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 401) {
+      window.location.href = "/admin-login/AdminLogin.html";
+      return;
+    }
+
+    if (!res.ok || data.ok === false) {
+      console.warn("[ConfigAdmin] my-schools error:", data);
+      if (!SLUG) {
+        alert("No schools found for this admin, and no slug in the URL. Please contact support.");
+      }
+      return;
+    }
+
+    CONFIG_SCHOOLS = Array.isArray(data.schools) ? data.schools : [];
+    schoolSelectEl.innerHTML = "";
+
+    if (!CONFIG_SCHOOLS.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No schools found";
+      schoolSelectEl.appendChild(opt);
+      schoolSelectEl.disabled = true;
+      return;
+    }
+
+    if (!SLUG || !CONFIG_SCHOOLS.some((s) => String(s.slug) === String(SLUG))) {
+      CURRENT_SCHOOL = CONFIG_SCHOOLS[0];
+      SLUG = CURRENT_SCHOOL.slug;
+    } else {
+      CURRENT_SCHOOL =
+        CONFIG_SCHOOLS.find((s) => String(s.slug) === String(SLUG)) || CONFIG_SCHOOLS[0];
+      SLUG = CURRENT_SCHOOL.slug;
+    }
+
+    CONFIG_SCHOOLS.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.slug;
+      opt.textContent = s.name || s.slug;
+      schoolSelectEl.appendChild(opt);
+    });
+
+    schoolSelectEl.value = SLUG;
+    schoolSelectEl.disabled = CONFIG_SCHOOLS.length === 1;
+
+    updateSlugInUrl(SLUG);
+    syncSlugUi();
+  } catch (err) {
+    console.error("[ConfigAdmin] fetchConfigSchoolsForAdmin failed", err);
+    if (!SLUG) {
+      alert("Unable to load schools for this admin and no slug was provided. Please contact support.");
+    }
+  }
+}
   async function onConfigSchoolChanged() {
     if (!schoolSelectEl) return;
 
@@ -706,12 +731,11 @@ async function onSchoolRenameClick() {
 
   // IMPORTANT: Option A = no extra security gate.
   // We still need the session values to satisfy the server route contract.
-  const session = getAdminSession();
-  if (!session) {
-    setStatus("Your admin session has ended. Please sign in again.", true);
-    window.location.href = "/admin-login/AdminLogin.html";
-    return;
-  }
+  if (!session || String(session.actorType || "").toLowerCase() !== "admin") {
+  setStatus("Admin session required. Please sign in again.", true);
+  window.MSSClient.redirectToLogin("admin_required", { at: "ConfigAdmin.rename" }, { clearAuth: false });
+  return;
+}
 
   const newName = (schoolNameInput.value || "").trim();
   if (!newName) {
@@ -736,18 +760,18 @@ async function onSchoolRenameClick() {
   try {
     setStatus("Renaming school…");
 
-    const res = await fetch(
-      `${ADMIN_API_BASE}/api/admin/school/${encodeURIComponent(SLUG)}/name`,
-      {
-        method: "PUT",
-        headers: adminHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          adminId: session.adminId || session.id || null,
-          email: session.email || null,
-          newName,
-        }),
-      }
-    );
+    const res = await apiFetch(
+  `${ADMIN_API_BASE}/api/admin/school/${encodeURIComponent(SLUG)}/name`,
+  {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      adminId: session.adminId || session.actor?.adminId || session.actorId || null,
+      email: session.email || session.actor?.email || null,
+      newName,
+    }),
+  }
+);
 
     const data = await res.json().catch(() => ({}));
 
@@ -780,10 +804,7 @@ async function onSchoolRenameClick() {
   }
 }
 async function loadFromServer() {
-  requireAdminSession(
-    "Your admin session has ended. Please sign in again to load settings."
-  );
-
+  
   if (!SLUG) {
     console.warn("[ConfigAdmin] loadFromServer called with no SLUG");
     return;
@@ -792,9 +813,9 @@ async function loadFromServer() {
   setStatus("Loading settings from server…");
 
   try {
-    const res = await fetch(
+      const res = await apiFetch(
       `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
-      { headers: adminHeaders() } // ✅ ADD THIS
+      { method: "GET" }
     );
 
     if (!res.ok) {
@@ -990,8 +1011,7 @@ async function loadFromServer() {
  async function onSaveClick() {
   if (!dirty) return;
 
-  requireAdminSession("Your admin session has ended. Please sign in again before saving settings.");
-
+  
   saveBtn.disabled = true;
   setStatus("Saving to Postgres…");
 
@@ -1016,14 +1036,14 @@ async function loadFromServer() {
       image:  STATE.image || {},
     };
 
-    const res = await fetch(
-      `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
-      {
-        method: "PUT",
-        headers: adminHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(payload),
-      }
-    );
+    const res = await apiFetch(
+  `${ADMIN_API_BASE}/api/admin/widget/${encodeURIComponent(SLUG)}`,
+  {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }
+);
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.message || `HTTP ${res.status}`);
@@ -1067,12 +1087,9 @@ async function loadFromServer() {
   async function loadDashboardTemplates() {
     if (!dashboardTemplateSelect) return;
 
-    requireAdminSession(
-      "Your admin session has ended. Please sign in again to load dashboard templates."
-    );
-
+  
     try {
-      const res = await fetch(`${ADMIN_API_BASE}/api/admin/dashboards`);
+      const res = await apiFetch(`${ADMIN_API_BASE}/api/admin/dashboards`, { method: "GET" });
       if (!res.ok) throw new Error(`dashboards HTTP ${res.status}`);
 
       const data = await res.json();
@@ -1165,10 +1182,6 @@ async function loadFromServer() {
       console.log("[ConfigAdmin] widgetTemplateSelect not found");
       return;
     }
-
-    requireAdminSession(
-      "Your admin session has ended. Please sign in again to load widget templates."
-    );
 
     try {
       const res = await fetch(`${ADMIN_API_BASE}/api/admin/widgets`);
@@ -1290,9 +1303,7 @@ async function loadFromServer() {
   /* ------------------------------------------------------------------ */
 
   function openImageViewer() {
-    requireAdminSession(
-      "Your admin session has ended. Please sign in again to change the widget image."
-    );
+    
 
     if (!SLUG) {
       setStatus("Missing slug – cannot open image viewer.", true);
@@ -1371,10 +1382,6 @@ async function loadFromServer() {
   /* ------------------------------------------------------------------ */
 
   async function init() {
-    const session = requireAdminSession(
-      "Your admin session has ended. Please sign in again to manage school settings."
-    );
-
 
     wireAdminHomeButton();
 

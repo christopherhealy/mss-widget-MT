@@ -1,5 +1,5 @@
 // notes-api.js
-export function createNotesApi({ slug, fetchFn }) {
+function createNotesApi({ slug, fetchFn }) {
   function requireArgs(entityType, entityId) {
     if (!entityType) throw new Error("missing_entity_type");
     const id = Number(entityId || 0);
@@ -49,3 +49,4 @@ export function createNotesApi({ slug, fetchFn }) {
 
   return { list, create, update, remove };
 }
+window.createNotesApi = createNotesApi;

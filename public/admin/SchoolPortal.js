@@ -1,4 +1,4 @@
-// /admin/SchoolPortal.js — v0.21 Portal logic, Build: 2025-12-10
+// /admin/SchoolPortal.js — v0.22 Portal logic, Build: 2026-01-19
 // - Auth via mss_admin_key + /api/admin/session
 // - Multi-school support via /api/admin/my-schools
 // - Superadmin vs normal admin enforced server-side
@@ -6,58 +6,64 @@
 // - Uses /api/list-dashboards to list dashboards for DashboardViewer
 // - Admin logout via #portal-logout and clearing admin key + legacy sessions
 
-console.log("✅ SchoolPortal.js loaded");
-
 (function () {
   "use strict";
 
   // -----------------------------------------------------------------------
-  // Auth + config
+  // Legacy bridge vars (MUST be declared before any use)
   // -----------------------------------------------------------------------
+  let ADMIN_SESSION = null;
+  let ADMIN_EMAIL = null;
+  let ADMIN_ID = null;
 
-const ADMIN_API_BASE = ""; // same origin
-const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
-const ADMIN_KEY_STORAGE = "mss_admin_key";
-const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
+  // -----------------------------------------------------------------------
+  // Canonical session handles from MSSClient
+  // -----------------------------------------------------------------------
+  let ACTOR_SESSION = null;
+  let ACTOR_TOKEN = null;
+  let SLUG = null;
 
-// Simple ID helper
-const $ = (id) => document.getElementById(id);
+  // -----------------------------------------------------------------------
+  // Auth + config (MSSClient canonical)
+  // -----------------------------------------------------------------------
+  const ADMIN_API_BASE = ""; // same origin
+  const ADMIN_LOGIN_URL = "/admin-login/AdminLogin.html";
+  const ADMIN_HOME_URL = "/admin-home/AdminHome.html";
 
-// These get filled after we load the session
-let ADMIN_SESSION = null;
-let ADMIN_EMAIL = null;
-let ADMIN_ID = null;
-let ADMIN_KEY = null;
+  const $ = (id) => document.getElementById(id);
 
-function maskKey(key) {
-  if (!key) return "—";
-  const s = String(key);
-  if (s.length <= 8) return "****";
-  return s.slice(0, 4) + "…" + s.slice(-4);
-}
-
-function getAdminKey() {
-  try {
-    // 1) Prefer URL param if present (supports new tabs / deep links)
-    const params = new URLSearchParams(window.location.search);
-    const fromUrl = params.get("adminKey") || params.get("adminkey");
-    if (fromUrl && String(fromUrl).trim()) {
-      const k = String(fromUrl).trim();
-      // Persist for subsequent calls
-      window.localStorage.setItem(ADMIN_KEY_STORAGE, k);
-      console.log("[SchoolPortal] getAdminKey → (from URL)", maskKey(k));
-      return k;
+  function bootAuth() {
+    if (!window.MSSClient || typeof window.MSSClient.bootGuard !== "function") {
+      window.location.href = ADMIN_LOGIN_URL + "?reason=mssclient_missing";
+      throw new Error("mssclient_missing");
     }
 
-    // 2) Fall back to localStorage
-    const key = window.localStorage.getItem(ADMIN_KEY_STORAGE);
-    console.log("[SchoolPortal] getAdminKey → (from LS)", maskKey(key));
-    return key;
-  } catch (e) {
-    console.warn("[SchoolPortal] getAdminKey error:", e);
-    return null;
+    const boot = window.MSSClient.bootGuard({
+      allow: ["admin", "teacher"],
+      requireTeacherAdmin: true,
+      requireSlug: true,
+    });
+
+    ACTOR_SESSION = boot.session || null;
+    ACTOR_TOKEN = boot.token || null;
+    SLUG = boot.slug || null;
+
+    // Legacy bridge (for old code paths that still reference ADMIN_* vars)
+    ADMIN_SESSION = ACTOR_SESSION;
+    ADMIN_EMAIL = ACTOR_SESSION?.email || null;
+    ADMIN_ID = ACTOR_SESSION?.adminId || ACTOR_SESSION?.actorId || null;
+
+    return boot;
   }
-}
+
+  // Fail-fast
+  bootAuth();
+
+  // Canonical fetch wrapper (optional)
+  async function api(url, opts = {}) {
+    return window.MSSClient.apiFetch(url, { ...opts, ensureSlug: true });
+  }
+
 // Dec 16 — upgraded to allow Cancel + revert school selector cleanly
 function confirmSchoolChange(nextLabel) {
   return new Promise((resolve) => {
@@ -414,18 +420,54 @@ function returnToAdminHome() {
 
 async function ensureSlugFromSingleSchoolOrThrow() {
   // If URL already has slug (or already set), we're done
-  if ((INITIAL_SLUG && String(INITIAL_SLUG).trim()) || (CURRENT_SLUG && String(CURRENT_SLUG).trim())) {
+  if (
+    (INITIAL_SLUG && String(INITIAL_SLUG).trim()) ||
+    (CURRENT_SLUG && String(CURRENT_SLUG).trim())
+  ) {
     return;
   }
 
   // Must have a loaded session at this point
-  if (!ADMIN_SESSION || !ADMIN_EMAIL || !ADMIN_ID) {
-    throw new Error("No admin session available to infer slug.");
+  if (!ADMIN_SESSION || !ADMIN_EMAIL) {
+    throw new Error("No session available to infer slug.");
+  }
+
+  const actorType = String(ADMIN_SESSION.actorType || "").toLowerCase();
+  const isTeacherAdmin = !!ADMIN_SESSION.isTeacherAdmin;
+
+  // Teacher-admin policy: slug must come from URL or session (no /my-schools inference)
+  // Rationale: teacher_admin may not have adminId and should remain strictly school-scoped.
+  if (actorType === "teacher") {
+    if (isTeacherAdmin) {
+      const s = String(ADMIN_SESSION.slug || "").trim();
+      if (s) {
+        INITIAL_SLUG = s;
+        CURRENT_SLUG = s;
+
+        // Keep URL deterministic for refresh/deep-link QA
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.set("slug", s);
+          window.history.replaceState({}, "", u.toString());
+        } catch (_) {}
+
+        return;
+      }
+      throw new Error("Teacher admin requires slug in URL or session.");
+    }
+
+    // Normal teacher should never reach SchoolPortal; but fail safely if it does.
+    throw new Error("Teacher session not permitted to infer slug.");
+  }
+
+  // Admin policy: can infer via /api/admin/my-schools (requires adminId)
+  if (!ADMIN_ID) {
+    throw new Error("No adminId available to infer slug.");
   }
 
   const qs = new URLSearchParams();
-  if (ADMIN_EMAIL) qs.set("email", ADMIN_EMAIL);
-  if (ADMIN_ID != null) qs.set("adminId", String(ADMIN_ID));
+  qs.set("email", ADMIN_EMAIL);
+  qs.set("adminId", String(ADMIN_ID));
 
   const url = "/api/admin/my-schools" + (qs.toString() ? "?" + qs.toString() : "");
   const res = await adminFetch(url, { method: "GET" });
@@ -437,7 +479,7 @@ async function ensureSlugFromSingleSchoolOrThrow() {
 
   const schools = Array.isArray(data.schools) ? data.schools : [];
   if (schools.length === 1 && schools[0].slug) {
-    const inferred = String(schools[0].slug);
+    const inferred = String(schools[0].slug).trim();
 
     INITIAL_SLUG = inferred;
     CURRENT_SLUG = inferred;
@@ -470,71 +512,88 @@ async function ensureSlugFromSingleSchoolOrThrow() {
 }
 
  // ✅ New: load admin session directly from localStorage.mssAdminSession
+// ✅ New: load actor session from localStorage.mssAdminSession
 async function loadAdminSession() {
   const legacy = getLegacySession(); // reads mssAdminSession
-
-  // If adminKey is stored in session, persist it
-if (!ADMIN_KEY && legacy && legacy.adminKey) {
-  try {
-    window.localStorage.setItem(ADMIN_KEY_STORAGE, String(legacy.adminKey));
-    ADMIN_KEY = String(legacy.adminKey);
-  } catch {}
-}
- 
-
   if (!legacy) {
     console.warn("[SchoolPortal] No mssAdminSession – redirecting to login");
     clearAdminSessionAndRedirect();
     return null;
   }
 
+  // Canonical actor fields (supports unified + legacy)
+  const actor = legacy.actor || {};
+  const actorType = String(legacy.actorType || actor.actorType || "").toLowerCase();
+
+  const email = String(legacy.email || actor.email || "").trim().toLowerCase() || null;
+
   const adminId =
-    legacy.adminId != null
-      ? legacy.adminId
-      : legacy.id != null
-      ? legacy.id
-      : null;
+    legacy.adminId != null ? Number(legacy.adminId)
+    : actor.adminId != null ? Number(actor.adminId)
+    : null;
 
-  const email = legacy.email || null;
+  const teacherId =
+    legacy.teacherId != null ? Number(legacy.teacherId)
+    : actor.teacherId != null ? Number(actor.teacherId)
+    : null;
 
-  // Derive role from stored flags OR email domain
-  const storedIsSuper =
-    !!legacy.isSuper ||
+  const actorId =
+    legacy.actorId != null ? Number(legacy.actorId)
+    : actor.actorId != null ? Number(actor.actorId)
+    : null;
+
+  const isTeacherAdmin =
+    !!legacy.isTeacherAdmin ||
+    !!actor.isTeacherAdmin ||
+    false;
+
+  // IMPORTANT: do NOT infer superadmin from email domain
+  const isSuper =
     !!legacy.isSuperadmin ||
-    !!legacy.is_superadmin;
+    !!legacy.is_superadmin ||
+    !!legacy.isSuper ||
+    !!actor.isSuperadmin ||
+    !!actor.is_superadmin ||
+    false;
 
-  const derivedIsSuper =
-    email && /@mss\.com$/i.test(email);
+  const canUsePortal =
+    actorType === "admin" || (actorType === "teacher" && isTeacherAdmin);
 
-  const isSuper = storedIsSuper || derivedIsSuper;
-
-  if (!adminId || !email) {
-    console.warn(
-      "[SchoolPortal] mssAdminSession missing adminId or email; redirecting to login",
-      legacy
-    );
+  if (!email || !canUsePortal) {
+    console.warn("[SchoolPortal] Session not permitted for portal", { actorType, isTeacherAdmin, email });
     clearAdminSessionAndRedirect();
     return null;
   }
 
-  ADMIN_SESSION = {
-    adminId,
-    email,
-    isSuper,
-  };
-  ADMIN_EMAIL = email;
-  ADMIN_ID = adminId;
+  // Use a stable ID for query params/logging; teacher_admin can use teacherId/actorId
+  const effectiveId = adminId ?? teacherId ?? actorId ?? null;
 
-  console.log("[SchoolPortal] Loaded admin session from mssAdminSession:", {
-    ADMIN_ID,
-    ADMIN_EMAIL,
+  ADMIN_SESSION = {
+    actorType,
+    adminId,
+    teacherId,
+    actorId,
+    email,
+    isTeacherAdmin,
     isSuper,
+    effectiveId,
+    slug: String(legacy.slug || actor.slug || "").trim() || null,
+  };
+
+  ADMIN_EMAIL = email;
+  ADMIN_ID = effectiveId;
+
+  console.log("[SchoolPortal] Loaded portal session:", {
+    actorType,
+    effectiveId,
+    email,
+    isTeacherAdmin,
+    isSuper,
+    slug: ADMIN_SESSION.slug,
   });
 
-  // Keep async signature
   return ADMIN_SESSION;
 }
-
 
   // -----------------------------------------------------------------------
   // DOM refs
@@ -899,39 +958,118 @@ async function fetchSchoolsForAdmin() {
     ADMIN_EMAIL,
     ADMIN_ID,
     ADMIN_SESSION,
+    INITIAL_SLUG,
+    CURRENT_SLUG,
   });
 
-  if (!ADMIN_SESSION || !ADMIN_EMAIL || !ADMIN_ID) {
-    console.warn("[SchoolPortal] No valid admin session; redirecting to login");
+  if (!ADMIN_SESSION || !ADMIN_EMAIL) {
+    console.warn("[SchoolPortal] Missing session/email; redirecting to login");
     clearAdminSessionAndRedirect();
     return;
   }
 
-  // 1) NON-SUPER ADMIN → single school only, driven by ?slug=
-  if (!ADMIN_SESSION.isSuper) {
-    console.log("[SchoolPortal] Non-super admin – single school mode");
+  const actorType = String(ADMIN_SESSION.actorType || "").toLowerCase();
+  const isTeacherAdmin = !!ADMIN_SESSION.isTeacherAdmin;
 
-    if (!INITIAL_SLUG) {
+  // ------------------------------------------------------------
+  // A) TEACHER ADMIN (teacher actor with admin-capable UI)
+  // Policy:
+  // - Must be strictly school-scoped (slug comes from session or URL)
+  // - No /api/admin/my-schools calls (may not have adminId; also avoids ambiguity)
+  // ------------------------------------------------------------
+  if (actorType === "teacher") {
+    if (!isTeacherAdmin) {
+      console.warn("[SchoolPortal] Teacher session not permitted for SchoolPortal");
+      clearAdminSessionAndRedirect();
+      return;
+    }
+
+    // Ensure slug exists (prefer URL/session already resolved upstream)
+    const slug = String(CURRENT_SLUG || INITIAL_SLUG || ADMIN_SESSION.slug || "").trim();
+    if (!slug) {
       alert(
-        "No school slug is available for this account.\n\n" +
-        "Please open the portal link that includes ?slug=your-school-slug or contact support."
+        "No school slug is available for this Teacher Admin account.\n\n" +
+          "Please open the portal link that includes ?slug=your-school-slug or contact support."
       );
       return;
     }
 
+    INITIAL_SLUG = slug;
+    CURRENT_SLUG = slug;
 
-    SCHOOLS = [{ id: null, slug: INITIAL_SLUG, name: INITIAL_SLUG }];
-    CURRENT_SLUG = INITIAL_SLUG;
+    // Minimal “single-school” representation
+    SCHOOLS = [{ id: ADMIN_SESSION.schoolId ?? null, slug, name: slug }];
     CURRENT_SCHOOL = SCHOOLS[0];
 
     if (schoolSelectEl) {
       schoolSelectEl.innerHTML = "";
       const opt = document.createElement("option");
-      opt.value = CURRENT_SLUG;
+      opt.value = slug;
       opt.textContent = CURRENT_SCHOOL.name;
       schoolSelectEl.appendChild(opt);
       schoolSelectEl.disabled = true;
     }
+
+    // Keep URL deterministic for refresh/deep links
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("slug", slug);
+      window.history.replaceState({}, "", u.toString());
+    } catch (_) {}
+
+    updateSlugUi();
+    applySlugToQuickLinks();
+    return;
+  }
+
+  // ------------------------------------------------------------
+  // B) ADMIN (true admin actor)
+  // Decide superadmin vs non-superadmin using canonical flag.
+  // NOTE: your session currently seems to use isSuperadmin / isSuperAdmin, not isSuper.
+  // ------------------------------------------------------------
+  const isSuperadmin =
+    !!ADMIN_SESSION.isSuperadmin || !!ADMIN_SESSION.isSuperAdmin || !!ADMIN_SESSION.isSuper;
+
+  if (!ADMIN_ID) {
+    console.warn("[SchoolPortal] Admin session missing adminId; redirecting to login");
+    clearAdminSessionAndRedirect();
+    return;
+  }
+
+  // 1) NON-SUPER ADMIN → single school mode (slug must be known)
+  if (!isSuperadmin) {
+    console.log("[SchoolPortal] Non-super admin – single school mode");
+
+    const slug = String(CURRENT_SLUG || INITIAL_SLUG || ADMIN_SESSION.slug || "").trim();
+    if (!slug) {
+      alert(
+        "No school slug is available for this admin account.\n\n" +
+          "Please open the portal link that includes ?slug=your-school-slug or contact support."
+      );
+      return;
+    }
+
+    INITIAL_SLUG = slug;
+    CURRENT_SLUG = slug;
+
+    SCHOOLS = [{ id: ADMIN_SESSION.schoolId ?? null, slug, name: slug }];
+    CURRENT_SCHOOL = SCHOOLS[0];
+
+    if (schoolSelectEl) {
+      schoolSelectEl.innerHTML = "";
+      const opt = document.createElement("option");
+      opt.value = slug;
+      opt.textContent = CURRENT_SCHOOL.name;
+      schoolSelectEl.appendChild(opt);
+      schoolSelectEl.disabled = true;
+    }
+
+    // Keep URL deterministic
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("slug", slug);
+      window.history.replaceState({}, "", u.toString());
+    } catch (_) {}
 
     updateSlugUi();
     applySlugToQuickLinks();
@@ -947,7 +1085,7 @@ async function fetchSchoolsForAdmin() {
 
   let url = "/api/admin/my-schools";
   const query = qs.toString();
-  if (query) url += `?${query}`;
+  if (query) url += "?" + query;
 
   console.log("[SchoolPortal] my-schools URL:", url);
 
@@ -955,12 +1093,11 @@ async function fetchSchoolsForAdmin() {
     const res = await adminFetch(url, { method: "GET" });
 
     let data = {};
-    try { data = await res.json(); } catch {}
+    try {
+      data = await res.json();
+    } catch {}
 
-    console.log("[SchoolPortal] my-schools response:", {
-      status: res.status,
-      data,
-    });
+    console.log("[SchoolPortal] my-schools response:", { status: res.status, data });
 
     if (res.status === 401) {
       clearAdminSessionAndRedirect();
@@ -968,8 +1105,11 @@ async function fetchSchoolsForAdmin() {
     }
 
     if (!res.ok || data.ok === false) {
-      if (!CURRENT_SLUG) {
-        alert("No schools found for this admin, and no slug in the URL. Please contact support.");
+      if (!CURRENT_SLUG && !INITIAL_SLUG) {
+        alert(
+          "Unable to load schools for this super admin and no slug was provided.\n\n" +
+            "Please contact support."
+        );
       }
       return;
     }
@@ -985,20 +1125,22 @@ async function fetchSchoolsForAdmin() {
       schoolSelectEl.appendChild(opt);
       schoolSelectEl.disabled = true;
 
-      if (!CURRENT_SLUG) {
-        alert("No schools are associated with this super admin account. Please contact support.");
-      }
+      alert("No schools are associated with this super admin account. Please contact support.");
       updateSlugUi();
       return;
     }
 
-    let initialSlug = INITIAL_SLUG;
-    if (!initialSlug || !SCHOOLS.some((s) => String(s.slug) === String(initialSlug))) {
-      initialSlug = SCHOOLS[0].slug;
+    // Choose initial slug: URL/session slug if valid; else first school
+    let initialSlug = String(CURRENT_SLUG || INITIAL_SLUG || "").trim();
+    if (!initialSlug || !SCHOOLS.some((s) => String(s.slug) === initialSlug)) {
+      initialSlug = String(SCHOOLS[0].slug || "").trim();
     }
 
     CURRENT_SLUG = initialSlug;
-    CURRENT_SCHOOL = SCHOOLS.find((s) => String(s.slug) === String(initialSlug)) || SCHOOLS[0];
+    INITIAL_SLUG = initialSlug;
+
+    CURRENT_SCHOOL =
+      SCHOOLS.find((s) => String(s.slug) === String(initialSlug)) || SCHOOLS[0];
 
     schoolSelectEl.innerHTML = "";
     SCHOOLS.forEach((s) => {
@@ -1011,12 +1153,22 @@ async function fetchSchoolsForAdmin() {
     schoolSelectEl.value = CURRENT_SLUG;
     schoolSelectEl.disabled = SCHOOLS.length === 1;
 
+    // Keep URL deterministic
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("slug", CURRENT_SLUG);
+      window.history.replaceState({}, "", u.toString());
+    } catch (_) {}
+
     updateSlugUi();
     applySlugToQuickLinks();
   } catch (err) {
     console.error("[SchoolPortal] fetchSchoolsForAdmin failed", err);
-    if (!CURRENT_SLUG) {
-      alert("Unable to load schools for this admin and no slug was provided. Please contact support.");
+    if (!CURRENT_SLUG && !INITIAL_SLUG) {
+      alert(
+        "Unable to load schools for this admin and no slug was provided.\n\n" +
+          "Please contact support."
+      );
     }
   }
 }
@@ -2188,7 +2340,10 @@ async function deleteCurrentReportFromViewer() {
       const url = `/api/admin/stats/${encodeURIComponent(
         CURRENT_SLUG
       )}?range=${encodeURIComponent(range)}`;
-      const res = await fetch(url);
+     const res = await window.MSSClient.apiFetch(
+      `/api/admin/stats/${encodeURIComponent(SLUG)}?range=${encodeURIComponent(range || "today")}`,
+     { method: "GET", cache: "no-store" }
+     );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();

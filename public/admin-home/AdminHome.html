@@ -177,7 +177,9 @@
 
       <button class="admin-btn secondary" id="btn-config">Configuration Admin</button>
       <button class="admin-btn secondary" id="btn-questions">Questions Admin</button>
-      
+      <button class="admin-btn secondary" id="btn-student-portal" style="display:none;">
+       Student Portal
+      </button>
       <button class="admin-btn danger" id="btn-logout">Log out</button>
     </section>
 
@@ -188,7 +190,9 @@
   </div>
 
   <!-- Viewer must load BEFORE AdminHome.js -->
+  <script src="/js/mss_client.js?v=20260117_44"></script>
   <script src="/components/MSSViewer.js"></script>
   <script src="/admin-home/AdminHome.js?v=2025-12-18a"></script>
+  
 </body>
 </html>

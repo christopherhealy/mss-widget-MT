@@ -1,5 +1,5 @@
 // server.js — ESM version for "type": "module" (Nov 25 update for Vercel)
-
+// updated Jan 17 2026 - the mss_client version for central auth
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -13,21 +13,288 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import OpenAI from "openai";
-
-
-
-
-//Dec 10 using SPs
 import bcrypt from "bcryptjs";
 import slugifyPkg from "slugify";
+import { adminTeachersRouter } from "./routes/adminTeachers.routes.js";
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
 dotenv.config();
+
 // just to be sure
 console.log("[env] DATABASE_URL present:", !!process.env.DATABASE_URL);
 console.log("[env] MSS_ADMIN_JWT_SECRET present:", !!process.env.MSS_ADMIN_JWT_SECRET);
 console.log("[env] MSS_ADMIN_JWT_TTL:", process.env.MSS_ADMIN_JWT_TTL || "(default)");
 
+// ---------------------------------------------------------------------
+// AUTH (Unified, deterministic) — Jan 2026
+//
+// Canonical auth: Actor JWT in Authorization: Bearer <token>
+//   - audience: "mss-actor"
+//   - issuer:   "mss-widget-mt"
+//
+// Back-compat (temporary):
+//   - legacy Admin JWT (aud "mss-admin") is accepted and normalized into actor form.
+//   - x-admin-key bypass is disabled by default (feature flag).
+//
+// Contract:
+//   - After middleware: req.actor is ALWAYS present (canonical shape)
+//   - req.auth.mode indicates which mechanism authenticated the request
+// ---------------------------------------------------------------------
 
+// Canonical (actor) JWT
+//const ACTOR_JWT_SECRET = process.env.MSS_ACTOR_JWT_SECRET || "";
+//const ACTOR_JWT_ISSUER = "mss-widget-mt";
+//const ACTOR_JWT_AUD = "mss-actor";
+
+// Legacy (admin) JWT — DEPRECATE after migration
+const ADMIN_JWT_SECRET = process.env.MSS_ADMIN_JWT_SECRET || "";
+const ADMIN_JWT_ISSUER = "mss-widget-mt";
+const ADMIN_JWT_AUD = "mss-admin";
+
+const ACTOR_JWT_SECRET = String(process.env.MSS_ACTOR_JWT_SECRET || "").trim();
+const ACTOR_JWT_TTL = process.env.MSS_ACTOR_JWT_TTL || "12h";
+const ACTOR_JWT_ISSUER = "mss-widget-mt";
+const ACTOR_JWT_AUD = "mss-actor";
+
+if (!ACTOR_JWT_SECRET) {
+  throw new Error("Missing MSS_ACTOR_JWT_SECRET");
+}
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+// Hard disable legacy x-admin-key unless explicitly enabled
+const ENABLE_LEGACY_ADMIN_KEY =
+  String(process.env.MSS_ENABLE_LEGACY_ADMIN_KEY || "").toLowerCase() === "true";
+
+// Fail-fast in environments where you expect auth to work
+// (You can relax this locally if you intentionally run without secrets.)
+function requireEnvSecret(name, value) {
+  if (!value) throw new Error(`Missing ${name}`);
+}
+
+// If you want strict startup validation, uncomment:
+// requireEnvSecret("MSS_ACTOR_JWT_SECRET", ACTOR_JWT_SECRET);
+// (Optional) Only require legacy if you still accept it:
+// if (ADMIN_JWT_SECRET) requireEnvSecret("MSS_ADMIN_JWT_SECRET", ADMIN_JWT_SECRET);
+
+function readBearer(req) {
+  const h = String(req.headers.authorization || "");
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : "";
+}
+
+function verifyJwtOrNull(token, secret, opts) {
+  try {
+    return jwt.verify(token, secret, opts);
+  } catch (_) {
+    return null;
+  }
+}
+
+// Canonical shape: req.actor
+function normalizeActorFromActorJwt(p) {
+  return {
+    actorType: String(p.actorType || "").toLowerCase(),
+    actorId: Number(p.actorId || 0) || null,
+    email: String(p.email || "").trim().toLowerCase(),
+    schoolId: p.schoolId ?? null,
+    slug: String(p.slug || "").trim(),
+
+    // role flags
+    isSuperAdmin: !!p.isSuperAdmin,
+    isOwner: !!p.isOwner,
+    isTeacherAdmin: !!p.isTeacherAdmin,
+  };
+}
+
+// Legacy admin JWT payload -> canonical actor
+// signAdminToken uses: { aid, email, isSuperAdmin, schoolId }
+function normalizeActorFromAdminJwt(p) {
+  return {
+    actorType: "admin",
+    actorId: Number(p.aid || 0) || null,
+    email: String(p.email || "").trim().toLowerCase(),
+    schoolId: p.schoolId ?? null,
+    slug: "", // legacy token did not carry slug
+
+    isSuperAdmin: !!p.isSuperAdmin,
+    isOwner: false,
+    isTeacherAdmin: false,
+  };
+}
+
+function isValidCanonicalActor(a) {
+  return !!(
+    a &&
+    typeof a === "object" &&
+    (a.actorType === "admin" || a.actorType === "teacher") &&
+    Number(a.actorId || 0) > 0 &&
+    String(a.email || "").includes("@")
+  );
+}
+
+// Single auth middleware for the entire app
+export function requireActorAuth(req, res, next) {
+  // 0) Optional true-legacy x-admin-key (strongly discouraged)
+  const legacyKey = String(req.headers["x-admin-key"] || "").trim();
+  if (legacyKey) {
+    if (!ENABLE_LEGACY_ADMIN_KEY) {
+      return res.status(401).json({ ok: false, error: "legacy_admin_key_disabled" });
+    }
+    // NOTE: If you still support x-admin-key, verify it here (DB/lookup).
+    // For now, it is treated as "authenticated" but with unknown identity.
+    req.auth = { mode: "legacy_admin_key" };
+    req.actor = {
+      actorType: "admin",
+      actorId: null,
+      email: "",
+      schoolId: null,
+      slug: "",
+      isSuperAdmin: false,
+      isOwner: false,
+      isTeacherAdmin: false,
+    };
+    return next();
+  }
+
+  // 1) Bearer token required
+  const token = readBearer(req);
+  if (!token) return res.status(401).json({ ok: false, error: "missing_auth" });
+
+  // 2) Try canonical Actor JWT first
+  const actorPayload = verifyJwtOrNull(token, ACTOR_JWT_SECRET, {
+    issuer: ACTOR_JWT_ISSUER,
+    audience: ACTOR_JWT_AUD,
+  });
+
+  if (actorPayload) {
+    req.auth = { mode: "actor_jwt" };
+    req.actor = normalizeActorFromActorJwt(actorPayload);
+
+    if (!isValidCanonicalActor(req.actor)) {
+      return res.status(401).json({ ok: false, error: "bad_token_shape" });
+    }
+    return next();
+  }
+
+  // 3) Back-compat: accept legacy Admin JWT and normalize
+  if (ADMIN_JWT_SECRET) {
+    const adminPayload = verifyJwtOrNull(token, ADMIN_JWT_SECRET, {
+      issuer: ADMIN_JWT_ISSUER,
+      audience: ADMIN_JWT_AUD,
+    });
+
+    if (adminPayload) {
+      req.auth = { mode: "admin_jwt_legacy" };
+      req.actor = normalizeActorFromAdminJwt(adminPayload);
+
+      if (!isValidCanonicalActor(req.actor)) {
+        return res.status(401).json({ ok: false, error: "bad_token_shape" });
+      }
+      return next();
+    }
+  }
+
+  return res.status(401).json({ ok: false, error: "invalid_token" });
+}
+
+// ---- Role guards (deterministic; no DB read) ----
+
+export function requireAdminRole(req, res, next) {
+  const a = req.actor || {};
+  if (a.actorType !== "admin") return res.status(403).json({ ok: false, error: "admin_required" });
+  return next();
+}
+
+export function requireTeacherRole(req, res, next) {
+  const a = req.actor || {};
+  if (a.actorType !== "teacher") return res.status(403).json({ ok: false, error: "teacher_required" });
+  return next();
+}
+
+// Allows: admin OR teacher_admin (teacher actor with isTeacherAdmin flag)
+export function requireAdminOrTeacherAdmin(req, res, next) {
+  const a = req.actor || {};
+  const ok = a.actorType === "admin" || (a.actorType === "teacher" && a.isTeacherAdmin === true);
+  if (!ok) return res.status(403).json({ ok: false, error: "admin_or_teacher_admin_required" });
+  return next();
+}
+
+export function requireSuperAdmin(req, res, next) {
+  const a = req.actor || {};
+  if (a.actorType !== "admin" || a.isSuperAdmin !== true) {
+    return res.status(403).json({ ok: false, error: "superadmin_required" });
+  }
+  return next();
+}
+
+// ---------------------------------------------------------------------
+// Staff auth: accept unified actor JWT for admin OR teacher
+// Attaches: req.actor_ctx = { actorType, actorId, email, slug, schoolId, isSuperAdmin }
+// ---------------------------------------------------------------------
+function requireStaffAuth(req, res, next) {
+  const token = getBearer(req);
+  if (!token) return res.status(401).json({ ok: false, error: "missing_auth" });
+
+  // Try unified actor token only (this is the contract for staff tools)
+  const payload = tryVerifyJwt(token, process.env.MSS_ACTOR_JWT_SECRET, {
+    issuer: "mss-widget-mt",
+    audience: "mss-actor",
+  });
+  if (!payload) return res.status(401).json({ ok: false, error: "invalid_token" });
+
+  const actorType = String(payload.actorType || "").toLowerCase();
+  if (actorType !== "admin" && actorType !== "teacher") {
+    return res.status(403).json({ ok: false, error: "forbidden_role" });
+  }
+
+  req.actor_ctx = {
+    actorType,
+    actorId: Number(payload.actorId || 0) || null,
+    email: String(payload.email || "").trim().toLowerCase(),
+    slug: String(payload.slug || "").trim(),
+    schoolId: payload.schoolId ?? null,
+    isSuperAdmin: !!payload.isSuperAdmin,
+  };
+
+  if (!req.actor_ctx.actorId || !req.actor_ctx.email) {
+    return res.status(401).json({ ok: false, error: "missing_actor_ctx" });
+  }
+
+  return next();
+}
+
+// ---------------------------------------------------------------------
+// Enforce school scope for staff tools by slug (simple + deterministic)
+// - superadmin bypass
+// - otherwise require token.slug === route :slug
+// ---------------------------------------------------------------------
+function assertStaffSchoolScopeBySlug(req, slug) {
+  const ctx = req.actor_ctx;
+  if (!ctx) {
+    const e = new Error("missing_actor_ctx");
+    e.status = 401;
+    throw e;
+  }
+
+  if (ctx.isSuperAdmin) return; // bypass
+
+  const tokenSlug = String(ctx.slug || "").trim();
+  const routeSlug = String(slug || "").trim();
+
+  if (!tokenSlug) {
+    const e = new Error("missing_school_scope");
+    e.status = 403;
+    throw e;
+  }
+
+  if (!routeSlug || tokenSlug !== routeSlug) {
+    const e = new Error("cross_school_forbidden");
+    e.status = 403;
+    throw e;
+  }
+}
 // ---------------------------------------------------------------------
 // Public base URL for email links - Nov 29
 // ---------------------------------------------------------------------
@@ -49,10 +316,7 @@ function getPublicBaseUrl() {
 
 const { Pool } = pkg;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const router = express.Router();
+//const router = express.Router(); //do we need this?
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -61,11 +325,11 @@ const openai = new OpenAI({
 
 
 // ---------------------------------------------------------------------
-// ADMIN JWT AUTH (Dec 15)
+// ADMIN JWT AUTH (Dec 15) deprecated
 // ---------------------------------------------------------------------
 
-const ADMIN_JWT_SECRET = process.env.MSS_ADMIN_JWT_SECRET || "";
-const ADMIN_JWT_TTL = process.env.MSS_ADMIN_JWT_TTL || "12h";
+// const ADMIN_JWT_SECRET = process.env.MSS_ADMIN_JWT_SECRET || "";
+// const ADMIN_JWT_TTL = process.env.MSS_ADMIN_JWT_TTL || "12h";
 
 function requireAdminJwtSecret() {
   if (!ADMIN_JWT_SECRET) {
@@ -112,6 +376,44 @@ function signAdminToken(admin) {
   );
 }
 
+// ---------------------------------------------------------------------
+// ACTOR JWT (Unified login for admin/teacher) — Jan 2026
+// ---------------------------------------------------------------------
+
+//const ACTOR_JWT_SECRET = process.env.MSS_ACTOR_JWT_SECRET || "";
+//const ACTOR_JWT_TTL = process.env.MSS_ACTOR_JWT_TTL || "12h";
+
+function requireActorJwtSecret() {
+  if (!ACTOR_JWT_SECRET) {
+    throw new Error("Missing MSS_ACTOR_JWT_SECRET");
+  }
+}
+
+function signActorToken(actor) {
+  requireActorJwtSecret();
+
+  return jwt.sign(
+    {
+      // keep these names stable; your FE/BE can normalize later if needed
+      actorType: String(actor.actorType || ""),
+      actorId: Number(actor.actorId || 0),
+      schoolId: actor.schoolId ?? null,
+      slug: String(actor.slug || ""),
+      email: String(actor.email || "").toLowerCase(),
+
+      // role flags
+      isSuperAdmin: !!actor.isSuperAdmin,
+      isOwner: !!actor.isOwner,
+      isTeacherAdmin: !!actor.isTeacherAdmin,
+    },
+    ACTOR_JWT_SECRET,
+    {
+      expiresIn: ACTOR_JWT_TTL,
+      issuer: "mss-widget-mt",
+      audience: "mss-actor",
+    }
+  );
+}
 
 function readAdminTokenFromRequest(req) {
   // Preferred: Authorization: Bearer <token>
@@ -127,167 +429,222 @@ function readAdminTokenFromRequest(req) {
   ).trim();
 }
 
+function extractBearer(req) {
+  const h = String(req.headers.authorization || "");
+  if (!h.toLowerCase().startsWith("bearer ")) return "";
+  return h.slice(7).trim();
+}
 
-function requireSuperAdmin(req, res, next) {
-  const a = req.admin || {};
-  const legacy = req.adminAuth || {};
+function getBearer(req) {
+  const h = String(req.headers.authorization || "");
+  if (!h.toLowerCase().startsWith("bearer ")) return "";
+  return h.slice(7).trim();
+}
 
-  const isSuper =
-    (a && a.is_superadmin === true) ||
-    (a && a.isSuperAdmin === true) ||
-    (legacy && legacy.isSuperAdmin === true);
-
-  if (!isSuper) {
-    return res.status(403).json({ ok: false, error: "superadmin_required" });
+function tryVerifyJwt(token, secret, opts) {
+  try {
+    return jwt.verify(token, secret, opts);
+  } catch (e) {
+    return null;
   }
-  return next();
+}
+
+// ---------------------------------------------------------------------
+// DEPRECATED: Legacy “admin ctx” helpers
+//
+// These exist ONLY to support endpoints that still require email/adminId in
+// query/body. The long-term plan is to authorize from req.actor exclusively.
+//
+// Remove after:
+//   - all /api/admin/* endpoints use requireActorAuth + role guards
+//   - no endpoint reads req.query.email/adminId for auth
+// ---------------------------------------------------------------------
+
+function normalizeAdminCtxFromPayload(payload, mode) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const email = String(payload.email || "").trim().toLowerCase();
+
+  // Admin id normalization across token types
+  const adminId =
+    Number(
+      // classic admin JWT: signAdminToken uses "aid"
+      payload.aid ??
+      payload.adminId ??
+      payload.admin_id ??
+      // actor JWT: admin actor uses actorId
+      (String(payload.actorType || "").toLowerCase() === "admin"
+        ? (payload.actorId ?? payload.actorID)
+        : null)
+    ) || null;
+
+  if (!email || !adminId) return null;
+
+  const isSuperAdmin = !!(
+    payload.isSuperAdmin ??
+    payload.isSuperadmin ??
+    payload.is_superadmin ??
+    false
+  );
+
+  const schoolId = payload.schoolId ?? payload.school_id ?? null;
+  const slug = payload.slug != null ? String(payload.slug).trim() : "";
+
+  return { adminId, email, isSuperAdmin, schoolId, slug, mode };
+}
+/**
+ * Legacy admin ctx support (DEPRECATE).
+ *
+ * This exists only to keep older pages working during migration.
+ * It MUST NOT be used to grant privileges (e.g., superadmin).
+ *
+ * IMPORTANT:
+ * - We do NOT accept isSuperAdmin from query/body (privilege escalation risk).
+ * - email/adminId are treated as identifiers only.
+ * - Routes that still need authorization must verify via JWT or DB.
+ */
+function normalizeAdminCtxFromLegacy(req) {
+  if (!req) return null;
+
+  // Prefer querystring for GET; allow body as a fallback (some older pages did this).
+  const email =
+    String(req.query?.email || req.body?.email || "")
+      .trim()
+      .toLowerCase();
+
+  const adminId =
+    Number(
+      req.query?.adminId ??
+      req.query?.admin_id ??
+      req.body?.adminId ??
+      req.body?.admin_id ??
+      0
+    ) || null;
+
+  if (!email || !adminId) return null;
+
+  return {
+    adminId,
+    email,
+    isSuperAdmin: false,  // DO NOT TRUST LEGACY FOR PRIVILEGES
+    schoolId: null,
+    slug: "",
+    mode: "legacy",
+  };
+}
+
+// helpers you must already have:
+// - getBearer(req)
+// - tryVerifyJwt(token, secret, opts)
+// - normalizeAdminCtxFromLegacy(req)
+// - normalizeAdminCtxFromPayload(payload, mode)
+// - pool (pg)
+// - next(err)
+
+async function resolveSchoolIdFromSlug(slug) {
+  const s = String(slug || "").trim();
+  if (!s) return null;
+  const r = await pool.query(`SELECT id FROM schools WHERE slug=$1 LIMIT 1`, [s]);
+  return r.rowCount ? Number(r.rows[0].id) : null;
+}
+
+function attachAdmin(req, ctx) {
+  // normalize school scope aggressively
+  const schoolId =
+    ctx.schoolId ??
+    ctx.school_id ??
+    ctx.school?.id ??
+    null;
+
+  req.admin_ctx = ctx;
+  req.admin = {
+    id: ctx.adminId,
+    adminId: ctx.adminId,
+    email: ctx.email,
+
+    isSuperAdmin: !!ctx.isSuperAdmin,
+    is_superadmin: !!ctx.isSuperAdmin,
+
+    // ✅ critical: scope used by assertSchoolScope()
+    school_id: schoolId != null ? Number(schoolId) : null,
+    schoolId: schoolId != null ? Number(schoolId) : null,
+  };
 }
 
 async function requireAdminAuth(req, res, next) {
   try {
-    const auth = String(req.headers.authorization || "");
-    const hasSecret = !!process.env.MSS_ADMIN_JWT_SECRET;
+    // 0) Legacy header support (x-admin-key)
+    const legacyKey = String(req.headers["x-admin-key"] || "").trim();
+    if (legacyKey) {
+      req.adminAuth = { mode: "legacy", key: legacyKey };
 
-    if (!auth.startsWith("Bearer ")) {
-      console.warn("[requireAdminAuth] missing bearer", { hasAuth: !!auth, hasSecret });
-      return res.status(401).json({ ok: false, error: "missing_bearer" });
+      const ctx = normalizeAdminCtxFromLegacy(req);
+      if (!ctx) return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
+
+      // If legacy ctx lacks school scope but slug provided, resolve from DB
+      if (!ctx.schoolId && !ctx.school_id) {
+        const slug = String(req.query.slug || req.body?.slug || "").trim();
+        const sid = await resolveSchoolIdFromSlug(slug);
+        if (sid) ctx.schoolId = sid;
+      }
+
+      attachAdmin(req, ctx);
+      return next();
     }
 
-    const token = auth.slice(7).trim();
-    if (!hasSecret) {
-      console.error("[requireAdminAuth] MSS_ADMIN_JWT_SECRET missing");
-      return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
-    }
+    // 1) Bearer token required
+    const token = getBearer(req);
+    if (!token) return res.status(401).json({ ok: false, error: "missing_auth" });
 
-    // -----------------------------
-    // 1) Verify JWT + normalize claims (best-effort)
-    // -----------------------------
-    const payload = jwt.verify(token, process.env.MSS_ADMIN_JWT_SECRET) || {};
-
-    const admin_id = Number(
-      payload.admin_id ??
-      payload.adminId ??
-      payload.aid ??        // common in your tokens
-      payload.id ??
-      payload.user_id ??
-      0
-    );
-
-    const admin_email_claim = String(
-      payload.admin_email ??
-      payload.adminEmail ??
-      payload.email ??
-      ""
-    ).trim().toLowerCase();
-
-    // note: we do NOT trust this for auth decisions; DB is authoritative
-    const is_superadmin_claim = !!(
-      payload.is_superadmin ||
-      payload.isSuperadmin ||   // keep legacy misspelling
-      payload.isSuperAdmin ||
-      payload.isSuper ||
-      payload.superadmin
-    );
-
-    const school_id_claim = (() => {
-      const v = payload.school_id ?? payload.schoolId ?? payload.schoolID ?? null;
-      const n = Number(v || 0);
-      return n || null;
-    })();
-
-    if (!admin_id) {
-      console.warn("[requireAdminAuth] missing admin id in token", {
-        keys: Object.keys(payload || {}),
-      });
-      return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
-    }
-
-    // -----------------------------
-    // 2) DB override (AUTHORITATIVE)
-    // -----------------------------
-    let db = null;
-    try {
-      const r = await pool.query(
-        `SELECT id, email, full_name, is_superadmin, is_active, school_id
-           FROM public.admins
-          WHERE id = $1
-          LIMIT 1`,
-        [admin_id]
-      );
-      db = r.rowCount ? r.rows[0] : null;
-    } catch (err) {
-      console.warn("[requireAdminAuth] admins lookup failed", {
-        admin_id,
-        message: err?.message,
-      });
-      return res.status(500).json({ ok: false, error: "admin_lookup_failed" });
-    }
-
-    if (!db) return res.status(401).json({ ok: false, error: "admin_not_found" });
-    if (db.is_active === false) return res.status(401).json({ ok: false, error: "admin_inactive" });
-
-    const admin_email_db = String(db.email || "").trim().toLowerCase();
-    const admin_email = admin_email_db || admin_email_claim; // DB wins; claim only as fallback
-
-    if (!admin_email) {
-      console.warn("[requireAdminAuth] missing admin email (db+token)", {
-        admin_id,
-        hasDbEmail: !!admin_email_db,
-        hasClaimEmail: !!admin_email_claim,
-      });
-      return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
-    }
-
-    const is_superadmin_db = !!db.is_superadmin;
-
-    // DB wins. If DB school_id is null (rare), fall back to claim for continuity.
-    const school_id = Number(db.school_id || 0) || school_id_claim || null;
-    const schoolId = school_id; // canonical alias
-
-    // -----------------------------
-    // 3) Canonical context object (req.admin)
-    // -----------------------------
-    req.admin = {
-      // canonical / DB-aligned fields
-      id: admin_id,
-      admin_id,
-      email: admin_email,
-      admin_email,
-      full_name: db.full_name || null,
-      school_id,
-      is_superadmin: is_superadmin_db,
-
-      // common aliases used across the codebase
-      adminId: admin_id,
-      adminEmail: admin_email,
-      schoolId,
-      isSuperAdmin: is_superadmin_db,
-
-      // diagnostics (safe, minimal; do NOT attach raw claims)
-      _token_has_superadmin_claim: is_superadmin_claim,
-      _token_has_school_claim: !!school_id_claim,
-    };
-
-    // -----------------------------
-    // 4) Backward-compat aliases (avoid touching other modules)
-    // -----------------------------
-    req.adminId = admin_id;
-
-    // Older code may expect req.adminAuth.*
-    req.adminAuth = {
-      adminId: admin_id,
-      email: admin_email,
-      isSuperAdmin: is_superadmin_db,
-      schoolId,
-    };
-
-    return next();
-  } catch (err) {
-    console.warn("[requireAdminAuth] jwt verify failed", {
-      name: err?.name,
-      message: err?.message,
+    // 2) Try classic admin JWT
+    const adminPayload = tryVerifyJwt(token, process.env.MSS_ADMIN_JWT_SECRET, {
+      issuer: "mss-widget-mt",
+      audience: "mss-admin",
     });
-    return res.status(401).json({ ok: false, error: "bad_token" });
+
+    if (adminPayload) {
+      const ctx = normalizeAdminCtxFromPayload(adminPayload, "admin_jwt");
+      if (!ctx) return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
+
+      req.adminAuth = { mode: "admin_jwt", payload: adminPayload };
+
+      // If token lacks school scope but slug provided, resolve from DB
+      if (!ctx.schoolId && !ctx.school_id) {
+        const slug = String(req.query.slug || req.body?.slug || "").trim();
+        const sid = await resolveSchoolIdFromSlug(slug);
+        if (sid) ctx.schoolId = sid;
+      }
+
+      attachAdmin(req, ctx);
+      return next();
+    }
+
+    // 3) Try unified actor JWT (admin actor)
+    const actorPayload = tryVerifyJwt(token, process.env.MSS_ACTOR_JWT_SECRET, {
+      issuer: "mss-widget-mt",
+      audience: "mss-actor",
+    });
+
+    if (actorPayload && String(actorPayload.actorType || "").toLowerCase() === "admin") {
+      const ctx = normalizeAdminCtxFromPayload(actorPayload, "actor_jwt");
+      if (!ctx) return res.status(401).json({ ok: false, error: "missing_admin_ctx" });
+
+      req.adminAuth = { mode: "actor_jwt", payload: actorPayload };
+
+      // If token lacks school scope but slug provided, resolve from DB
+      if (!ctx.schoolId && !ctx.school_id) {
+        const slug = String(req.query.slug || req.body?.slug || "").trim();
+        const sid = await resolveSchoolIdFromSlug(slug);
+        if (sid) ctx.schoolId = sid;
+      }
+
+      attachAdmin(req, ctx);
+      return next();
+    }
+
+    return res.status(401).json({ ok: false, error: "invalid_token" });
+  } catch (err) {
+    return next(err);
   }
 }
 // ---------------------------------------------------------------------
@@ -377,12 +734,17 @@ const allowedOrigins = [
   /^https:\/\/mss-widget-mt-.*\.vercel\.app$/,
 ];
 // ---------------------------------------------------------------------
-// CORS (Dec 24) — supports exact + wildcard patterns from CORS_ORIGIN
+// CORS — supports exact + wildcard patterns from CORS_ORIGIN (CSV)
+// Notes for peer review:
+// - DEFAULT_ALLOWED_ORIGINS covers local + known deployments.
+// - CORS_ORIGIN (CSV) augments defaults; keep defaults to avoid "works locally only".
+// - Wildcards support patterns like: https://mss-widget-mt-*.vercel.app
 // ---------------------------------------------------------------------
+
 function parseAllowedOrigins(raw) {
   return String(raw || "")
     .split(",")
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 }
 
@@ -396,27 +758,44 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://www.eslsuccess.club",
 ];
 
-// If CORS_ORIGIN is set, it augments/overrides; if not set, defaults still apply.
+// Env augment (CSV). Example: CORS_ORIGIN="https://foo.com,https://bar.com,https://mss-widget-mt-*.vercel.app"
 const ENV_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
-const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...ENV_ORIGINS])];
+
+// Single source of truth (deduped)
+const ALLOWED_ORIGINS = Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...ENV_ORIGINS]));
+
 function originMatches(allowed, origin) {
   if (!allowed || !origin) return false;
   if (allowed === origin) return true;
 
-  // Wildcard support: https://mss-widget-mt-*.vercel.app
+  // Wildcard support
   if (allowed.includes("*")) {
+    // Escape regex special chars, then turn '*' into '.*'
     const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-    const reStr = "^" + escaped.replace(/\*/g, ".*") + "$";
-    return new RegExp(reStr, "i").test(origin);
+    const re = new RegExp("^" + escaped.replace(/\*/g, ".*") + "$", "i");
+    return re.test(origin);
   }
+
   return false;
 }
 
 function isAllowedOrigin(origin) {
-  if (!origin) return true; // curl / server-to-server
-  return ALLOWED_ORIGINS.some(a => originMatches(a, origin));
+  // No Origin header: allow (curl, server-to-server, same-origin in some cases)
+  if (!origin) return true;
+  return ALLOWED_ORIGINS.some((a) => originMatches(a, origin));
 }
 
+// Keep allowedHeaders aligned to what your FE actually sends.
+// NOTE: We include Authorization + legacy headers for migration.
+const CORS_ALLOWED_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "x-admin-key",
+  "x-mss-admin-key",
+];
+
+// IMPORTANT: When credentials=true, origin cannot be '*'.
+// We echo back the request origin if it is in our allowlist.
 const corsOptions = {
   origin: (origin, cb) => {
     if (isAllowedOrigin(origin)) return cb(null, true);
@@ -425,26 +804,40 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-mss-admin-key", "x-admin-key"],
+  allowedHeaders: CORS_ALLOWED_HEADERS,
   maxAge: 86400,
 };
 
+// Apply once (single source of truth)
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 
+// Preflight handler — keep explicit to avoid edge cases with some proxies.
+// (If you later confirm all environments handle preflight cleanly, this can be simplified.)
+// NOTE: Express route patterns can be picky; use a regex to catch all.
+app.options(/.*/, cors(corsOptions));
+
+// ---------------------------------------------------------------------
 // Body parsers (single source of truth)
+// ---------------------------------------------------------------------
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// ---------------------------------------------------------------------
 // Static files
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// ---------------------------------------------------------------------
+
+// Uploaded assets
+app.use("/uploads", express.static(UPLOADS_DIR));
+// Public assets (single mount)
 app.use(express.static(PUBLIC_DIR));
-app.use("/themes", express.static(path.join(PUBLIC_DIR, "themes")));
-app.use("/themes", express.static(THEMES_DIR));
 
-app.use("/api/admin", router);
-
-
+// Themes
+// DE-DUPE: only mount /themes once. Prefer THEMES_DIR if it exists; otherwise fallback to PUBLIC_DIR/themes.
+// NOTE: If THEMES_DIR is always the canonical location now, you can remove the fallback.
+app.use(
+  "/themes",
+  express.static(THEMES_DIR || path.join(PUBLIC_DIR, "themes"))
+);
 
 // ----- Postgres pool -----
 
@@ -2791,7 +3184,7 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
 
     const incomingIds = questions
       .map((q) => (q.id != null ? Number(q.id) : null))
-      .filter((id) => Number.isInteger(id));
+      .filter((id) => Number.isFinite(id) && id > 0);
 
     // 1) Update existing questions
     for (let idx = 0; idx < questions.length; idx++) {
@@ -2844,8 +3237,8 @@ app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
         [schoolId, assessmentId, order, text, isPublic]
       );
 
-      const newId = insertRes.rows[0]?.id;
-      if (Number.isInteger(newId)) incomingIds.push(newId);
+      const newId = Number(insertRes.rows[0]?.id);
+      if (Number.isFinite(newId)) incomingIds.push(newId);
     }
 
     // 3) Deletes unchanged
@@ -3588,9 +3981,8 @@ app.get("/api/admin/my-schools", async (req, res) => {
 
 
 // ---------------------------------------------------------------------
-// ADMIN LOGIN API (JWT session, bcrypt-aware)
+// ADMIN LOGIN API (admins only; JWT session)
 // POST /api/admin/login
-// POST /api/login (legacy)
 // Body: { email, password }
 // ---------------------------------------------------------------------
 async function handleAdminLogin(req, res) {
@@ -3607,7 +3999,6 @@ async function handleAdminLogin(req, res) {
   }
 
   try {
-    // 1) Look up admin
     const { rows, rowCount } = await pool.query(
       `
       SELECT
@@ -3637,7 +4028,6 @@ async function handleAdminLogin(req, res) {
 
     const a = rows[0];
 
-    // 2) Active check
     if (a.is_active === false) {
       return res.status(403).json({
         ok: false,
@@ -3646,8 +4036,15 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    // 3) Password check (bcrypt)
-    const hash = a.password_hash || "";
+    const hash = String(a.password_hash || "").trim();
+    if (!hash) {
+      return res.status(403).json({
+        ok: false,
+        error: "missing_password",
+        message: "This admin account has no password set.",
+      });
+    }
+
     const okPassword = await bcrypt.compare(password, hash);
     if (!okPassword) {
       return res.status(401).json({
@@ -3657,7 +4054,6 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    // 4) Normalize admin payload for token + client
     const admin = {
       adminId: a.id,
       email: a.email,
@@ -3667,7 +4063,6 @@ async function handleAdminLogin(req, res) {
       isOwner: !!a.is_owner,
     };
 
-    // 5) Sign JWT (DIAGNOSTIC WRAP so we can see the actual failure)
     let token = "";
     try {
       token = signAdminToken(admin);
@@ -3679,7 +4074,6 @@ async function handleAdminLogin(req, res) {
           : 0,
         ttl: process.env.MSS_ADMIN_JWT_TTL || "(default)",
         error: jwtErr?.message,
-        stack: jwtErr?.stack,
       });
 
       return res.status(500).json({
@@ -3689,12 +4083,7 @@ async function handleAdminLogin(req, res) {
       });
     }
 
-    // 6) Success
-    return res.json({
-      ok: true,
-      admin,
-      token,
-    });
+    return res.json({ ok: true, admin, token });
   } catch (err) {
     console.error("❌ handleAdminLogin error:", err);
     return res.status(500).json({
@@ -3705,8 +4094,260 @@ async function handleAdminLogin(req, res) {
   }
 }
 
+// ✅ Keep ONLY this binding for the legacy admin login:
 app.post("/api/admin/login", handleAdminLogin);
-app.post("/api/login", handleAdminLogin); // legacy
+
+// ---------------------------------------------------------------------
+// UNIFIED LOGIN API (admin OR teacher; slug disambiguation)
+// POST /api/login
+// Body: { email, password, slug? }
+// ---------------------------------------------------------------------
+
+async function handleUnifiedLogin(req, res) {
+  const body = req.body || {};
+  const email = String(body.email || "").trim().toLowerCase();
+  const password = String(body.password || "").trim();
+  const slug = String(body.slug || "").trim();
+
+  if (!email || !password) {
+    return res.status(400).json({
+      ok: false,
+      error: "missing_fields",
+      message: "Email and password are required.",
+    });
+  }
+
+  // Helper: choose ONE row deterministically when multiple candidates exist
+  // within the SAME school context.
+  function pickBestCandidate(rowsInSameSchool) {
+    if (!Array.isArray(rowsInSameSchool) || rowsInSameSchool.length === 0) return null;
+
+    // Prefer admin over teacher (policy: admin login wins if an email exists in both tables)
+    const adminRow = rowsInSameSchool.find((r) => String(r.actor_type) === "admin");
+    if (adminRow) return adminRow;
+
+    const teacherRow = rowsInSameSchool.find((r) => String(r.actor_type) === "teacher");
+    if (teacherRow) return teacherRow;
+
+    // Fallback: first row
+    return rowsInSameSchool[0];
+  }
+
+  try {
+    // 1) Fetch all candidate identities for this email (admins + teachers)
+    const cand = await pool.query(
+      `SELECT * FROM public.sp_login_candidates($1::text)`,
+      [email]
+    );
+
+    const rows = cand.rows || [];
+    if (!rows.length) {
+      // IMPORTANT: this means sp_login_candidates returned nothing for this email.
+      return res.status(401).json({
+        ok: false,
+        error: "invalid_credentials",
+        message: "Invalid email or password.",
+      });
+    }
+
+    // Optional: lightweight debug (no hashes)
+    console.log("[/api/login] candidates", {
+      email,
+      providedSlug: slug || null,
+      count: rows.length,
+      schools: Array.from(new Set(rows.map((r) => String(r.slug || "").trim()))),
+      actorTypes: Array.from(new Set(rows.map((r) => String(r.actor_type || "").trim()))),
+    });
+
+   // 2) If slug provided, filter to that school context
+let scoped = rows;
+if (slug) {
+  scoped = rows.filter((r) => String(r.slug || "").trim() === slug);
+  if (!scoped.length) {
+    return res.status(401).json({
+      ok: false,
+      error: "invalid_context",
+      message: "Email is not valid for that school.",
+    });
+  }
+
+  // 2b) If slug scoped but multiple actors remain (same school), pick deterministically
+  if (scoped.length > 1) {
+    const adminRow = scoped.find((r) => String(r.actor_type) === "admin");
+    const teacherRow = scoped.find((r) => String(r.actor_type) === "teacher");
+    scoped = adminRow ? [adminRow] : teacherRow ? [teacherRow] : [scoped[0]];
+  }
+} else {
+  // 2c) No slug: try deterministic choice before forcing school selection
+  const admins = scoped.filter((r) => String(r.actor_type) === "admin");
+  const teachers = scoped.filter((r) => String(r.actor_type) === "teacher");
+
+  // If exactly one admin record exists for this email, prefer it
+  if (admins.length === 1) {
+    scoped = [admins[0]];
+  }
+  // Else if exactly one teacher record exists, use it
+  else if (teachers.length === 1) {
+    scoped = [teachers[0]];
+  }
+  // Else multiple contexts -> force selection
+  else if (scoped.length > 1) {
+    const map = new Map();
+    for (const r of scoped) {
+      const key = String(r.slug || "");
+      if (!map.has(key)) {
+        map.set(key, {
+          slug: r.slug,
+          name: r.school_name,
+          school_id: r.school_id,
+          actor_types: new Set(),
+          has_pw_any: false,
+        });
+      }
+      const entry = map.get(key);
+      entry.actor_types.add(r.actor_type);
+      entry.has_pw_any = entry.has_pw_any || !!r.has_pw;
+    }
+
+    const schools = Array.from(map.values()).map((s) => ({
+      slug: s.slug,
+      name: s.name,
+      school_id: s.school_id,
+      actor_types: Array.from(s.actor_types),
+      has_pw_any: !!s.has_pw_any, // optional: helps UI messaging later
+    }));
+
+    return res.status(200).json({
+      ok: false,
+      error: "needs_school_selection",
+      message: "Select your school to continue.",
+      schools,
+    });
+  }
+}
+
+// 4) Now expect exactly one candidate
+const c = scoped[0];
+
+    // Safety checks
+    if (!c) {
+      return res.status(500).json({
+        ok: false,
+        error: "server_error",
+        message: "Login resolver returned no candidate.",
+      });
+    }
+
+    if (c.is_active === false) {
+      return res.status(403).json({
+        ok: false,
+        error: "account_inactive",
+        message: "This account is not active.",
+      });
+    }
+
+    const hash = String(c.password_hash || "").trim();
+    if (!hash) {
+      // This is the likely culprit for teacher accounts if teachers.password_hash is not populated.
+      console.warn("[/api/login] missing_password_hash", {
+        email,
+        actor_type: c.actor_type,
+        actor_id: c.actor_id,
+        slug: c.slug,
+        school_id: c.school_id,
+      });
+
+      return res.status(403).json({
+        ok: false,
+        error: "missing_password",
+        message: "This account has no password set.",
+      });
+    }
+
+    const okPassword = await bcrypt.compare(password, hash);
+    if (!okPassword) {
+      console.warn("[/api/login] bad_password", {
+        email,
+        actor_type: c.actor_type,
+        actor_id: c.actor_id,
+        slug: c.slug,
+        school_id: c.school_id,
+      });
+
+      return res.status(401).json({
+        ok: false,
+        error: "invalid_credentials",
+        message: "Invalid email or password.",
+      });
+    }
+
+    // 5) Build unified actor payload
+    const actor = {
+      actorType: String(c.actor_type || "").trim(), // 'admin' | 'teacher'
+      actorId: c.actor_id,
+      schoolId: c.school_id,
+      slug: String(c.slug || "").trim(),
+      email: String(c.email || "").trim().toLowerCase(),
+      fullName: c.full_name || "",
+
+      // role flags (admin flags will be false/null for teacher rows unless your SP supplies them)
+      isSuperAdmin: !!c.is_superadmin,
+      isOwner: !!c.is_owner,
+      isTeacherAdmin: !!c.is_teacher_admin,
+    };
+
+    // 6) JWT (DIAGNOSTIC WRAP)
+    let token = "";
+    try {
+      token = signActorToken(actor);
+    } catch (jwtErr) {
+      console.error("❌ JWT SIGN FAILED in /api/login", {
+        hasSecret: !!process.env.MSS_ACTOR_JWT_SECRET,
+        secretLen: process.env.MSS_ACTOR_JWT_SECRET
+          ? String(process.env.MSS_ACTOR_JWT_SECRET).length
+          : 0,
+        ttl: process.env.MSS_ACTOR_JWT_TTL || "(default)",
+        error: jwtErr?.message,
+        stack: jwtErr?.stack,
+      });
+
+      return res.status(500).json({
+        ok: false,
+        error: "jwt_failed",
+        message: jwtErr?.message || "JWT signing failed",
+      });
+    }
+
+    // 7) Success
+    return res.json({ ok: true, actor, token });
+  } catch (err) {
+    console.error("❌ handleUnifiedLogin error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Server error while logging in.",
+    });
+  }
+}
+
+app.post("/api/login", handleUnifiedLogin);
+
+function asyncHandler(fn) {
+  return function wrapped(req, res, next) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+//routes are here - imports above - old routes commented out
+
+const adminTeachers = adminTeachersRouter({
+  pool,
+  requireAdminOrTeacherAdmin,
+  requireSchoolCtxFromActor,
+  asyncHandler,
+});
+
+app.use("/api/admin", requireActorAuth, adminTeachers);
 
 // ---------------------------------------------------------------------
 // Invite School Sign-up (Super Admin only) — JWT
@@ -6563,18 +7204,28 @@ function buildSuggestedPromptTemplate({ preamble, language, notes, selectedMetri
 // Also accepts: selectedMetrics, metrics, default_selected_metrics (tolerant)
 // =====================================================================
 
-app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, res) => {
+// =====================================================================
+// SUGGEST (Generate a prompt template using OpenAI)
+// POST /api/admin/ai-prompts/:slug/suggest
+// body: { language?, notes?, selected_metrics? }
+// Also accepts: selectedMetrics, metrics, default_selected_metrics (tolerant)
+// Access: teacher | admin | superadmin (superadmin bypasses slug scope)
+// Scope: token.slug must match :slug unless superadmin
+// =====================================================================
+app.post("/api/admin/ai-prompts/:slug/suggest", requireStaffAuth, async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
+    // Deterministic scope gate (fixes admin failures caused by missing schoolId-in-ctx)
+    assertStaffSchoolScopeBySlug(req, slug);
+
     const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
 
     // 1) Load per-school defaults
     const ss = await getOrCreateSuggestSettings({ schoolId });
 
-    // 2) Accept request overrides
+    // 2) Accept request overrides (tolerant keys)
     const language =
       req.body?.language != null ? String(req.body.language).trim() :
       req.body?.default_language != null ? String(req.body.default_language).trim() :
@@ -6610,7 +7261,7 @@ app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, re
 
     return res.json({
       ok: true,
-      slug: schoolSlug,     // or just slug
+      slug: schoolSlug || slug,
       schoolId,
       prompt_text: ai.text,
       suggested_prompt_text: ai.text,
@@ -6618,24 +7269,37 @@ app.post("/api/admin/ai-prompts/:slug/suggest", requireAdminAuth, async (req, re
     });
   } catch (e) {
     console.error("POST /suggest failed:", e);
-    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+    return res.status(e.status || 500).json({
+      ok: false,
+      error: e.message || "server_error",
+    });
   }
 });
-// ---------------------------------------------------------------------
+
+// =====================================================================
 // PUT suggest-settings
 // Body: { preamble, default_language, default_notes, default_selected_metrics }
-// Also accepts default_metrics (transition)
-// ---------------------------------------------------------------------
-app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async (req, res) => {
+// Also accepts: default_metrics (transition)
+// Access: teacher | admin | superadmin
+// Scope: token.slug must match :slug unless superadmin
+// =====================================================================
+app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireStaffAuth, async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
+    // Deterministic scope gate
+    assertStaffSchoolScopeBySlug(req, slug);
+
     const { schoolId } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
 
     // fingerprint to confirm which handler is responding
-    console.log("[SUGGEST-SETTINGS v2] PUT", req.originalUrl, "schoolId=", schoolId);
+    console.log("[SUGGEST-SETTINGS v3] PUT", req.originalUrl, "schoolId=", schoolId, "actor=", {
+      actorType: req.actor_ctx?.actorType,
+      actorId: req.actor_ctx?.actorId,
+      slug: req.actor_ctx?.slug,
+      isSuperAdmin: !!req.actor_ctx?.isSuperAdmin,
+    });
 
     // Required
     const preamble = (req.body?.preamble != null) ? String(req.body.preamble) : null;
@@ -6644,8 +7308,8 @@ app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async 
     }
 
     // Optional
-    const default_language = (req.body?.default_language != null) ? String(req.body.default_language) : "";
-    const default_notes    = (req.body?.default_notes != null) ? String(req.body.default_notes) : "";
+    const default_language = (req.body?.default_language != null) ? String(req.body.default_language).trim() : "";
+    const default_notes    = (req.body?.default_notes != null) ? String(req.body.default_notes).trim() : "";
 
     // Accept either key during transition
     const default_selected_metrics = Array.isArray(req.body?.default_selected_metrics)
@@ -6667,11 +7331,16 @@ app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async 
       preamble: saved.preamble,
       default_language: saved.default_language,
       default_notes: saved.default_notes,
-      default_selected_metrics: Array.isArray(saved.default_selected_metrics) ? saved.default_selected_metrics : [],
+      default_selected_metrics: Array.isArray(saved.default_selected_metrics)
+        ? saved.default_selected_metrics
+        : [],
     });
   } catch (e) {
     console.error("PUT suggest-settings failed:", e);
-    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+    return res.status(e.status || 500).json({
+      ok: false,
+      error: e.message || "server_error",
+    });
   }
 });
 // =====================================================================
@@ -6925,24 +7594,36 @@ app.delete("/api/admin/reports/:slug/:submission_id/:prompt_id", requireAdminAut
 });
 
 // =====================================================================
-// Teacher Student Portal + Teacher Admin (Server.js) — CLEAN REGEN (Jan 8)
+// Teacher Student Portal + Teacher Admin (Server.js) — CLEAN REGEN (Jan 2026)
 // =====================================================================
 //
 // Assumptions (v1):
-// - We reuse the existing Admin JWT (requireAdminAuth) as the auth primitive.
-// - “Teacher identity” is resolved/created from the logged-in admin’s email
-//   within the school identified by slug.
-// - Authorization: non-superadmin must have admin_schools access to that school.
+// - Legacy path: Admin JWT (req.admin) can resolve teacher ctx via admin email.
+// - Canonical path: ACTOR JWT (req.actor) is used by new teacher_admin flows.
+// - Non-super must have admin_schools access (legacy) OR token slug match (actor).
 //
 // NOTE:
-// - Remove any older/duplicate requireTeacherCtx() definitions from server.js.
-// - Ensure these routes are mounted AFTER pool, jwt, requireAdminAuth exist.
+// - Ensure these helpers are defined AFTER pool exists.
+// - Ensure requireActorAuth runs before routes needing req.actor.
+// - Remove ALL duplicate requireSchoolCtxFromActor definitions elsewhere.
 //
+
 
 // ---------------------------------------------------------------------
 // Helper: Resolve school + teacher context from (admin JWT + slug)
-// Returns: { schoolId, teacherId, adminId, adminEmail, isSuper }
-// On failure: sends response and returns null.
+// (legacy helper; candidate for deprecation)
+//
+// Returns:
+// {
+//   schoolId,
+//   adminId,
+//   adminEmail,
+//   isSuper,
+//   teacherId | null,
+//   isAdminTeacher
+// }
+//
+// On failure: sends response + returns null
 // ---------------------------------------------------------------------
 async function requireTeacherCtxFromAdmin(req, res, slug) {
   const a = req.admin || {};
@@ -6950,7 +7631,7 @@ async function requireTeacherCtxFromAdmin(req, res, slug) {
   const adminId = Number(
     a.adminId ??
     a.admin_id ??
-    a.aid ??          // ✅ important
+    a.aid ??
     a.id ??
     a.user_id ??
     0
@@ -6967,28 +7648,28 @@ async function requireTeacherCtxFromAdmin(req, res, slug) {
   const isSuper = !!(
     a.is_superadmin ||
     a.isSuperadmin ||
-    a.isSuperAdmin ||  // ✅ important
+    a.isSuperAdmin ||
     a.isSuper ||
     a.superadmin
   );
 
   if (!adminId || !adminEmail) {
-    res.status(401).json({
-      ok: false,
-      error: "missing_admin_ctx",
-      debug: {
-        hasAdmin: !!req.admin,
-        keys: Object.keys(a || {}),
-        adminId,
-        adminEmail: adminEmail ? "(present)" : "(missing)",
-      },
-    });
+    res.status(401).json({ ok: false, error: "missing_admin_ctx" });
+    return null;
+  }
+
+  // ------------------------------------------------------------
+  // Resolve school
+  // ------------------------------------------------------------
+  const reqSlug = String(slug || "").trim();
+  if (!reqSlug) {
+    res.status(400).json({ ok: false, error: "missing_slug" });
     return null;
   }
 
   const s = await pool.query(
     `SELECT id FROM schools WHERE slug = $1 LIMIT 1`,
-    [slug]
+    [reqSlug]
   );
   if (!s.rowCount) {
     res.status(404).json({ ok: false, error: "school_not_found" });
@@ -6996,9 +7677,16 @@ async function requireTeacherCtxFromAdmin(req, res, slug) {
   }
   const schoolId = Number(s.rows[0].id);
 
+  // ------------------------------------------------------------
+  // School access check (non-super)
+  // ------------------------------------------------------------
   if (!isSuper) {
     const ok = await pool.query(
-      `SELECT 1 FROM admin_schools WHERE admin_id = $1 AND school_id = $2 LIMIT 1`,
+      `SELECT 1
+         FROM admin_schools
+        WHERE admin_id = $1
+          AND school_id = $2
+        LIMIT 1`,
       [adminId, schoolId]
     );
     if (!ok.rowCount) {
@@ -7007,14 +7695,30 @@ async function requireTeacherCtxFromAdmin(req, res, slug) {
     }
   }
 
+  // ------------------------------------------------------------
+  // Teacher lookup (explicit, no guessing)
+  // ------------------------------------------------------------
   const t = await pool.query(
-    `SELECT id FROM teachers WHERE school_id = $1 AND lower(email) = $2 LIMIT 1`,
+    `SELECT id, is_admin
+       FROM teachers
+      WHERE school_id = $1
+        AND lower(email) = $2
+      LIMIT 1`,
     [schoolId, adminEmail]
   );
 
-  let teacherId = t.rowCount ? Number(t.rows[0].id) : null;
+  let teacherId = null;
+  let isAdminTeacher = false;
 
-  if (!teacherId) {
+  if (t.rowCount) {
+    teacherId = Number(t.rows[0].id);
+    isAdminTeacher = !!t.rows[0].is_admin;
+  }
+
+  // ------------------------------------------------------------
+  // Optional: auto-create teacher ONLY if allowed
+  // ------------------------------------------------------------
+  if (!teacherId && isSuper === true) {
     const fullName = String(
       a.full_name ??
       a.fullName ??
@@ -7023,15 +7727,121 @@ async function requireTeacherCtxFromAdmin(req, res, slug) {
     ).trim() || null;
 
     const ins = await pool.query(
-      `INSERT INTO teachers (school_id, email, full_name, is_active)
-       VALUES ($1, $2, $3, TRUE)
+      `INSERT INTO teachers (school_id, email, full_name, is_active, is_admin)
+       VALUES ($1, $2, $3, TRUE, TRUE)
        RETURNING id`,
       [schoolId, adminEmail, fullName]
     );
+
     teacherId = Number(ins.rows[0].id);
+    isAdminTeacher = true;
   }
 
-  return { schoolId, teacherId, adminId, adminEmail, isSuper };
+  return {
+    schoolId,
+    adminId,
+    adminEmail,
+    isSuper,
+    teacherId,
+    isAdminTeacher,
+  };
+}
+// ---------------------------------------------------------------------
+// Canonical ctx resolver for ACTOR JWT sessions (admin OR teacher_admin)
+// - Uses req.actor ONLY (set by requireActorAuth)
+// - Enforces slug scoping unless admin superadmin
+// - Optionally hard-verifies slug->school_id matches DB
+// ---------------------------------------------------------------------
+async function requireSchoolCtxFromActor(req, res, slug) {
+  const a = req.actor || {};
+
+  const actorType = String(a.actorType || "").toLowerCase();
+  const actorId = Number(a.actorId || 0) || null;
+
+  let tokenSchoolId = (a.schoolId != null ? Number(a.schoolId) : null);
+  let tokenSlug = String(a.slug || "").trim();
+
+  const isSuperAdmin = (actorType === "admin" && a.isSuperAdmin === true);
+
+  // Must be admin (ConfigAdmin is admin + superadmin only)
+  if (actorType !== "admin") {
+    res.status(403).json({ ok: false, error: "admin_required" });
+    return null;
+  }
+
+  const reqSlug = String(slug || "").trim();
+  if (!reqSlug) {
+    res.status(400).json({ ok: false, error: "missing_slug" });
+    return null;
+  }
+
+  // Hard-verify slug exists
+  const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [reqSlug]);
+  if (!s.rowCount) {
+    res.status(404).json({ ok: false, error: "school_not_found" });
+    return null;
+  }
+  const dbSchoolId = Number(s.rows[0].id);
+
+  // Superadmin: allowed cross-school; we still return ctx based on reqSlug
+  if (isSuperAdmin) {
+    return {
+      schoolId: dbSchoolId,
+      slug: reqSlug,
+      actorType,
+      actorId,
+      isSuperAdmin,
+      isTeacherAdmin: false,
+    };
+  }
+
+  // ------------------------------------------------------------
+  // BACK-COMPAT: token missing scope -> derive from DB
+  // ------------------------------------------------------------
+  if (!tokenSchoolId || !tokenSlug) {
+    // Validate this admin is allowed to operate on reqSlug.
+    // Adjust table names to match your schema (examples below).
+    const ok = await pool.query(
+      `
+      SELECT 1
+      FROM admin_schools x
+      JOIN schools s ON s.id = x.school_id
+      WHERE x.admin_id = $1 AND s.slug = $2
+      LIMIT 1
+      `,
+      [actorId, reqSlug]
+    );
+
+    if (!ok.rowCount) {
+      res.status(403).json({ ok: false, error: "school_scope_mismatch" });
+      return null;
+    }
+
+    // “Upgrade” scope for this request
+    tokenSchoolId = dbSchoolId;
+    tokenSlug = reqSlug;
+  }
+
+  // Slug mismatch protection (non-superadmin)
+  if (tokenSlug !== reqSlug) {
+    res.status(403).json({ ok: false, error: "slug_mismatch" });
+    return null;
+  }
+
+  // SchoolId mismatch protection
+  if (dbSchoolId !== tokenSchoolId) {
+    res.status(403).json({ ok: false, error: "school_scope_mismatch" });
+    return null;
+  }
+
+  return {
+    schoolId: dbSchoolId,
+    slug: reqSlug,
+    actorType,
+    actorId,
+    isSuperAdmin: false,
+    isTeacherAdmin: false,
+  };
 }
 // ---------------------------------------------------------------------
 // Teacher Student Portal - v1 (list + detail + profile upsert)
@@ -7198,12 +8008,12 @@ app.put(
 // ---------------------------------------------------------------------
 
 // GET /api/admin/teachers?slug=...&q=...&activeOnly=1&limit=200&offset=0
-app.get("/api/admin/teachers", requireAdminAuth, async (req, res) => {
+app.get("/api/admin/teachers", requireActorAuth, requireAdminOrTeacherAdmin, async (req, res) => {
   try {
     const slug = String(req.query.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    const ctx = await requireSchoolCtxFromActor(req, res, slug);
     if (!ctx) return;
 
     const q = (req.query.q != null ? String(req.query.q) : "").trim() || null;
@@ -7231,74 +8041,28 @@ app.get("/api/admin/teachers", requireAdminAuth, async (req, res) => {
 
     return res.json({ ok: true, teachers: rows });
   } catch (err) {
-    console.error("GET /api/admin/teachers failed", err);
-    return res.status(500).json({ ok: false, error: "internal_error" });
-  }
+  console.error("GET /api/admin/teachers failed", err);
+  return res.status(500).json({
+    ok: false,
+    error: "internal_error",
+    detail: String(err?.message || err),
+    code: err?.code || null
+  });
+}
 });
 
 // PUT /api/admin/teachers?slug=...
 // body: { teacher_id?, email, full_name?, is_active? }
 // PUT /api/admin/teachers?slug=...
 // body: { teacher_id?, email, full_name?, is_active?, is_on_duty? }
-app.put("/api/admin/teachers", requireAdminAuth, async (req, res) => {
-  try {
-    const slug = String(req.query.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-
-    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
-    if (!ctx) return;
-
-    const teacherId = req.body.teacher_id != null ? Number(req.body.teacher_id) : null;
-    const email = String(req.body.email || "").trim();
-    const fullName =
-      (req.body.full_name != null ? String(req.body.full_name) : "").trim() || null;
-
-    const isActiveRaw = req.body.is_active;
-    const isActive =
-      isActiveRaw == null
-        ? true
-        : String(isActiveRaw) === "1" || String(isActiveRaw).toLowerCase() === "true";
-
-    const isOnDutyRaw = req.body.is_on_duty;
-    const isOnDuty =
-      isOnDutyRaw == null
-        ? false
-        : String(isOnDutyRaw) === "1" || String(isOnDutyRaw).toLowerCase() === "true";
-
-    if (!email) return res.status(400).json({ ok: false, error: "missing_email" });
-
-    const sql = `
-      SELECT * FROM public.sp_teacher_upsert(
-        p_school_id   := $1,
-        p_email       := $2,
-        p_teacher_id  := $3,
-        p_full_name   := $4,
-        p_is_active   := $5,
-        p_is_on_duty  := $6
-      )
-    `;
-
-    const { rows } = await pool.query(sql, [
-      ctx.schoolId,
-      email,
-      teacherId,
-      fullName,
-      isActive,
-      isOnDuty,
-    ]);
-
-    const out = rows && rows[0] ? rows[0] : null;
-    if (!out || out.ok !== true) {
-      return res.status(400).json({ ok: false, error: "upsert_failed", detail: out || null });
-    }
-
-    return res.json({ ok: true, teacher: out });
-  } catch (err) {
-    console.error("PUT /api/admin/teachers failed", err);
-    return res.status(500).json({ ok: false, error: "internal_error" });
-  }
+//REMOVED TO ROUTES: app.put("/api/admin/teachers", requireActorAuth, requireAdminOrTeacherAdmin, async (req, res) => {
+  
+// ---------------------------------------------------------------------
+// AUTH QA: deterministic "who am I"
+// ---------------------------------------------------------------------
+app.get("/api/auth/whoami", requireActorAuth, (req, res) => {
+  return res.json({ ok: true, mode: req.auth?.mode || null, actor: req.actor || null });
 });
-
 // ---------------------------------------------------------------------
 // Teacher Admin — On Duty (v1) (simple)
 // ---------------------------------------------------------------------
@@ -7310,12 +8074,12 @@ app.put("/api/admin/teachers", requireAdminAuth, async (req, res) => {
 // - Reject setting on-duty for an inactive teacher
 //
 
-app.get("/api/admin/teachers/on-duty", requireAdminAuth, async (req, res) => {
+app.get("/api/admin/teachers/on-duty", requireActorAuth, requireAdminOrTeacherAdmin, async (req, res) => {
   try {
     const slug = String(req.query.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    const ctx = await requireSchoolCtxFromActor(req, res, slug);
     if (!ctx) return;
 
     const cur = await pool.query(
@@ -7344,13 +8108,13 @@ app.get("/api/admin/teachers/on-duty", requireAdminAuth, async (req, res) => {
 });
 // PUT /api/admin/teachers/on-duty?slug=...
 // body: { teacher_id?, is_on_duty? }  // if teacher_id missing OR is_on_duty false => clear all on-duty
-app.put("/api/admin/teachers/on-duty", requireAdminAuth, async (req, res) => {
+app.put("/api/admin/teachers/on-duty", requireActorAuth, requireAdminOrTeacherAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
     const slug = String(req.query.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    const ctx = await requireSchoolCtxFromActor(req, res, slug);
     if (!ctx) return;
 
     const teacherId =
@@ -7366,7 +8130,6 @@ app.put("/api/admin/teachers/on-duty", requireAdminAuth, async (req, res) => {
 
     await client.query("BEGIN");
 
-    // clear any existing on-duty teacher (school-scoped)
     await client.query(
       `UPDATE teachers
           SET is_on_duty = false
@@ -7377,10 +8140,9 @@ app.put("/api/admin/teachers/on-duty", requireAdminAuth, async (req, res) => {
 
     let newOnDuty = null;
 
-    // set new on-duty (optional)
     if (isOnDuty && Number.isInteger(teacherId) && teacherId > 0) {
       const t = await client.query(
-        `SELECT id, email, full_name, is_active
+        `SELECT id, is_active
            FROM teachers
           WHERE school_id = $1
             AND id = $2
@@ -7503,19 +8265,32 @@ app.post("/api/admin/notes", requireAdminAuth, async (req, res) => {
 //Auth and role check Jan 11
 // GET /api/admin/me  (authoritative admin context from DB-backed requireAdminAuth)
 app.get("/api/admin/me", requireAdminAuth, async (req, res) => {
-  const a = req.admin || {};
-  return res.json({
-    ok: true,
-    admin: {
-      id: a.id ?? a.admin_id ?? null,
-      email: a.email ?? a.admin_email ?? null,
-      full_name: a.full_name ?? null,
-      is_superadmin: a.is_superadmin === true,
-      school_id: a.school_id ?? null
-    }
-  });
-});
+  try {
+    const p = req.adminAuth?.payload || {};
 
+    // actor token uses actorId; admin token may use adminId
+    const adminId = Number(p.adminId || p.actorId || 0);
+    if (!adminId) return res.status(401).json({ ok: false, error: "bad_admin_id" });
+
+    const q = await pool.query(
+      `SELECT id, email, full_name, is_superadmin, is_owner, school_id, is_active
+       FROM admins
+       WHERE id = $1
+       LIMIT 1`,
+      [adminId]
+    );
+
+    if (!q.rowCount) return res.status(401).json({ ok: false, error: "admin_not_found" });
+
+    const a = q.rows[0];
+    if (a.is_active === false) return res.status(403).json({ ok: false, error: "admin_inactive" });
+
+    return res.json({ ok: true, admin: a });
+  } catch (e) {
+    console.error("❌ /api/admin/me error:", e);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
 //=================== AI Prompt CRUD =======================//
 app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
   try {

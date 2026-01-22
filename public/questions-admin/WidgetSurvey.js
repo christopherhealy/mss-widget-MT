@@ -38,15 +38,38 @@ function getAdminSession() {
   try {
     var raw = window.localStorage.getItem(ADMIN_LS_KEY);
     if (!raw) return null;
+
     var session = JSON.parse(raw);
-    if (!session || !session.adminId || !session.email) return null;
+    if (!session) return null;
+
+    // Require email always
+    var email = String(session.email || "").trim().toLowerCase();
+    if (!email) return null;
+
+    // Determine actor identity (admin OR teacher)
+    var actorType = String(session.actorType || "").trim().toLowerCase();
+    var hasAdmin = session.adminId != null;
+    var hasTeacher = session.teacherId != null;
+
+    if (!(actorType === "admin" || actorType === "teacher" || hasAdmin || hasTeacher)) {
+      return null;
+    }
+
+    // Normalize fields so the rest of the file can rely on them
+    session.email = email;
+    session.actorType = actorType || (hasAdmin ? "admin" : hasTeacher ? "teacher" : "");
+
+    // Provide compatibility aliases (optional but practical)
+    if (session.actorId == null) {
+      session.actorId = hasAdmin ? session.adminId : hasTeacher ? session.teacherId : null;
+    }
+
     return session;
   } catch (e) {
-    console.warn("[WidgetSurvey] Failed to read admin session", e);
+    console.warn("[WidgetSurvey] Failed to read session", e);
     return null;
   }
 }
-
 /**
  * Ensure there is a valid admin session. If not:
  *  - show status (if available)
@@ -54,6 +77,7 @@ function getAdminSession() {
  *  - attempt window.close()
  *  - throw to stop call stack
  */
+
 function requireAdminSession(reason) {
   var session = getAdminSession();
   if (session) return session;
@@ -84,6 +108,39 @@ function confirmSchoolChange(nextLabel) {
       (nextLabel ? " to:\n\n" + nextLabel : "") +
       "\n\nPress OK to continue, or Cancel to stay on the current school."
   );
+}
+
+function getSessionToken(session) {
+  if (!session) return "";
+  return String(
+    session.token ||
+      session.jwt ||
+      session.accessToken ||
+      session.access_token ||
+      session.admin_jwt ||
+      session.adminJwt ||
+      session.actor_jwt ||
+      session.actorJwt ||
+      ""
+  ).trim();
+}
+
+async function adminFetch(url, opts) {
+  if (!opts) opts = {};
+  var session = requireAdminSession();
+  var tok = getSessionToken(session);
+
+  var headers = opts.headers ? opts.headers : {};
+  // don’t clobber caller headers
+  if (tok && !headers.Authorization && !headers.authorization) {
+    headers.Authorization = "Bearer " + tok;
+  }
+  opts.headers = headers;
+
+  // avoid caching surprises in admin tools
+  if (!opts.cache) opts.cache = "no-store";
+
+  return fetch(url, opts);
 }
 
 /* -----------------------------------------------------------------------
@@ -186,7 +243,7 @@ async function wsFetchSchoolsForWidgetSurvey() {
     var query = qs.toString();
     if (query) url += "?" + query;
 
-    var res = await fetch(url, { cache: "no-store" });
+    var res = await adminFetch(url, { cache: "no-store" });
     var data = await res.json().catch(function () {
       return {};
     });
@@ -658,49 +715,60 @@ function wireAddEdit() {
   }
 
   // Save
-  var btnSave = $("aeSave");
-  if (btnSave) {
-    btnSave.addEventListener("click", function () {
-      var v = ta.value.trim();
-      if (!v) {
-        setStatus("Nothing to save", false);
-        return;
-      }
+ // Save
+var btnSave = $("aeSave");
+if (btnSave) {
+  btnSave.addEventListener("click", async function () {
+    var v = ta.value.trim();
+    if (!v) {
+      setStatus("Nothing to save", false);
+      return;
+    }
 
-      var isPub = readIsPublic();
-      applyToSurvey(v, isPub, aeMode);
+    var isPub = readIsPublic();
+    applyToSurvey(v, isPub, aeMode);
 
-      aeDirty = false;
-      render();
+    aeDirty = false;
+    render();
+
+    setStatus("Saving to server…", false);
+    var r = await saveToServer();
+    if (r === "server") {
       setStatus("Saved", true);
-    });
-  }
+    }
+  });
+}
 
   // Save & New
-  var btnSaveNew = $("aeSaveNew");
-  if (btnSaveNew) {
-    btnSaveNew.addEventListener("click", function () {
-      var v = ta.value.trim();
-      if (!v) {
-        setStatus("Nothing to save", false);
-        return;
-      }
+ // Save & New
+var btnSaveNew = $("aeSaveNew");
+if (btnSaveNew) {
+  btnSaveNew.addEventListener("click", async function () {
+    var v = ta.value.trim();
+    if (!v) {
+      setStatus("Nothing to save", false);
+      return;
+    }
 
-      var isPub = readIsPublic();
-      applyToSurvey(v, isPub, aeMode);
+    var isPub = readIsPublic();
+    applyToSurvey(v, isPub, aeMode);
 
-      render();
+    render();
 
-      // Reset modal for next add
-      ta.value = "";
-      if (pubEl) pubEl.checked = true;
-      aeMode = "add";
-      aeIndex = -1;
-      aeDirty = false;
+    setStatus("Saving to server…", false);
+    var r = await saveToServer();
+    if (r !== "server") return;
 
-      setStatus("Saved. Ready for next.", true);
-    });
-  }
+    // Reset modal for next add ONLY after server success
+    ta.value = "";
+    if (pubEl) pubEl.checked = true;
+    aeMode = "add";
+    aeIndex = -1;
+    aeDirty = false;
+
+    setStatus("Saved. Ready for next.", true);
+  });
+}
 
   // Close (with optional save)
   var btnClose = $("aeClose");
@@ -721,8 +789,14 @@ function wireAddEdit() {
 
           render();
           aeDirty = false;
-          showOverlay("aeOverlay", false);
-          setStatus("Saved", true);
+
+          setStatus("Saving to server…", false);
+          saveToServer().then(function (r) {
+            if (r === "server") {
+              showOverlay("aeOverlay", false);
+              setStatus("Saved", true);
+            }
+          });
           return;
         }
 
@@ -879,7 +953,7 @@ async function saveToServer() {
       "/questions";
     // console.log("[WidgetSurvey] saving questions to", url, payload);
 
-    var res = await fetch(url, {
+    var res = await adminFetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -964,7 +1038,7 @@ async function load() {
   try {
     // Resolve assessment for slug
     // console.log("[WidgetSurvey] resolving assessment for slug=", SLUG, "via", getAdminAssessUrl());
-    var aRes = await fetch(getAdminAssessUrl() + "?ts=" + Date.now(), {
+    var aRes = await adminFetch(getAdminAssessUrl() + "?ts=" + Date.now(), {
       cache: "no-store",
     });
     if (!aRes.ok) throw new Error("assessment lookup failed: " + aRes.status);
@@ -986,7 +1060,7 @@ async function load() {
     var qUrl =
       QUESTIONS_BASE_URL + encodeURIComponent(ASSESSMENT_ID) + "/questions";
 
-    var qRes = await fetch(qUrl + "?ts=" + Date.now(), {
+    var qRes = await adminFetch(qUrl + "?ts=" + Date.now(), {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
@@ -1100,9 +1174,17 @@ async function finishedFlow() {
 function confirmRemove(i) {
   twoBtnConfirm("Remove this question?", "Cancel", "Remove").then(function (ok) {
     if (!ok) return;
+
+    // remove locally
     survey.splice(i, 1);
     render();
-    setStatus("Question removed");
+
+    // persist
+    setStatus("Saving delete…", false);
+    saveToServer().then(function (r) {
+      if (r === "server") setStatus("Deleted", true);
+      else setStatus("Delete failed to save", false);
+    });
   });
 }
 
@@ -1294,15 +1376,6 @@ function openHelpFor(index) {
     });
 }
 
-const helpCloseX = document.getElementById("helpCloseX");
-if (helpCloseX) {
-  helpCloseX.addEventListener("click", () => {
-    // Reuse your existing cancel/close path
-    const btn = document.getElementById("helpCancel");
-    if (btn) btn.click();
-    else closeHelpOverlay?.(); // if you have a close function
-  });
-}
 
 function wireHelpModal() {
   // Avoid double-binding if wireHelpModal() is ever called again
