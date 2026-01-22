@@ -551,7 +551,85 @@
       return session;
     };
   }
+  // ============================================================
+  // Legacy compatibility shim (GLOBAL exports)
+  // ============================================================
 
+  function readLegacyAdminSession() {
+    // 1) Prefer canonical session (new)
+    const s = readSession();
+    if (s && typeof s === "object") return s;
+
+    // 2) Fall back to legacy admin session keys
+    for (let i = 0; i < LS_LEGACY_ADMIN_SESSION_KEYS.length; i++) {
+      const raw = readLS(LS_LEGACY_ADMIN_SESSION_KEYS[i]);
+      const legacy = raw ? safeJsonParse(raw) : null;
+      if (legacy && typeof legacy === "object") return legacy;
+    }
+    return null;
+  }
+
+  function readAnyToken() {
+    // 1) Canonical token
+    const t = readToken();
+    if (t) return t;
+
+    // 2) Legacy token keys
+    for (let i = 0; i < LS_LEGACY_ADMIN_TOKEN_KEYS.length; i++) {
+      const raw = String(readLS(LS_LEGACY_ADMIN_TOKEN_KEYS[i]) || "").trim();
+      if (raw) return raw;
+    }
+
+    // 3) Sometimes legacy session stored a token
+    const s = readLegacyAdminSession();
+    const st = String(
+      s?.token || s?.jwt || s?.accessToken || s?.access_token || s?.admin_jwt || s?.adminJwt || ""
+    ).trim();
+    return st || "";
+  }
+
+  function requireAdminSession(reason) {
+    const sess = readLegacyAdminSession();
+    const email = String(sess?.email || "").trim();
+    const tok = readAnyToken();
+
+    // minimal “admin presence” gate
+    if (email && tok) return sess;
+
+    const msg = reason || "Your admin session has ended. Please sign in again.";
+    try { console.warn("[MSSClient] requireAdminSession failed:", { email: !!email, tok: !!tok }); } catch (_) {}
+
+    // keep diagnostics sticky (your design intent)
+    writeLS(LS_LAST_GLOBAL_ERROR, JSON.stringify({
+      kind: "mss_require_admin_session_failed",
+      at: nowIso(),
+      reason: msg,
+      href: String(location.href || ""),
+      email_present: !!email,
+      token_present: !!tok,
+      session_summary: summarizeSession(sess),
+    }));
+
+    // redirect
+    try { location.href = LOGIN_URL; } catch (_) {}
+    throw new Error("requireAdminSession_failed");
+  }
+
+  function adminHeaders(extra) {
+    const tok = readAnyToken();
+    const h = Object.assign({}, extra || {});
+    if (tok && !h.Authorization && !h.authorization) h.Authorization = "Bearer " + tok;
+    return h;
+  }
+
+  // EXPOSE GLOBALS (critical)
+  window.requireAdminSession = requireAdminSession;
+  window.adminHeaders = adminHeaders;
+
+  // Optional: expose canonical readers for debugging
+  window.mssReadSession = readSession;
+  window.mssReadToken = readToken;
+  window.mssReadAnyToken = readAnyToken;
   if (typeof window.adminHeaders !== "function") {
     window.adminHeaders = function adminHeaders(extra = {}) {
       const token = window.MSSClient.readToken();
