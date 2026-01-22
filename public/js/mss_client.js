@@ -568,7 +568,6 @@
     }
     return null;
   }
-
   function readAnyToken() {
     // 1) Canonical token
     const t = readToken();

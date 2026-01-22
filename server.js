@@ -3154,7 +3154,6 @@ app.get("/api/assessments/:assessmentId/questions", async (req, res) => {
     res.status(500).json({ questions: [], error: "Internal server error" });
   }
 });
-
 //==== Nov 28 Qs not saving bug =====//
 
 app.put("/api/assessments/:assessmentId/questions", async (req, res) => {
