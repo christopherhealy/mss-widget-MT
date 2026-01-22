@@ -1,12 +1,7 @@
 {
   "version": 2,
 
-  "builds": [
-    {
-      "src": "public/**",
-      "use": "@vercel/static"
-    }
-  ],
+  "outputDirectory": "public",
 
   "rewrites": [
     {
@@ -20,16 +15,12 @@
       "handle": "filesystem"
     },
     {
-      "src": "^/(admin-login|admin-home|config-admin|admin-prompt|js|css|images)/.*",
-      "dest": "/public/$1/$2"
-    },
-    {
       "src": "^/$",
-      "dest": "/public/index.html"
+      "dest": "/index.html"
     },
     {
       "src": "^(?!/api/).*$",
-      "dest": "/public/index.html"
+      "dest": "/index.html"
     }
   ]
 }
