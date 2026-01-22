@@ -1,26 +1,18 @@
 {
   "version": 2,
 
-  "outputDirectory": "public",
-
   "rewrites": [
     {
       "source": "/api/:path*",
       "destination": "https://api.eslsuccess.club/api/:path*"
-    }
-  ],
-
-  "routes": [
-    {
-      "handle": "filesystem"
     },
     {
-      "src": "^/$",
-      "dest": "/index.html"
+      "source": "/",
+      "destination": "/index.html"
     },
     {
-      "src": "^(?!/api/).*$",
-      "dest": "/index.html"
+      "source": "/:path*",
+      "destination": "/index.html"
     }
   ]
 }

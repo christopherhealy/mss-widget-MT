@@ -67,3 +67,4 @@ mss-git.sh
 *.rej
 *.patch
 *.bak~
+.vercel
