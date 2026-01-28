@@ -289,6 +289,11 @@ function assertStaffSchoolScopeBySlug(req, slug) {
     throw e;
   }
 
+  // ✅ SUPER ADMIN BYPASS: allow cross-school access
+  if (ctx.actorType === "admin" && ctx.isSuperAdmin === true) {
+    return;
+  }
+
   // If token carries slug, enforce match
   if (tokenSlug && tokenSlug !== want) {
     const e = new Error("school_scope_mismatch");
