@@ -12,32 +12,47 @@ console.log("✅ AIPromptManager.js loaded");
   "use strict";
   const $ = (id) => document.getElementById(id);
 
-  // =====================================================================
-  // AUTH (canonical): MSSClient + actor JWT
-  // Teachers, Admins, Super Admins can use Prompt Manager (within their school scope)
-  // =====================================================================
-  if (!window.MSSClient) {
-    console.error("[AIPromptManager] MSSClient not loaded");
-    window.location.href = "/admin-login/AdminLogin.html?reason=mssclient_missing";
-    throw new Error("mssclient_missing");
-  }
+    // =====================================================================
+    // MSSClient boot (canonical)
+    // - single bootGuard call (do NOT call bootGuard twice)
+    // - establishes session, slug, and apiFetch
+    // =====================================================================
+    if (!window.MSSClient) {
+      console.error("[AIPromptManager] MSSClient not loaded");
+      window.location.href = "/admin-login/AdminLogin.html?reason=mssclient_missing";
+      throw new Error("mssclient_missing");
+    }
 
-  // One-time boot: establishes canonical session + slug + authenticated fetch
-  const boot = window.MSSClient.bootGuard({
-    allow: ["admin", "teacher"],
-    requireSlug: true,
-  });
+    // One-time boot: establishes canonical session + slug + authenticated fetch
+    // NOTE: allow only the roles that should access THIS page
+    const boot = window.MSSClient.bootGuard({
+      allow: ["admin", "teacher"],     // Prompt Manager is for staff in a school
+      requireSlug: true,
+      // requireToken: true is the default; we WANT the actor token for API calls
+      // so do NOT set requireToken:false here
+    });
 
-  const session = boot.session;
-  const apiFetch = boot.apiFetch;
-  const currentSlug = String(boot.slug || "").trim(); // canonical school scope for this page
+    const session = boot.session;
+    const apiFetch = boot.apiFetch;
+    const currentSlug = String(boot.slug || "").trim(); // canonical school scope for this page
 
-  console.log("[AIPromptManager] boot ok", {
-    actorType: session?.actorType,
-    isSuperAdmin: !!session?.isSuperAdmin,
-    isTeacherAdmin: !!session?.isTeacherAdmin,
-    slug: currentSlug,
-  });
+    console.log("[AIPromptManager] boot ok", {
+      actorType: session?.actorType,
+      isSuperAdmin: !!session?.isSuperAdmin,
+      isTeacherAdmin: !!session?.isTeacherAdmin,
+      slug: currentSlug,
+    });
+
+    function updateSlugInUrl(slug) {
+      if (!slug) return;
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("slug", slug);
+        window.history.replaceState({}, "", url.toString());
+      } catch (e) {
+        console.warn("[AIPromptManager] Could not update URL slug", e);
+      }
+    }
 
   // Canonical JSON helper (ensures auth + school context)
   async function apiJson(url, opts) {
@@ -1239,13 +1254,17 @@ console.log("✅ AIPromptManager.js loaded");
   // Close behaviour
   // =====================================================================
 
-  function handleClosePage() {
-    try {
-      window.close();
-    } catch {
-      /* noop */
-    }
-    window.location.href = `/admin/SchoolPortal.html?slug=${encodeURIComponent(currentSlug)}`;
+   function handleClosePage() {
+    try { window.close(); } catch {}
+
+    const isTeacher = session?.actorType === "teacher";
+    const isTeacherAdmin = !!session?.isTeacherAdmin;
+
+    const dest = (isTeacher && !isTeacherAdmin)
+      ? `/admin-home/AdminHome.html?slug=${encodeURIComponent(currentSlug)}`
+      : `/admin/SchoolPortal.html?slug=${encodeURIComponent(currentSlug)}`;
+
+    window.location.href = dest;
   }
 // =====================================================================
 // Refresh (prompts list)

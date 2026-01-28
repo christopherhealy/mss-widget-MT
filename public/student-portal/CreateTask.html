@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Create Task Template | ESL Success</title>
+
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <style>
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
+    .muted { color: #666; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; background:#fff; }
+
+    .status { margin: 10px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid #ddd; background:#fff; display:none; }
+    .status.ok { background:#eaffea; border-color:#9be19b; }
+    .status.warn { background:#fff7e5; border-color:#ffd37a; }
+    .status.error { background:#ffeaea; border-color:#ff9d9d; }
+
+    .btn { padding:8px 10px; border-radius: 8px; border:1px solid #ccc; background:#f7f7f7; cursor:pointer; }
+    .btn.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+    .btn:disabled { opacity:0.6; cursor:not-allowed; }
+
+    .input, select, textarea { width:100%; padding: 8px; border-radius: 8px; border: 1px solid #ddd; background:#fff; }
+    textarea { min-height: 90px; }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .layout { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; background: #fff; }
+    .card h2 { margin: 0 0 10px; font-size: 16px; }
+
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btnrow { display:flex; gap:10px; flex-wrap:wrap; }
+
+    label { display:block; font-size: 12px; color:#444; margin: 6px 0; }
+    .hint { font-size: 12px; color:#666; margin-top: 6px; }
+    code { background:#f2f2f2; padding:2px 5px; border-radius:6px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div>
+        <div class="muted" style="font-size:12px;">Student Portal</div>
+        <h1 style="margin:4px 0 0; font-size:20px;">Create Task Template</h1>
+        <div class="muted" style="margin-top:6px;">
+          Creates a reusable template (stored in <code>student_tasks</code> with <code>student_id = NULL</code>).
+          Later, the teacher assigns it to a student (clone + new token).
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center;">
+        <span class="pill" id="pill-slug">slug: —</span>
+        <button class="btn" id="btn-back">Back</button>
+      </div>
+    </div>
+
+    <div id="status-top" class="status"></div>
+
+    <div class="layout">
+      <!-- LEFT: Template details -->
+      <div class="card">
+        <h2>Template details</h2>
+
+        <label for="tpl-title">Template title</label>
+        <input id="tpl-title" class="input" type="text" placeholder="e.g., Days of the Week" autocomplete="off" />
+
+        <div class="grid2" style="margin-top:12px;">
+          <div>
+            <label for="widget-path">Widget path</label>
+            <select id="widget-path" class="input"></select>
+            <div class="hint">Stored in <code>student_tasks.widget_path</code></div>
+          </div>
+          <div>
+            <label for="dashboard-path">Dashboard path</label>
+            <select id="dashboard-path" class="input"></select>
+            <div class="hint">Stored in <code>student_tasks.dashboard_path</code></div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:12px;">
+          <div>
+            <label for="ai-prompt-id">AI Prompt ID (optional)</label>
+            <input id="ai-prompt-id" class="input mono" type="text" placeholder="e.g., 12" inputmode="numeric" autocomplete="off" />
+            <div class="hint">Stored in <code>student_tasks.ai_prompt_id</code></div>
+          </div>
+          <div>
+            <label for="is-active">Active</label>
+            <select id="is-active" class="input">
+              <option value="true" selected>true</option>
+              <option value="false">false</option>
+            </select>
+            <div class="hint">Templates can be “removed” by setting inactive.</div>
+          </div>
+        </div>
+
+        <label for="widget-config" style="margin-top:12px;">Widget config JSON (optional)</label>
+        <textarea id="widget-config" class="input mono" placeholder='{"no_help":true,"time_limit_sec":60}'></textarea>
+        <div class="hint">Stored in <code>student_tasks.widget_config</code> (JSONB).</div>
+      </div>
+
+      <!-- RIGHT: Questions + Create -->
+      <div>
+        <div class="card">
+          <h2>Questions</h2>
+
+          <label for="question-ids">Question IDs (CSV)</label>
+          <input id="question-ids" class="input mono" type="text" placeholder="e.g., 101,102,103" autocomplete="off" />
+          <div class="hint">
+            MVP input so you can create templates immediately. Later we’ll replace this with a real picker.
+            Stored in <code>student_tasks.question_ids</code> (JSON array).
+          </div>
+
+          <div style="margin-top:12px;" class="btnrow">
+            <button class="btn primary" id="btn-create-template" type="button">Create template</button>
+            <button class="btn" id="btn-copy-template-id" type="button" disabled>Copy template ID</button>
+            <button class="btn" id="btn-open-templates" type="button">Open template list</button>
+          </div>
+
+          <div id="status-save" class="status" style="margin-top:12px;"></div>
+
+          <div class="card" style="margin-top:12px; background:#f8fafc;">
+            <div><strong>Template ID:</strong> <span id="out-template-id">—</span></div>
+            <div style="margin-top:6px;"><strong>Title:</strong> <span id="out-template-title">—</span></div>
+            <div style="margin-top:6px;"><strong>Note:</strong> This template should now appear in Student Profile → “Assign a Task”.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer style="margin-top:16px;">
+      <span class="pill">Build: <span id="build-ts">—</span></span>
+      <span class="pill">Route: <code>/student-portal/CreateTask.html</code></span>
+    </footer>
+  </div>
+
+  <script src="/student-portal/CreateTask.js?v=4"></script>
+</body>
+</html>

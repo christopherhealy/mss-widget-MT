@@ -1756,6 +1756,21 @@ async function onSubmitClick() {
   if (questionText) {
     fd.append("question", questionText);
   }
+  // Read task token from URL (Widget.html?task=...)
+  const taskToken = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search || "");
+      return String(p.get("task") || "").trim();
+    } catch {
+      return "";
+    }
+  })();
+
+  // ⬇️ belt+suspenders: send task token in body too
+  if (taskToken) {
+    fd.append("task_token", taskToken);
+    fd.append("taskToken", taskToken);
+  }
 
   // ⬇️ still send slug in the body as well (belt + suspenders)
   if (CURRENT_SLUG) fd.append("slug", CURRENT_SLUG);
@@ -1842,26 +1857,49 @@ async function onSubmitClick() {
           // (re-use the same canonical text)
           const questionTextForDb = questionText;
 
-         const dbPayload = {
-             slug: CURRENT_SLUG,
+        // ------------------------------------------------------------
+        // Build payload for DB_SUBMIT (store MSS / dev results)
+        // ------------------------------------------------------------
 
-            // ✅ restore question text
-           question: questionText,
+          // Extract task token from URL if present
+          const taskToken = (() => {
+            try {
+              const p = new URLSearchParams(window.location.search || "");
+              return String(p.get("task") || "").trim();
+            } catch {
+              return "";
+            }
+          })();
 
-           // ids
-          question_id: questionId ?? null,
-          questionId: questionId ?? null,
+          const dbPayload = {
+            // Scope
+            slug: CURRENT_SLUG,
 
-         // ✅ duration for WPM
-         length_sec: lengthSecForSubmit,
+            // ✅ Task context (CRITICAL for task-mode submissions)
+            ...(taskToken ? { task_token: taskToken, taskToken } : {}),
 
-         studentId: null,
-         mss: body,
-         help_level,
-         help_surface,
-         widget_variant,
-         dashboard_variant,
-       };
+            // Question content
+            question: questionText || null,
+
+            // Question identifiers (belt + suspenders)
+            question_id: questionId ?? null,
+            questionId: questionId ?? null,
+
+            // ✅ Duration for WPM calculation
+            length_sec: lengthSecForSubmit ?? null,
+
+            // Student resolved server-side (task mode overrides)
+            studentId: null,
+
+            // Raw MSS / Vox (or dev-mode) payload
+            mss: body,
+
+            // UX / analytics metadata
+            help_level,
+            help_surface,
+            widget_variant,
+            dashboard_variant,
+          };
 
           console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
 

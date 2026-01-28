@@ -845,40 +845,50 @@ function escHtml(s) {
 }
 
 function showModalHtml(title, html) {
-  const ov = document.getElementById("mssModalOverlay");
-  const t  = document.getElementById("mssModalTitle");
-  const b  = document.getElementById("mssModalBody");
-  const x  = document.getElementById("mssModalCloseX");
+  const backdrop = document.getElementById("portal-transcript-backdrop");
+  const body = document.getElementById("portal-transcript-body");
+  const titleEl = document.getElementById("portal-transcript-title");
+  const subtitleEl = document.getElementById("portal-transcript-subtitle");
+  const closeBtn = document.getElementById("portal-transcript-close");
+  const okBtn = document.getElementById("portal-transcript-ok");
 
-  if (!ov || !t || !b) {
-    console.warn("[Portal] MSS modal missing; falling back to console only.");
-    return;
+  if (!backdrop || !body) {
+    console.error("Modal elements missing in DOM", {
+      hasBackdrop: !!backdrop,
+      hasBody: !!body,
+    });
+    return null;
   }
 
-  t.textContent = title || "Notice";
-  b.innerHTML = html || "";
-  ov.classList.add("show");
-  ov.setAttribute("aria-hidden", "false");
+  if (titleEl) titleEl.textContent = title || "Viewer";
+  if (subtitleEl) subtitleEl.textContent = "";
+  body.innerHTML = html || "";
+  backdrop.classList.remove("hidden");
 
-  const close = () => {
-    ov.classList.remove("show");
-    ov.setAttribute("aria-hidden", "true");
-  };
+  const close = () => backdrop.classList.add("hidden");
 
-  if (x) x.onclick = close;
-  ov.onclick = (e) => { if (e.target === ov) close(); };
+  if (closeBtn && !closeBtn._mssBound) {
+    closeBtn.addEventListener("click", close);
+    closeBtn._mssBound = true;
+  }
+  if (okBtn && !okBtn._mssBound) {
+    okBtn.addEventListener("click", close);
+    okBtn._mssBound = true;
+  }
 
-  const onKey = (ev) => {
-    if (ev.key === "Escape") {
-      close();
-      document.removeEventListener("keydown", onKey);
-    }
-  };
-  document.addEventListener("keydown", onKey);
+  // click outside closes
+  if (!backdrop._mssBound) {
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) close();
+    });
+    backdrop._mssBound = true;
+  }
 
   return { close };
 }
 
+// expose globally so showTranscript can always call it
+window.showModalHtml = showModalHtml;
 // Stylish confirm using MSS modal
 // - Relies on escHtml(...) and showModalHtml(...)
 // - Resolves TRUE on OK, FALSE on cancel, X, Escape, or backdrop click
@@ -1724,6 +1734,85 @@ function confirmPortalModal({ title = "Confirm", body = "", okText = "OK", cance
 
     wireRowActionSelects();
   }
+// ------------------------------------------------------------
+// Transcript modal helper (SchoolPortal - Submissions)
+// ------------------------------------------------------------
+function pickTranscriptFromRow(row) {
+  if (!row) return "";
+
+  const direct =
+    row.transcript_clean ??
+    row.transcript ??
+    row.transcriptRaw ??
+    row.transcriptClean ??
+    null;
+
+  if (direct) return String(direct);
+
+  const m = row.meta || row.mss || null;
+  if (m && typeof m === "object") {
+    if (m.transcript) return String(m.transcript);
+    if (m.results?.transcript) return String(m.results.transcript);
+  }
+
+  return "";
+}
+
+function showTranscript(rowOrId) {
+  // local escape (guaranteed)
+  const esc = (s) =>
+    String(s || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  // Resolve row
+  let row = rowOrId;
+
+  // Extract transcript from common fields
+  const txt =
+    row?.transcript_clean ??
+    row?.transcript ??
+    row?.transcriptRaw ??
+    row?.transcriptClean ??
+    row?.meta?.transcript ??
+    row?.mss?.transcript ??
+    row?.meta?.results?.transcript ??
+    row?.mss?.results?.transcript ??
+    "";
+
+  if (!txt) {
+    if (typeof window.showWarning === "function") {
+      window.showWarning("Transcript not available for this submission.");
+    } else {
+      console.warn("Transcript not available for this submission.");
+    }
+    return;
+  }
+
+  // Require your nice modal viewer
+  if (typeof window.showModalHtml !== "function") {
+    if (typeof window.showWarning === "function") {
+      window.showWarning("Action failed: modal viewer not available (showModalHtml missing).");
+    } else {
+      console.error("showModalHtml is not defined. Cannot show transcript modal.");
+    }
+    return;
+  }
+
+  const html = `
+    <div style="max-height:60vh; overflow:auto; padding:10px;">
+      <pre style="white-space:pre-wrap; margin:0;">${esc(txt)}</pre>
+    </div>
+  `;
+
+  window.showModalHtml("Transcript", html);
+}
+
+// make it global for row action handlers
+window.showTranscript = showTranscript;
 
   function wireRowActionSelects() {
   const selects = testsTbody.querySelectorAll(".row-action-select");
@@ -1734,28 +1823,35 @@ function confirmPortalModal({ title = "Confirm", body = "", okText = "OK", cance
     select._mssBound = true;
 
     select.addEventListener("change", () => {
-      const value = select.value;
-      const id = select.dataset.id;
+      const value = String(select.value || "");
+      const id = String(select.dataset.id || "");
 
-      console.log("🧪 Row action changed:", { value, id });
-
+      // ignore empty selection
       if (!value) return;
 
       try {
         if (!id) throw new Error("missing_row_id");
 
-        const row = tests.find((t) => String(t.id) === String(id));
+        const row = (tests || []).find((t) => String(t.id) === id);
         if (!row) throw new Error("row_not_found");
 
         if (value === "generate_report") {
-          console.log("🧪 Calling openReportViewerForSubmission:", row.id);
           if (typeof openReportViewerForSubmission !== "function") {
             throw new Error("openReportViewerForSubmission_not_defined");
           }
           openReportViewerForSubmission(row.id);
+
         } else if (value === "transcript") {
-          showTranscript(row);
+          // IMPORTANT: call the global export, not a local symbol
+          if (typeof window.showTranscript !== "function") {
+            throw new Error("showTranscript_not_defined");
+          }
+          window.showTranscript(row);
+
         } else if (value === "dashboard") {
+          if (typeof openDashboardPickerForRow !== "function") {
+            throw new Error("openDashboardPickerForRow_not_defined");
+          }
           openDashboardPickerForRow(row);
         }
       } catch (e) {

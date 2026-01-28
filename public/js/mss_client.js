@@ -253,78 +253,87 @@
   // ============================================================
 
   async function apiFetch(url, opts) {
-    const o = (opts && typeof opts === "object") ? opts : {};
-    const ensureSlug = o.ensureSlug === true;
+  const o = (opts && typeof opts === "object") ? opts : {};
+  const ensureSlug = o.ensureSlug === true;
 
-    const token = readToken();
-    if (!token) {
-      redirectToLogin("missing_token", { url: String(url || ""), ensureSlug }, { clearAuth: true });
-      throw new Error("missing_token");
-    }
+  const token = readToken(); // may be empty (cookie-session fallback)
 
-    const slug = ensureSlug ? getSlugForRequests() : null;
-    const finalUrl = (ensureSlug && slug) ? withSlug(url, slug) : String(url || "");
+  const slug = ensureSlug ? getSlugForRequests() : null;
+  const finalUrl = (ensureSlug && slug) ? withSlug(url, slug) : String(url || "");
 
-    const headers = new Headers(o.headers || {});
-    headers.set("Authorization", "Bearer " + token);
-    if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  const headers = new Headers(o.headers || {});
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
-    // If caller supplies body and didn't supply Content-Type, assume JSON.
-    if (o.body != null && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
-    }
+  // Only add Bearer if we actually have a token
+  if (token) headers.set("Authorization", "Bearer " + token);
 
-    const { ensureSlug: _drop, ...rest } = o;
-
-    let res;
-    try {
-      res = await fetch(finalUrl, { ...rest, headers, cache: rest.cache || "no-store" });
-    } catch (err) {
-      const diag = buildDiag("mss_api_diag", "network_error", {
-        url: finalUrl,
-        method: rest.method || "GET",
-        message: String(err?.message || err || ""),
-      });
-      persistDiag(LS_LAST_API_DIAG, diag);
-      try { console.error("[MSSClient] apiFetch network_error", diag); } catch (_) {}
-      throw err;
-    }
-
-    // 401 => deterministic redirect
-    if (res.status === 401) {
-      redirectToLogin(
-        "unauthorized",
-        { url: finalUrl, method: rest.method || "GET", status: 401 },
-        { clearAuth: true }
-      );
-      throw new Error("unauthorized");
-    }
-
-    // Other errors: capture body but do not redirect
-    if (!res.ok) {
-      let bodyText = null;
-      let bodyJson = null;
-      try {
-        const ct = String(res.headers.get("content-type") || "");
-        if (ct.includes("application/json")) bodyJson = await res.clone().json();
-        else bodyText = await res.clone().text();
-      } catch (_) {}
-
-      const diag = buildDiag("mss_api_diag", "http_error", {
-        url: finalUrl,
-        method: rest.method || "GET",
-        status: res.status,
-        statusText: res.statusText,
-        bodyJson,
-        bodyText,
-      });
-      persistDiag(LS_LAST_API_DIAG, diag);
-      try { console.error("[MSSClient] apiFetch http_error", diag); } catch (_) {}
-    }
-
-    return res;
+  // If caller supplies body and didn't supply Content-Type, assume JSON.
+  if (o.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
 
+  const { ensureSlug: _drop, ...rest } = o;
+
+  let res;
+  try {
+    res = await fetch(finalUrl, {
+      ...rest,
+      headers,
+      cache: rest.cache || "no-store",
+      // IMPORTANT: allow cookie-based session auth when token is missing
+      credentials: rest.credentials || "include",
+    });
+  } catch (err) {
+    const diag = buildDiag("mss_api_diag", "network_error", {
+      url: finalUrl,
+      method: rest.method || "GET",
+      message: String(err?.message || err || ""),
+    });
+    persistDiag(LS_LAST_API_DIAG, diag);
+    try { console.error("[MSSClient] apiFetch network_error", diag); } catch (_) {}
+    throw err;
+  }
+
+  // 401 => deterministic redirect (only after server rejection)
+  if (res.status === 401) {
+    redirectToLogin(
+      "unauthorized",
+      {
+        url: finalUrl,
+        method: rest.method || "GET",
+        status: 401,
+        hadToken: !!token,
+      },
+      { clearAuth: true }
+    );
+    throw new Error("unauthorized");
+  }
+
+  // Other errors: capture body but do not redirect
+  if (!res.ok) {
+    let bodyText = null;
+    let bodyJson = null;
+    try {
+      const ct = String(res.headers.get("content-type") || "");
+      if (ct.includes("application/json")) bodyJson = await res.clone().json();
+      else bodyText = await res.clone().text();
+    } catch (_) {}
+
+    const diag = buildDiag("mss_api_diag", "http_error", {
+      url: finalUrl,
+      method: rest.method || "GET",
+      status: res.status,
+      statusText: res.statusText,
+      bodyJson,
+      bodyText,
+      hadToken: !!token,
+    });
+    persistDiag(LS_LAST_API_DIAG, diag);
+    try { console.error("[MSSClient] apiFetch http_error", diag); } catch (_) {}
+  }
+
+  return res;
+}
   // ============================================================
   // Session persistence (+ legacy bridge)
   // ============================================================
@@ -419,19 +428,31 @@
   // ============================================================
 
   function bootGuard(opts) {
-    const o = (opts && typeof opts === "object") ? opts : {};
+  const o = (opts && typeof opts === "object") ? opts : {};
 
-    const session = readSession();
-    const token = readToken();
+  const session = readSession();
+  const token = readToken();
 
-    if (!session || !token) {
-      redirectToLogin(
-        "missing_session_or_token",
-        { haveSession: !!session, haveToken: !!token },
-        { clearAuth: true }
-      );
-      throw new Error("missing_session_or_token");
-    }
+  // NEW: token requirement is configurable; default true to preserve behavior
+  const requireToken = o.requireToken !== false;
+
+  if (!session) {
+    redirectToLogin(
+      "missing_session",
+      { haveSession: false, haveToken: !!token, requireToken },
+      { clearAuth: true }
+    );
+    throw new Error("missing_session");
+  }
+
+  if (requireToken && !token) {
+    redirectToLogin(
+      "missing_token",
+      { haveSession: true, haveToken: false, requireToken },
+      { clearAuth: true }
+    );
+    throw new Error("missing_token");
+  }
 
     let slug = getSlugFromUrl();
     if (!slug) slug = String(session.slug || "").trim() || null;

@@ -21,6 +21,14 @@ import { adminTeachersRouter } from "./routes/adminTeachers.routes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
+//dev switch for MSS API
+const MSS_API_ALT =
+  String(process.env.MSS_API_ALT || "false").toLowerCase() === "true";
+
+// transcript option: "A" (AI) or "B" (boilerplate)
+const MSS_API_ALT_TRANSCRIPT_MODE =
+  String(process.env.MSS_API_ALT_TRANSCRIPT_MODE || "B").toUpperCase();
+
 dotenv.config();
 
 // just to be sure
@@ -222,8 +230,8 @@ export function requireAdminOrTeacherAdmin(req, res, next) {
 }
 
 export function requireSuperAdmin(req, res, next) {
-  const a = req.actor || {};
-  if (a.actorType !== "admin" || a.isSuperAdmin !== true) {
+  const a = req.actor_ctx || req.actor || {};
+  if (String(a.actorType || "") !== "admin" || a.isSuperAdmin !== true) {
     return res.status(403).json({ ok: false, error: "superadmin_required" });
   }
   return next();
@@ -271,26 +279,27 @@ function requireStaffAuth(req, res, next) {
 // - otherwise require token.slug === route :slug
 // ---------------------------------------------------------------------
 function assertStaffSchoolScopeBySlug(req, slug) {
-  const ctx = req.actor_ctx;
-  if (!ctx) {
-    const e = new Error("missing_actor_ctx");
-    e.status = 401;
+  const ctx = req.actor_ctx || {};
+  const tokenSlug = String(ctx.slug || "").trim();
+  const want = String(slug || "").trim();
+
+  if (!want) {
+    const e = new Error("missing_slug");
+    e.status = 400;
     throw e;
   }
 
-  if (ctx.isSuperAdmin) return; // bypass
-
-  const tokenSlug = String(ctx.slug || "").trim();
-  const routeSlug = String(slug || "").trim();
-
-  if (!tokenSlug) {
-    const e = new Error("missing_school_scope");
+  // If token carries slug, enforce match
+  if (tokenSlug && tokenSlug !== want) {
+    const e = new Error("school_scope_mismatch");
     e.status = 403;
     throw e;
   }
 
-  if (!routeSlug || tokenSlug !== routeSlug) {
-    const e = new Error("cross_school_forbidden");
+  // If token does NOT carry slug, fall back to schoolId-only enforcement (optional)
+  // (If you want strict slug-based auth only, delete this block and require tokenSlug.)
+  if (!tokenSlug && !ctx.schoolId) {
+    const e = new Error("missing_school_scope");
     e.status = 403;
     throw e;
   }
@@ -549,25 +558,30 @@ async function resolveSchoolIdFromSlug(slug) {
 }
 
 function attachAdmin(req, ctx) {
-  // normalize school scope aggressively
   const schoolId =
     ctx.schoolId ??
     ctx.school_id ??
     ctx.school?.id ??
     null;
 
+  const adminId =
+    ctx.adminId ??
+    ctx.id ??
+    ctx.actorId ??
+    null;
+
   req.admin_ctx = ctx;
   req.admin = {
-    id: ctx.adminId,
-    adminId: ctx.adminId,
+    id: adminId,
+    adminId: adminId,
     email: ctx.email,
 
-    isSuperAdmin: !!ctx.isSuperAdmin,
+    isSuperAdmin:  !!ctx.isSuperAdmin,
     is_superadmin: !!ctx.isSuperAdmin,
+    is_superadmin: !!ctx.isSuperAdmin, // keep if you already use it anywhere
 
-    // ✅ critical: scope used by assertSchoolScope()
     school_id: schoolId != null ? Number(schoolId) : null,
-    schoolId: schoolId != null ? Number(schoolId) : null,
+    schoolId:  schoolId != null ? Number(schoolId) : null,
   };
 }
 
@@ -647,6 +661,87 @@ async function requireAdminAuth(req, res, next) {
     return next(err);
   }
 }
+
+async function requireTeacherOrAdminAuth(req, res, next) {
+  try {
+    // 1) Try TEACHER via unified actor JWT (teacher actor)
+    const token = getBearer(req);
+
+    if (token) {
+      const actorPayload = tryVerifyJwt(token, process.env.MSS_ACTOR_JWT_SECRET, {
+        issuer: "mss-widget-mt",
+        audience: "mss-actor",
+      });
+
+      if (actorPayload && String(actorPayload.actorType || "").toLowerCase() === "teacher") {
+        // Normalize school scope: prefer token, else resolve from slug
+        let schoolId =
+          actorPayload.schoolId ??
+          actorPayload.school_id ??
+          actorPayload.school?.id ??
+          null;
+
+        if (!schoolId) {
+          const slug = String(req.query.slug || req.body?.slug || "").trim();
+          if (slug) {
+            const sid = await resolveSchoolIdFromSlug(slug);
+            if (sid) schoolId = sid;
+          }
+        }
+
+        // ✅ Fail fast if this endpoint requires school scope
+        if (!schoolId) {
+          return res.status(400).json({ ok: false, error: "missing_school_scope", message: "Provide slug or a scoped token." });
+        }
+
+        req.teacherAuth = { mode: "actor_jwt", payload: actorPayload };
+
+        const tid =
+          actorPayload.teacherId ??
+          actorPayload.teacher_id ??
+          actorPayload.actorId ??
+          actorPayload.actor_id ??
+          null;
+
+        req.teacher = {
+          id: tid,
+          teacherId: tid,
+          email: actorPayload.email || actorPayload.teacher_email || null,
+          school_id: Number(schoolId),
+          schoolId: Number(schoolId),
+          role: actorPayload.role || actorPayload.teacher_role || actorPayload.teacherRole || null,
+        };
+
+        req.teacher_ctx = {
+          teacherId: req.teacher.teacherId,
+          schoolId: req.teacher.schoolId,
+          role: req.teacher.role,
+          email: req.teacher.email,
+        };
+
+        return next();
+      }
+    }
+
+    // 2) Otherwise: try ADMIN
+    // Await admin auth deterministically
+    await new Promise((resolve, reject) => {
+      requireAdminAuth(req, res, (err) => (err ? reject(err) : resolve()));
+    });
+
+    const slug = String(req.query.slug || req.body?.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    // Build teacher ctx from admin + slug
+    const ok = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ok) return; // assume helper already responded
+
+    return next();
+  } catch (e) {
+    return next(e);
+  }
+}
+
 // ---------------------------------------------------------------------
 
 // --- Widget image uploads ---
@@ -893,7 +988,42 @@ function handleWidgetImageUpload(req, res) {
     });
   }
 }
+//Dev - MSS API swtich - when API is off
+function buildDevTranscript_B(questionText) {
+  const q = String(questionText || "").trim();
+  const base = q
+    ? `DEV TRANSCRIPT (testing only): Response to "${q}". `
+    : `DEV TRANSCRIPT (testing only): Placeholder response. `;
 
+  // ~50–70 words, deterministic
+  return (
+    base +
+    "This transcript was generated by MSSDevAPI while the upstream MSS API is unavailable. " +
+    "It exists to keep submissions, scoring, WPM, dashboards, and teacher reports testable end-to-end."
+  );
+}
+// Dummy scoring for testing
+function buildMssDevApiResult({ questionText, transcript }) {
+  return {
+    score: 3.55,
+    CI50min: 3.41,
+    CI50max: 3.69,
+    CI95min: 3.14,
+    CI95max: 3.96,
+    transcript: transcript || buildDevTranscript_B(questionText),
+    elsa_results: {
+      fluency: 97,
+      grammar: 100,
+      pronunciation: 43,
+      vocabulary: 96,
+      cefr_level: "C1",
+      ielts_score: 8,
+      toefl_score: 27,
+      pte_score: 83,
+    },
+    _dev: { source: "MSSDevAPI", at: new Date().toISOString() },
+  };
+}
 
 // ======================================================
 // Image upload routes — support both `/image-upload` and legacy `/image` Nov 28
@@ -1220,11 +1350,146 @@ function cleanTranscriptText(raw) {
 // we may use this later
 //import { createOrReuseSubmissionPlaceholder } from "./utils/submissionPlaceholder.js";
 
-//Dec 3 (patched Dec 5)
+//Dec 3 (patched Dec 5)(patched again on Jan 23 - task assignment)
 // /api/widget/submit
 // - Accepts either:
 //    a) JSON payload with MSS/Vox results (submission.mss/meta/results)
 //    b) Fallback form/JSON without results (we log a minimal row, scores null)
+// Some help for Widget Costing and Task Organization
+
+const MAX_ATTEMPTS_PER_QUESTION = 3;
+
+// If you want to toggle token enforcement via env:
+const ENFORCE_VOX_TOKENS = String(process.env.ENFORCE_VOX_TOKENS || "").toLowerCase() === "true";
+
+/**
+ * Returns next attempt_no for (task_id, question_id), and enforces cap.
+ * Must be called inside a transaction using the same client.
+ */
+async function computeNextAttemptNo(client, taskId, questionId) {
+  if (!taskId || !questionId) return null;
+
+  const r = await client.query(
+    `
+    SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt
+    FROM submissions
+    WHERE task_id = $1
+      AND question_id = $2
+      AND deleted_at IS NULL
+    `,
+    [taskId, questionId]
+  );
+
+  const nextAttempt = Number(r.rows?.[0]?.max_attempt || 0) + 1;
+
+  if (nextAttempt > MAX_ATTEMPTS_PER_QUESTION) {
+    const err = new Error("attempt_limit_reached");
+    err.httpStatus = 403;
+    err.public = { ok: false, error: "attempt_limit_reached", max_attempts: MAX_ATTEMPTS_PER_QUESTION };
+    throw err;
+  }
+
+  return nextAttempt;
+}
+
+/**
+ * Decrement Vox tokens (1 per submission) atomically.
+ * Must be called inside a transaction using the same client.
+ */
+async function decrementVoxToken(client, schoolId) {
+  if (!ENFORCE_VOX_TOKENS) return { ok: true, enforced: false };
+
+  const r = await client.query(
+    `
+    UPDATE schools
+    SET vox_token_balance = vox_token_balance - 1
+    WHERE id = $1
+      AND vox_token_balance >= 1
+    RETURNING vox_token_balance
+    `,
+    [schoolId]
+  );
+
+  if (!r.rowCount) {
+    const err = new Error("insufficient_vox_tokens");
+    err.httpStatus = 402;
+    err.public = { ok: false, error: "insufficient_vox_tokens" };
+    throw err;
+  }
+
+  return { ok: true, enforced: true, remaining: Number(r.rows[0].vox_token_balance) };
+}
+
+/**
+ * Update task lifecycle timestamps.
+ * Must be called inside a transaction using the same client.
+ */
+async function touchTaskLifecycle(client, taskId) {
+  // started_at: set once
+  // last_activity_at: always update
+  await client.query(
+    `
+    UPDATE student_tasks
+    SET
+      started_at = COALESCE(started_at, now()),
+      last_activity_at = now(),
+      updated_at = now()
+    WHERE id = $1
+    `,
+    [taskId]
+  );
+}
+
+/**
+ * Soft completion rule (MVP): completed_at becomes set once the student has
+ * at least 1 attempt for every question in student_tasks.question_ids.
+ *
+ * This is safe, deterministic, and works for “practice” tasks.
+ */
+async function maybeSetTaskCompleted(client, taskId) {
+  const r = await client.query(
+    `
+    WITH t AS (
+      SELECT id, question_ids, completed_at
+      FROM student_tasks
+      WHERE id = $1
+      LIMIT 1
+    ),
+    q AS (
+      SELECT DISTINCT (jsonb_array_elements_text(t.question_ids))::int AS question_id
+      FROM t
+    ),
+    a AS (
+      SELECT DISTINCT s.question_id
+      FROM submissions s
+      JOIN t ON t.id = s.task_id
+      WHERE s.task_id = $1
+        AND s.deleted_at IS NULL
+        AND s.question_id IS NOT NULL
+    )
+    SELECT
+      (SELECT completed_at IS NOT NULL FROM t) AS already_completed,
+      (SELECT COUNT(*) FROM q) AS total_q,
+      (SELECT COUNT(*) FROM a) AS answered_q
+    `,
+    [taskId]
+  );
+
+  const row = r.rows?.[0];
+  if (!row) return;
+
+  const already = !!row.already_completed;
+  const totalQ = Number(row.total_q || 0);
+  const answeredQ = Number(row.answered_q || 0);
+
+  if (!already && totalQ > 0 && answeredQ >= totalQ) {
+    await client.query(
+      `UPDATE student_tasks SET completed_at = now(), updated_at = now() WHERE id = $1 AND completed_at IS NULL`,
+      [taskId]
+    );
+  }
+}
+
 app.post("/api/widget/submit", async (req, res) => {
   console.log("🎧 /api/widget/submit");
 
@@ -1247,45 +1512,106 @@ app.post("/api/widget/submit", async (req, res) => {
     const slugFromQuery = typeof req.query?.slug === "string" ? req.query.slug.trim() : "";
     const slug = slugFromBody || slugFromQuery;
 
-    if (!slug) {
+    // ✅ NEW: task token support (body + query)
+    const taskTokenFromBody  = typeof payload.task_token === "string" ? payload.task_token.trim() : "";
+    const taskTokenFromBody2 = typeof payload.taskToken === "string" ? payload.taskToken.trim() : "";
+    const taskTokenFromQuery = typeof req.query?.task === "string" ? String(req.query.task).trim() : "";
+    const task_token = taskTokenFromBody || taskTokenFromBody2 || taskTokenFromQuery;
+
+    // Require at least slug OR task_token
+    if (!slug && !task_token) {
       return res.status(400).json({
         ok: false,
-        error: "missing_slug",
-        message: "slug is required",
+        error: "missing_slug_or_task",
+        message: "slug or task_token is required",
       });
     }
 
     // ------------------------------------------------------------
-    // 1) Resolve school
+    // 1) Resolve school (and optionally task)
     // ------------------------------------------------------------
-    const schoolRes = await pool.query(
-      `SELECT id, settings
-         FROM schools
-        WHERE slug = $1
-        LIMIT 1`,
-      [slug]
-    );
+    let school = null;
+    let schoolId = null;
+    let settings = {};
+    let schoolConfig = {};
+    let resolvedSlug = slug;
 
-    if (!schoolRes.rowCount) {
-      return res.status(404).json({
-        ok: false,
-        error: "school_not_found",
-        message: `No school found for slug ${slug}`,
-      });
+    // ✅ Task-driven scope wins
+    let taskId = null;
+    let taskStudentId = null;
+
+    if (task_token) {
+      const tRes = await pool.query(
+        `
+        SELECT
+          t.id AS task_id,
+          t.school_id,
+          t.student_id,
+          t.is_active,
+          s.slug,
+          s.settings
+        FROM student_tasks t
+        JOIN schools s ON s.id = t.school_id
+        WHERE t.task_token = $1
+          AND t.is_active = true
+        LIMIT 1
+        `,
+        [task_token]
+      );
+
+      if (!tRes.rowCount) {
+        return res.status(404).json({
+          ok: false,
+          error: "task_not_found",
+          message: "Invalid or inactive task token.",
+        });
+      }
+
+      const tr = tRes.rows[0];
+      taskId = Number(tr.task_id);
+      schoolId = Number(tr.school_id);
+      taskStudentId = tr.student_id ? Number(tr.student_id) : null;
+      resolvedSlug = String(tr.slug || "").trim();
+
+      school = { id: schoolId };
+      settings = tr.settings || {};
+      schoolConfig = (settings.config || settings.widgetConfig || {});
+    } else {
+      // slug-only (existing behavior)
+      const schoolRes = await pool.query(
+        `SELECT id, settings
+           FROM schools
+          WHERE slug = $1
+          LIMIT 1`,
+        [resolvedSlug]
+      );
+
+      if (!schoolRes.rowCount) {
+        return res.status(404).json({
+          ok: false,
+          error: "school_not_found",
+          message: `No school found for slug ${resolvedSlug}`,
+        });
+      }
+
+      school = schoolRes.rows[0];
+      schoolId = school.id;
+      settings = school.settings || {};
+      schoolConfig = settings.config || settings.widgetConfig || {};
     }
-
-    const school       = schoolRes.rows[0];
-    const schoolId     = school.id;
-    const settings     = school.settings || {};
-    const schoolConfig = settings.config || settings.widgetConfig || {};
 
     // ------------------------------------------------------------
     // 2) Extract widget-side metadata
     // ------------------------------------------------------------
-    const studentId =
+    // legacy student_id field (keep) — but in task mode we override from the task
+    let studentId =
       payload.studentId ??
       payload.student_id ??
       null;
+
+    if (task_token && taskStudentId) {
+      studentId = taskStudentId;
+    }
 
     const questionTxt =
       payload.question ??
@@ -1319,159 +1645,252 @@ app.post("/api/widget/submit", async (req, res) => {
       null;
 
     // ------------------------------------------------------------
-    // 3) MSS / Vox results (OPTIONAL)
+// 3) MSS / Vox results (OPTIONAL, with MSS_API_ALT support)
+// ------------------------------------------------------------
+let mss =
+  payload.mss ??
+  payload.meta ??
+  payload.results ??
+  null;
+
+// Parse stringified MSS payloads safely
+if (typeof mss === "string") {
+  try {
+    mss = JSON.parse(mss);
+  } catch (err) {
+    console.warn("⚠️ MSS parse error:", err);
+    mss = null;
+  }
+}
+
+// ------------------------------------------------------------
+// MSS_API_ALT: synthesize placeholder MSS results when missing
+// ------------------------------------------------------------
+if (!mss && MSS_API_ALT) {
+  console.warn("🟨 MSS_API_ALT enabled → using MSSDevAPI placeholder results");
+
+  const questionText =
+    payload.question ??
+    payload.questionText ??
+    payload.prompt ??
+    null;
+
+  // Option B (default): deterministic boilerplate transcript (~50–70 words)
+  const transcript =
+    MSS_API_ALT_TRANSCRIPT_MODE === "B"
+      ? buildDevTranscript_B(questionText)
+      : buildDevTranscript_B(questionText); // Option A hook later
+
+  mss = buildMssDevApiResult({
+    questionText,
+    transcript,
+  });
+}
+
+if (!mss) {
+  console.log("🟦 No MSS results in payload – inserting submission with null scores.");
+}
+
+let voxScore = null;
+
+// ------------------------------------------------------------
+// Transcript handling (real or dev)
+// ------------------------------------------------------------
+let transcriptRaw =
+  (mss && typeof mss === "object" ? (mss.transcript ?? null) : null) ??
+  payload.transcript ??
+  null;
+
+let transcriptClean = cleanTranscriptText(transcriptRaw);
+
+// ------------------------------------------------------------
+// Score extraction (robust to partial / dev payloads)
+// ------------------------------------------------------------
+let mss_fluency = null;
+let mss_grammar = null;
+let mss_pron    = null;
+let mss_vocab   = null;
+let mss_cefr    = null;
+let mss_toefl   = null;
+let mss_ielts   = null;
+let mss_pte     = null;
+
+if (mss && typeof mss === "object") {
+  voxScore =
+    (typeof mss.score === "number" ? mss.score : null) ??
+    (typeof mss.overall_score === "number" ? mss.overall_score : null) ??
+    (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
+    null;
+
+  const elsa   = mss.elsa_results || mss.elsa || {};
+  const scores = mss.scores || mss.details || {};
+
+  mss_fluency = elsa.fluency ?? scores.fluency ?? null;
+  mss_grammar = elsa.grammar ?? scores.grammar ?? null;
+  mss_pron    = elsa.pronunciation ?? scores.pronunciation ?? null;
+  mss_vocab   = elsa.vocabulary ?? scores.vocabulary ?? null;
+
+  mss_cefr =
+    elsa.cefr_level ??
+    mss.cefr ??
+    mss.cefr_level ??
+    scores.cefr ??
+    scores.cefr_level ??
+    null;
+
+  mss_toefl = elsa.toefl_score ?? scores.toefl ?? null;
+  mss_ielts = elsa.ielts_score ?? scores.ielts ?? null;
+  mss_pte   = elsa.pte_score   ?? scores.pte   ?? null;
+}
+
+// ------------------------------------------------------------
+// Legacy mirrors (safe if all null)
+// ------------------------------------------------------------
+const toefl = mss_toefl;
+const ielts = mss_ielts;
+const pte   = mss_pte;
+const cefr  = mss_cefr;
+
+// Preserve raw MSS payload (real or dev) in meta
+const meta = mss || null;
+
+// ------------------------------------------------------------
+// WPM: duration + compute
+// ------------------------------------------------------------
+const length_sec = extractDurationSec(payload, mss);        // number | null
+const wpm        = computeWpm(transcriptClean, length_sec); // number | null
     // ------------------------------------------------------------
-    let mss =
-      payload.mss ??
-      payload.meta ??
-      payload.results ??
-      null;
+// 4) INSERT submission row (TASK MODE = transactional)
+// ------------------------------------------------------------
+let submissionId = null;
+let attemptNo = null;
+let tokenInfo = null;
 
-    if (typeof mss === "string") {
-      try {
-        mss = JSON.parse(mss);
-      } catch (err) {
-        console.warn("⚠️ MSS parse error:", err);
-      }
-    }
+const client = await pool.connect();
+try {
+  await client.query("BEGIN");
 
-    if (!mss) {
-      console.log("🟦 No MSS results in payload – inserting submission with null scores.");
-    }
+  if (taskId) {
+    // Lock task row to avoid races (attempt_no + completion logic)
+    await client.query(`SELECT id FROM student_tasks WHERE id = $1 FOR UPDATE`, [taskId]);
 
-    // Initialise all scoring-related fields to null
-    let voxScore         = null;
+    // Compute attempt number (enforces <= 3)
+    attemptNo = await computeNextAttemptNo(client, taskId, questionId);
 
-    // ✅ Always derive transcript from either MSS or payload
-    let transcriptRaw =
-      (mss && typeof mss === "object" ? (mss.transcript ?? null) : null) ??
-      payload.transcript ??
-      null;
+    // Optional: enforce token usage (1 per submission)
+    tokenInfo = await decrementVoxToken(client, schoolId);
 
-    let transcriptClean = cleanTranscriptText(transcriptRaw);
+    // Touch task lifecycle timestamps
+    await touchTaskLifecycle(client, taskId);
+  }
 
-    let mss_fluency      = null;
-    let mss_grammar      = null;
-    let mss_pron         = null;
-    let mss_vocab        = null;
-    let mss_cefr         = null;
-    let mss_toefl        = null;
-    let mss_ielts        = null;
-    let mss_pte          = null;
+  const insertSql = `
+    INSERT INTO submissions (
+      school_id,
+      question,
+      student_id,
+      toefl,
+      ielts,
+      pte,
+      cefr,
+      transcript,
+      meta,
 
-    if (mss && typeof mss === "object") {
-      voxScore =
-        (typeof mss.score === "number" ? mss.score : null) ??
-        (typeof mss.overall_score === "number" ? mss.overall_score : null) ??
-        (typeof mss.overall?.score === "number" ? mss.overall.score : null) ??
-        null;
+      mss_overall,
+      mss_fluency,
+      mss_grammar,
+      mss_pron,
+      mss_vocab,
+      mss_cefr,
+      mss_toefl,
+      mss_ielts,
+      mss_pte,
 
-      const elsa   = mss.elsa_results || mss.elsa || {};
-      const scores = mss.scores || mss.details || {};
+      vox_score,
+      transcript_clean,
 
-      mss_fluency = elsa.fluency ?? scores.fluency ?? null;
-      mss_grammar = elsa.grammar ?? scores.grammar ?? null;
-      mss_pron    = elsa.pronunciation ?? scores.pronunciation ?? null;
-      mss_vocab   = elsa.vocabulary ?? scores.vocabulary ?? null;
+      help_level,
+      help_surface,
+      widget_variant,
+      dashboard_variant,
 
-      mss_cefr =
-        elsa.cefr_level ??
-        mss.cefr ??
-        mss.cefr_level ??
-        scores.cefr ??
-        scores.cefr_level ??
-        null;
+      question_id,
 
-      mss_toefl = elsa.toefl_score ?? scores.toefl ?? null;
-      mss_ielts = elsa.ielts_score ?? scores.ielts ?? null;
-      mss_pte   = elsa.pte_score   ?? scores.pte   ?? null;
-    }
+      length_sec,
+      wpm,
 
-    // Legacy mirrors – fine if all null
-    const toefl = mss_toefl;
-    const ielts = mss_ielts;
-    const pte   = mss_pte;
-    const cefr  = mss_cefr;
+      task_id,
+      attempt_no
+    )
+    VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,
+      $10,$11,$12,$13,$14,$15,$16,$17,$18,
+      $19,$20,
+      $21,$22,$23,$24,
+      $25,
+      $26,$27,
+      $28,$29
+    )
+    RETURNING id
+  `;
 
-    const meta = mss || null;
+  const insertParams = [
+    schoolId,          // $1
+    questionTxt,       // $2
+    studentId,         // $3
+    toefl,             // $4
+    ielts,             // $5
+    pte,               // $6
+    cefr,              // $7
+    transcriptRaw,     // $8
+    meta,              // $9
 
-    // ✅ WPM: duration + compute
-    const length_sec = extractDurationSec(payload, mss);
-    const wpm = computeWpm(transcriptClean, length_sec);
+    null,              // $10 mss_overall (not used yet)
+    mss_fluency,       // $11
+    mss_grammar,       // $12
+    mss_pron,          // $13
+    mss_vocab,         // $14
+    mss_cefr,          // $15
+    mss_toefl,         // $16
+    mss_ielts,         // $17
+    mss_pte,           // $18
 
-    // ------------------------------------------------------------
-    // 4) INSERT submission row
-    // ------------------------------------------------------------
-    const insertSql = `
-      INSERT INTO submissions (
-        school_id,
-        question,
-        student_id,
-        toefl,
-        ielts,
-        pte,
-        cefr,
-        transcript,
-        meta,
-        mss_overall,
-        mss_fluency,
-        mss_grammar,
-        mss_pron,
-        mss_vocab,
-        mss_cefr,
-        mss_toefl,
-        mss_ielts,
-        mss_pte,
-        vox_score,
-        transcript_clean,
-        help_level,
-        help_surface,
-        widget_variant,
-        dashboard_variant,
-        question_id,
-        length_sec,
-        wpm
-      )
-      VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-        $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27
-      )
-      RETURNING id
-    `;
+    voxScore,          // $19
+    transcriptClean,   // $20
 
-    const insertParams = [
-      schoolId,          // $1
-      questionTxt,       // $2
-      studentId,         // $3
-      toefl,             // $4
-      ielts,             // $5
-      pte,               // $6
-      cefr,              // $7
-      transcriptRaw,     // $8
-      meta,              // $9
-      null,              // $10 mss_overall not used yet
-      mss_fluency,       // $11
-      mss_grammar,       // $12
-      mss_pron,          // $13
-      mss_vocab,         // $14
-      mss_cefr,          // $15
-      mss_toefl,         // $16
-      mss_ielts,         // $17
-      mss_pte,           // $18
-      voxScore,          // $19
-      transcriptClean,   // $20
-      help_level,        // $21
-      help_surface,      // $22
-      widget_variant,    // $23
-      dashboard_variant, // $24
-      questionId,        // $25
-      length_sec,        // $26 ✅
-      wpm                // $27 ✅
-    ];
+    help_level,        // $21
+    help_surface,      // $22
+    widget_variant,    // $23
+    dashboard_variant, // $24
 
-    const insertRes    = await pool.query(insertSql, insertParams);
-    const submissionId = insertRes.rows[0].id;
+    questionId,        // $25
+
+    length_sec,        // $26
+    wpm,               // $27
+
+    taskId,            // $28
+    attemptNo          // $29
+  ];
+
+  const insertRes = await client.query(insertSql, insertParams);
+  submissionId = insertRes.rows[0].id;
+
+  if (taskId) {
+    // Soft completion check (MVP)
+    await maybeSetTaskCompleted(client, taskId);
+  }
+
+  await client.query("COMMIT");
+} catch (err) {
+  await client.query("ROLLBACK");
+  // Structured “public” errors (attempt limit / token issues)
+  if (err && err.public && err.httpStatus) {
+    return res.status(err.httpStatus).json(err.public);
+  }
+  throw err;
+} finally {
+  client.release();
+}
 
     // ------------------------------------------------------------
     // 5) Build dashboard URL
@@ -1481,28 +1900,48 @@ app.post("/api/widget/submit", async (req, res) => {
       schoolConfig.dashboardUrl ||
       "/dashboards/Dashboard3.html";
 
-    if (!dashboardPath.startsWith("/")) {
-      dashboardPath = `/dashboards/${dashboardPath.replace(/^\/+/, "")}`;
+    // Allow absolute URLs too (optional)
+    let dashboardUrl = "";
+    if (/^https?:\/\//i.test(String(dashboardPath || ""))) {
+      // absolute dashboard url; append query params safely
+      const u = new URL(dashboardPath);
+      u.searchParams.set("slug", resolvedSlug);
+      u.searchParams.set("submissionId", String(submissionId));
+      if (task_token) u.searchParams.set("task", task_token);
+      dashboardUrl = u.toString();
+    } else {
+      // relative dashboard path
+      if (!dashboardPath.startsWith("/")) {
+        dashboardPath = `/dashboards/${dashboardPath.replace(/^\/+/, "")}`;
+      }
+      dashboardUrl = `${dashboardPath}?slug=${encodeURIComponent(resolvedSlug)}&submissionId=${encodeURIComponent(submissionId)}`;
+      if (task_token) {
+        dashboardUrl += `&task=${encodeURIComponent(task_token)}`;
+      }
     }
-
-    const dashboardUrl = `${dashboardPath}?slug=${encodeURIComponent(
-      slug
-    )}&submissionId=${submissionId}`;
 
     console.log("✨ Submission created:", {
       submissionId,
+      schoolId,
+      slug: resolvedSlug,
+      taskId,
+      studentId,
       length_sec,
       wpm,
-      dashboardUrl
+      dashboardUrl,
     });
 
     return res.json({
       ok: true,
       submissionId,
       dashboardUrl,
-      // Optional: return computed metrics for immediate UI/debug visibility
+      // Optional debug visibility
+      schoolId,
+      slug: resolvedSlug,
+      taskId,
+      studentId,
       length_sec,
-      wpm
+      wpm,
     });
 
   } catch (err) {
@@ -1510,7 +1949,7 @@ app.post("/api/widget/submit", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: "submit_failed",
-      message: err.message || "Internal error"
+      message: err.message || "Internal error",
     });
   }
 });
@@ -2911,7 +3350,252 @@ app.get("/api/admin/widgets", async (req, res) => {
     });
   }
 });
+// ===================== Task Assignment ================= //
+// Teacher assigns a custom widget to a student            //
+// ======================================================= //
+app.get("/api/task/:token", async (req, res) => {
+  const token = String(req.params.token || "").trim();
 
+  if (!token) {
+    return res.status(400).json({ ok: false, error: "missing_token" });
+  }
+
+  try {
+    // 1) Load task + school slug
+    const tRes = await pool.query(
+      `
+      SELECT
+        t.id,
+        t.school_id,
+        t.student_id,
+        t.teacher_id,
+        t.teacher_admin_id,
+        t.assessment_id,
+        t.task_token,
+        t.title,
+        t.question_ids,
+        t.widget_config,
+        t.is_active,
+        t.created_at,
+        s.slug,
+        s.settings,
+        s.api,
+        s.branding_logo_id
+      FROM student_tasks t
+      JOIN schools s ON s.id = t.school_id
+      WHERE t.task_token = $1
+        AND t.is_active = true
+      LIMIT 1
+      `,
+      [token]
+    );
+
+    if (!tRes.rowCount) {
+      return res.status(404).json({
+        ok: false,
+        error: "task_not_found",
+        message: "Invalid or inactive task token.",
+      });
+    }
+
+    const row = tRes.rows[0];
+
+    const slug = String(row.slug || "").trim();
+    const schoolId = Number(row.school_id);
+
+    const settings = row.settings || {};
+
+    // 2) Build config + merge API (same pattern as /bootstrap)
+    const rawConfig = settings.config || settings.widgetConfig || {};
+    const config = {
+      ...defaultConfig,
+      ...rawConfig,
+    };
+
+    // Merge API config from schools.api JSONB
+    const dbApi = row.api || null;
+
+    const mergedApi = {
+      enabled: true,
+      baseUrl: "",
+      key: "",
+      secret: "",
+      ...(config.api || {}),
+    };
+
+    if (dbApi && typeof dbApi === "object") {
+      if (dbApi.enabled !== undefined) mergedApi.enabled = !!dbApi.enabled;
+      if (dbApi.baseUrl) mergedApi.baseUrl = dbApi.baseUrl;
+      if (dbApi.key) mergedApi.key = dbApi.key;
+      if (dbApi.secret) mergedApi.secret = dbApi.secret;
+    }
+    config.api = mergedApi;
+
+    // 2b) Overlay task.widget_config (task-specific overrides)
+    // Keep this conservative: merge shallowly, plus merge task.api if provided.
+    const taskWidgetConfig =
+      row.widget_config && typeof row.widget_config === "object"
+        ? row.widget_config
+        : {};
+
+    const taskApiOverride =
+      taskWidgetConfig.api && typeof taskWidgetConfig.api === "object"
+        ? taskWidgetConfig.api
+        : null;
+
+    const mergedConfig = {
+      ...config,
+      ...taskWidgetConfig,
+      api: {
+        ...(config.api || {}),
+        ...(taskApiOverride || {}),
+      },
+    };
+
+    // 3) Form (same pattern as /bootstrap)
+    const rawForm = settings.form || settings.widgetForm || {};
+    const form = {
+      ...defaultForm,
+      ...rawForm,
+    };
+
+    // 4) Resolve assessmentId
+    // If task has assessment_id use it; else school’s default assessment (create if missing)
+    let assessmentId = row.assessment_id ? Number(row.assessment_id) : null;
+
+    if (!assessmentId) {
+      const assessRes = await pool.query(
+        `
+        SELECT id
+        FROM assessments
+        WHERE school_id = $1
+        ORDER BY id ASC
+        LIMIT 1
+        `,
+        [schoolId]
+      );
+
+      if (assessRes.rowCount) {
+        assessmentId = Number(assessRes.rows[0].id);
+      } else {
+        const insertRes = await pool.query(
+          `
+          INSERT INTO assessments (school_id, name)
+          VALUES ($1, $2)
+          RETURNING id
+          `,
+          [schoolId, "Default Speaking Assessment"]
+        );
+        assessmentId = Number(insertRes.rows[0].id);
+      }
+    }
+
+    // 5) Questions: use question_ids array order from task
+    const qids = Array.isArray(row.question_ids)
+      ? row.question_ids
+      : (row.question_ids && row.question_ids.type === "Buffer")
+        ? []
+        : [];
+
+    // If question_ids stored as jsonb, it will come back as JS array already
+    const questionIds = (Array.isArray(qids) ? qids : [])
+      .map((x) => Number(x))
+      .filter((n) => Number.isInteger(n) && n > 0);
+
+    if (!questionIds.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "task_has_no_questions",
+        message: "Task has no question_ids configured.",
+      });
+    }
+
+    const qRes = await pool.query(
+      `
+      SELECT id, question
+      FROM questions
+      WHERE assessment_id = $1
+        AND id = ANY($2::int[])
+      `,
+      [assessmentId, questionIds]
+    );
+
+    const qMap = new Map();
+    for (const r of qRes.rows) {
+      qMap.set(Number(r.id), { id: Number(r.id), question: r.question, slug: String(r.id) });
+    }
+
+    // preserve original order
+    const questions = questionIds
+      .map((id) => qMap.get(id))
+      .filter(Boolean);
+
+    if (!questions.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "task_questions_not_found",
+        message: "Task question_ids did not resolve to actual questions.",
+      });
+    }
+
+    // 6) Image/logo: same approach as /bootstrap
+    const uploadedImageUrl =
+      settings.image && typeof settings.image.url === "string"
+        ? settings.image.url
+        : null;
+
+    let imageUrl = null;
+
+    if (row.branding_logo_id) {
+      imageUrl = `/api/admin/branding/${encodeURIComponent(slug)}/logo`;
+    }
+
+    if (!imageUrl && uploadedImageUrl) {
+      imageUrl = uploadedImageUrl;
+    }
+
+    if (!imageUrl) {
+      const logoRes = await pool.query(
+        `
+        SELECT 1
+        FROM school_assets a
+        WHERE a.school_id = $1
+          AND a.kind = 'widget-logo'
+        LIMIT 1
+        `,
+        [schoolId]
+      );
+
+      if (logoRes.rowCount > 0) {
+        imageUrl = `/api/widget/${encodeURIComponent(slug)}/image/widget-logo`;
+      }
+    }
+
+    // 7) Return bootstrap payload (shape compatible with widget-core.js)
+    return res.json({
+      ok: true,
+      slug,
+      schoolId,
+      assessmentId,
+      form,
+      config: mergedConfig,
+      questions,
+      imageUrl,
+      task: {
+        id: Number(row.id),
+        task_token: String(row.task_token),
+        title: row.title || null,
+        student_id: row.student_id ? Number(row.student_id) : null,
+        teacher_id: row.teacher_id ? Number(row.teacher_id) : null,
+        teacher_admin_id: row.teacher_admin_id ? Number(row.teacher_admin_id) : null,
+        assessment_id: assessmentId,
+      },
+    });
+  } catch (err) {
+    console.error("Error in GET /api/task/:token", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
 /* ------------------------------------------------------------------
    DB-BACKED WIDGET BOOTSTRAP (used by widget-core.js)
    GET /api/widget/:slug/bootstrap
@@ -7197,152 +7881,6 @@ function buildSuggestedPromptTemplate({ preamble, language, notes, selectedMetri
 }
 
 // =====================================================================
-// SUGGEST (Generate a prompt template using OpenAI)
-// POST /api/admin/ai-prompts/:slug/suggest
-// body: { language?, notes?, selected_metrics? }
-// Also accepts: selectedMetrics, metrics, default_selected_metrics (tolerant)
-// =====================================================================
-
-// =====================================================================
-// SUGGEST (Generate a prompt template using OpenAI)
-// POST /api/admin/ai-prompts/:slug/suggest
-// body: { language?, notes?, selected_metrics? }
-// Also accepts: selectedMetrics, metrics, default_selected_metrics (tolerant)
-// Access: teacher | admin | superadmin (superadmin bypasses slug scope)
-// Scope: token.slug must match :slug unless superadmin
-// =====================================================================
-app.post("/api/admin/ai-prompts/:slug/suggest", requireStaffAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-
-    // Deterministic scope gate (fixes admin failures caused by missing schoolId-in-ctx)
-    assertStaffSchoolScopeBySlug(req, slug);
-
-    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
-
-    // 1) Load per-school defaults
-    const ss = await getOrCreateSuggestSettings({ schoolId });
-
-    // 2) Accept request overrides (tolerant keys)
-    const language =
-      req.body?.language != null ? String(req.body.language).trim() :
-      req.body?.default_language != null ? String(req.body.default_language).trim() :
-      String(ss.default_language || "").trim();
-
-    const notes =
-      req.body?.notes != null ? String(req.body.notes).trim() :
-      req.body?.default_notes != null ? String(req.body.default_notes).trim() :
-      String(ss.default_notes || "").trim();
-
-    const selectedMetrics =
-      req.body?.selected_metrics ??
-      req.body?.selectedMetrics ??
-      req.body?.metrics ??
-      req.body?.default_selected_metrics ??
-      req.body?.default_metrics ??
-      ss.default_selected_metrics ??
-      [];
-
-    const metaPrompt = buildSuggestedPromptTemplate({
-      preamble: ss.preamble,
-      language,
-      notes,
-      selectedMetrics,
-    });
-
-    const ai = await openAiGenerateReport({
-      promptText: metaPrompt,
-      model: "gpt-4o-mini",
-      temperature: 0.3,
-      max_output_tokens: 900,
-    });
-
-    return res.json({
-      ok: true,
-      slug: schoolSlug || slug,
-      schoolId,
-      prompt_text: ai.text,
-      suggested_prompt_text: ai.text,
-      model: ai.model,
-    });
-  } catch (e) {
-    console.error("POST /suggest failed:", e);
-    return res.status(e.status || 500).json({
-      ok: false,
-      error: e.message || "server_error",
-    });
-  }
-});
-
-// =====================================================================
-// PUT suggest-settings
-// Body: { preamble, default_language, default_notes, default_selected_metrics }
-// Also accepts: default_metrics (transition)
-// Access: teacher | admin | superadmin
-// Scope: token.slug must match :slug unless superadmin
-// =====================================================================
-app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireStaffAuth, async (req, res) => {
-  try {
-    const slug = String(req.params.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
-
-    // Deterministic scope gate
-    assertStaffSchoolScopeBySlug(req, slug);
-
-    const { schoolId } = await resolveSchoolBySlug(slug);
-
-    // fingerprint to confirm which handler is responding
-    console.log("[SUGGEST-SETTINGS v3] PUT", req.originalUrl, "schoolId=", schoolId, "actor=", {
-      actorType: req.actor_ctx?.actorType,
-      actorId: req.actor_ctx?.actorId,
-      slug: req.actor_ctx?.slug,
-      isSuperAdmin: !!req.actor_ctx?.isSuperAdmin,
-    });
-
-    // Required
-    const preamble = (req.body?.preamble != null) ? String(req.body.preamble) : null;
-    if (preamble == null) {
-      return res.status(400).json({ ok: false, error: "missing_preamble" });
-    }
-
-    // Optional
-    const default_language = (req.body?.default_language != null) ? String(req.body.default_language).trim() : "";
-    const default_notes    = (req.body?.default_notes != null) ? String(req.body.default_notes).trim() : "";
-
-    // Accept either key during transition
-    const default_selected_metrics = Array.isArray(req.body?.default_selected_metrics)
-      ? req.body.default_selected_metrics
-      : (Array.isArray(req.body?.default_metrics) ? req.body.default_metrics : []);
-
-    const saved = await upsertSuggestSettings({
-      schoolId,
-      preamble,
-      default_language,
-      default_notes,
-      default_selected_metrics,
-    });
-
-    return res.json({
-      ok: true,
-      id: saved.id,
-      preamble_prompt_id: saved.id, // keep FE stable
-      preamble: saved.preamble,
-      default_language: saved.default_language,
-      default_notes: saved.default_notes,
-      default_selected_metrics: Array.isArray(saved.default_selected_metrics)
-        ? saved.default_selected_metrics
-        : [],
-    });
-  } catch (e) {
-    console.error("PUT suggest-settings failed:", e);
-    return res.status(e.status || 500).json({
-      ok: false,
-      error: e.message || "server_error",
-    });
-  }
-});
-// =====================================================================
 // AI REPORTS
 // =====================================================================
 
@@ -7401,7 +7939,932 @@ app.get("/api/admin/reports/existing", requireAdminAuth, async (req, res) => {
     return res.status(status).json({ ok: false, error: code, message: err?.message });
   }
 });
+// =====================================================================
+// GET list AI prompts (query-param alias)
+// GET /api/admin/ai-prompts?slug=...
+// Also provide GET /api/admin/prompts?slug=... as a backward-compat alias
+// =====================================================================
+async function handleGetAiPromptsBySlug(req, res, slug) {
+  try {
+    slug = String(slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
+    assertStaffSchoolScopeBySlug(req, slug);
+
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const r = await pool.query(
+      `
+      SELECT
+        id,
+        COALESCE(name, title, 'Prompt ' || id::text) AS name,
+        prompt_text,
+        created_at,
+        updated_at,
+        is_active
+      FROM ai_prompts
+      WHERE school_id = $1
+      ORDER BY updated_at DESC NULLS LAST, id DESC
+      `,
+      [schoolId]
+    );
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug || slug,
+      schoolId,
+      prompts: r.rows || [],
+    });
+  } catch (e) {
+    console.error("GET ai-prompts failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+}
+
+// =====================================================================
+// STUDENTS - search (typeahead)
+// GET /api/teacher/students/search?slug=...&q=...&limit=12
+// =====================================================================
+app.get("/api/teacher/students/search", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    const qRaw = String(req.query.q || "").trim();
+    const limitRaw = Number(req.query.limit || 12);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const q = qRaw.toLowerCase();
+    const qIsInt = /^\d+$/.test(q);
+    const qInt = qIsInt ? Number(q) : null;
+
+    // guardrail: allow 1-char numeric (ID), require 2+ for text
+    if (!q || (!qIsInt && q.length < 2)) {
+      return res.json({ ok: true, slug: schoolSlug || slug, schoolId, students: [] });
+    }
+
+    const limit = Math.max(1, Math.min(25, isFinite(limitRaw) ? limitRaw : 12));
+
+    const likePrefix = q + "%";
+    const likeContains = "%" + q + "%";
+
+    const r = await pool.query(
+      `
+      SELECT
+        id,
+        first_name,
+        last_name,
+        full_name,
+        email,
+        external_id,
+        l1,
+        gender
+      FROM students
+      WHERE school_id = $1
+        AND is_active = true
+        AND (
+          ($2::int IS NOT NULL AND id = $2::int)
+          OR lower(email) LIKE $3
+          OR lower(external_id) LIKE $3
+          OR lower(full_name) LIKE $4
+          OR lower(first_name) LIKE $4
+          OR lower(last_name) LIKE $4
+        )
+      ORDER BY
+        CASE
+          WHEN ($2::int IS NOT NULL AND id = $2::int) THEN 0
+          WHEN lower(email) = $5 THEN 1
+          WHEN lower(email) LIKE $3 THEN 2
+          WHEN lower(external_id) LIKE $3 THEN 3
+          ELSE 4
+        END,
+        updated_at DESC NULLS LAST,
+        id DESC
+      LIMIT $6
+      `,
+      [schoolId, qInt, likePrefix, likeContains, q, limit]
+    );
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug || slug,
+      schoolId,
+      students: r.rows || [],
+    });
+  } catch (e) {
+    console.error("GET /api/teacher/students/search failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// STUDENTS - list (grid + pagination)
+// GET /api/teacher/students?slug=...&q=...&limit=25&offset=0&active=true
+// =====================================================================
+app.get("/api/teacher/students", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const qRaw = String(req.query.q || "").trim();
+    const q = qRaw.toLowerCase();
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 25)));
+    const offset = Math.max(0, Number(req.query.offset || 0));
+    const active = String(req.query.active || "true").toLowerCase() !== "false";
+
+    const qIsInt = /^\d+$/.test(q);
+    const qInt = qIsInt ? Number(q) : null;
+    const like = q ? `%${q}%` : null;
+
+    const r = await pool.query(
+      `
+      SELECT
+        id,
+        first_name,
+        last_name,
+        full_name,
+        email,
+        external_id,
+        l1,
+        gender,
+        is_active,
+        created_at,
+        updated_at
+      FROM students
+      WHERE school_id = $1
+        AND is_active = $2
+        AND (
+          $3::text IS NULL
+          OR ($4::int IS NOT NULL AND id = $4::int)
+          OR lower(full_name) LIKE $3
+          OR lower(first_name) LIKE $3
+          OR lower(last_name) LIKE $3
+          OR lower(email) LIKE $3
+          OR lower(external_id) LIKE $3
+        )
+      ORDER BY updated_at DESC NULLS LAST, id DESC
+      LIMIT $5 OFFSET $6
+      `,
+      [schoolId, active, like, qInt, limit, offset]
+    );
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug || slug,
+      schoolId,
+      students: r.rows || [],
+      limit,
+      offset,
+    });
+  } catch (e) {
+    console.error("GET /api/teacher/students failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// STUDENTS - create
+// POST /api/teacher/students
+// Body: { slug, first_name, last_name, email?, external_id?, l1?, l1_other?, gender? }
+// =====================================================================
+app.post("/api/teacher/students", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const first_name = String(req.body?.first_name || "").trim();
+    const last_name = String(req.body?.last_name || "").trim();
+    if (!first_name || !last_name) return res.status(400).json({ ok: false, error: "missing_name" });
+
+    const full_name = `${first_name} ${last_name}`.trim();
+
+    const email = req.body?.email != null ? String(req.body.email).trim() : null;
+    const external_id = req.body?.external_id != null ? String(req.body.external_id).trim() : null;
+
+    const l1 = req.body?.l1 != null ? String(req.body.l1).trim() : null;
+    const l1_other = req.body?.l1_other != null ? String(req.body.l1_other).trim() : null;
+
+    const gender = req.body?.gender != null ? String(req.body.gender).trim() : null;
+
+    if (gender != null && !["male", "female", "not_saying", ""].includes(gender)) {
+      return res.status(400).json({ ok: false, error: "bad_gender" });
+    }
+    const genderFinal = gender === "" ? null : gender;
+
+    if (l1 === "other" && (!l1_other || l1_other.length < 2)) {
+      return res.status(400).json({ ok: false, error: "missing_l1_other" });
+    }
+
+    const r = await pool.query(
+      `
+      INSERT INTO students (
+        school_id, first_name, last_name, full_name,
+        email, external_id, l1, l1_other, gender, is_active
+      )
+      VALUES (
+        $1,$2,$3,$4,
+        $5,$6,$7, CASE WHEN $7='other' THEN $8 ELSE NULL END,
+        $9, true
+      )
+      RETURNING id, first_name, last_name, full_name, email, external_id, l1, l1_other, gender, is_active, created_at, updated_at
+      `,
+      [schoolId, first_name, last_name, full_name, email, external_id, l1, l1_other, genderFinal]
+    );
+
+    return res.json({ ok: true, slug: schoolSlug || slug, schoolId, student: r.rows[0] });
+  } catch (e) {
+    // Most common: unique email per school
+    if (String(e?.code || "") === "23505") {
+      return res.status(409).json({ ok: false, error: "student_email_exists" });
+    }
+    console.error("POST /api/teacher/students failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// STUDENTS - deactivate (soft delete)
+// PATCH /api/teacher/students/:student_id/inactive
+// Body: { slug }
+// =====================================================================
+app.patch("/api/teacher/students/:student_id/inactive", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    const studentId = Number(req.params.student_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!studentId) return res.status(400).json({ ok: false, error: "bad_student_id" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const r = await pool.query(
+      `
+      UPDATE students
+      SET is_active = false, updated_at = now()
+      WHERE school_id = $1 AND id = $2
+      RETURNING id
+      `,
+      [schoolId, studentId]
+    );
+
+    if (!r.rowCount) return res.status(404).json({ ok: false, error: "student_not_found" });
+
+    return res.json({ ok: true, slug: schoolSlug || slug, schoolId });
+  } catch (e) {
+    console.error("PATCH /students/:student_id/inactive failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// TASK TEMPLATES - create
+// POST /api/teacher/task-templates
+// Body: { slug, title, question_ids, ai_prompt_id?, widget_path?, dashboard_path?, widget_config? }
+// Creates a template row in student_tasks where student_id IS NULL
+// =====================================================================
+// =====================================================================
+// TASK TEMPLATES - create
+// POST /api/teacher/task-templates
+// Body: { slug, title, question_ids, ai_prompt_id?, widget_path?, dashboard_path?, widget_config? }
+// Creates a TEMPLATE row in student_tasks (student_id IS NULL)
+// =====================================================================
+// POST /api/teacher/task-templates
+app.post("/api/teacher/task-templates", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    // Normalize inputs
+    const title = (req.body?.title != null && String(req.body.title).trim() !== "")
+      ? String(req.body.title).trim()
+      : null;
+
+    const aiPromptIdRaw = req.body?.ai_prompt_id;
+    const ai_prompt_id = (aiPromptIdRaw != null && String(aiPromptIdRaw).trim() !== "")
+      ? Number(aiPromptIdRaw)
+      : null;
+
+    // IMPORTANT: question_ids MUST be a JSON array for your DB constraint
+    const qidsRaw = req.body?.question_ids;
+    const qids = Array.isArray(qidsRaw)
+      ? qidsRaw.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+
+    if (!qids.length) {
+      return res.status(400).json({ ok: false, error: "missing_question_ids" });
+    }
+
+    // For templates, student_id must be NULL (ignore any client-provided value)
+    const student_id = null;
+
+    // Paths: convert "" -> NULL to satisfy CHECK constraints (length >= 5 if not null)
+    const cleanPath = (v) => {
+      const s = String(v || "").trim();
+      return s ? s : null;
+    };
+
+    const widget_path = cleanPath(req.body?.widget_path) || "/Widget.html";
+    const dashboard_path = cleanPath(req.body?.dashboard_path) || "/dashboards/Dashboard3.html";
+
+    // task_token must exist and be >= 20 chars
+    
+
+    const { randomBytes } = await import("crypto");
+    const taskToken = randomBytes(16).toString("hex");
+
+    // created_by (optional)
+    const teacher_admin_id =
+      req.actor_ctx?.actorType === "admin" ? Number(req.actor_ctx?.actorId || 0) : null;
+
+    // Insert template row
+    const r = await pool.query(
+      `
+      INSERT INTO student_tasks (
+        school_id,
+        student_id,
+        teacher_admin_id,
+        task_token,
+        title,
+        question_ids,
+        ai_prompt_id,
+        widget_config,
+        widget_path,
+        dashboard_path,
+        is_active
+      )
+      VALUES (
+        $1, $2, $3,
+        $4, $5,
+        $6::jsonb,
+        $7,
+        $8::jsonb,
+        $9, $10,
+        true
+      )
+      RETURNING
+        id,
+        task_token,
+        title,
+        question_ids,
+        ai_prompt_id,
+        widget_path,
+        dashboard_path,
+        created_at
+      `,
+      [
+        schoolId,
+        student_id,
+        teacher_admin_id,
+        taskToken,
+        title,
+        JSON.stringify(qids),      // key fix: explicit jsonb
+        ai_prompt_id,
+        JSON.stringify({}),        // widget_config template default
+        widget_path,
+        dashboard_path,
+      ]
+    );
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug || slug,
+      schoolId,
+      template: r.rows[0],
+      task_token: r.rows[0].task_token,
+    });
+  } catch (e) {
+    console.error("POST /api/teacher/task-templates failed:", e);
+    return res.status(500).json({
+      ok: false,
+      error: e.code || e.message || "server_error",
+    });
+  }
+});
+// =====================================================================
+// TASK TEMPLATES - update
+// PUT /api/teacher/task-templates/:template_id
+// Body: { slug, title?, question_ids?, ai_prompt_id?, widget_path?, dashboard_path?, widget_config?, is_active? }
+// Only affects templates (student_id IS NULL)
+// =====================================================================
+app.put("/api/teacher/task-templates/:template_id", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    const templateId = Number(req.params.template_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!templateId) return res.status(400).json({ ok: false, error: "bad_template_id" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const title = req.body?.title != null ? String(req.body.title).trim() : null;
+
+    let questionIdsJson = null;
+    if (req.body?.question_ids != null) {
+      if (!Array.isArray(req.body.question_ids)) {
+        return res.status(400).json({ ok: false, error: "bad_question_ids" });
+      }
+      const qids = req.body.question_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0);
+      if (!qids.length) return res.status(400).json({ ok: false, error: "bad_question_ids" });
+      questionIdsJson = JSON.stringify(qids);
+    }
+
+    const aiPromptId =
+      (req.body?.ai_prompt_id != null && String(req.body.ai_prompt_id).trim() !== "")
+        ? Number(req.body.ai_prompt_id)
+        : (req.body?.ai_prompt_id === "" ? null : null);
+
+    const widgetPath = req.body?.widget_path != null ? String(req.body.widget_path).trim() : null;
+    const dashboardPath = req.body?.dashboard_path != null ? String(req.body.dashboard_path).trim() : null;
+
+    const widgetConfig =
+      (req.body?.widget_config != null && typeof req.body.widget_config === "object")
+        ? JSON.stringify(req.body.widget_config)
+        : null;
+
+    const isActive = (req.body?.is_active != null) ? !!req.body.is_active : null;
+
+    // Ensure template exists and is a template
+    const chk = await pool.query(
+      `
+      SELECT id
+      FROM student_tasks
+      WHERE school_id = $1 AND id = $2 AND student_id IS NULL
+      LIMIT 1
+      `,
+      [schoolId, templateId]
+    );
+    if (!chk.rowCount) return res.status(404).json({ ok: false, error: "template_not_found" });
+
+    await pool.query(
+      `
+      UPDATE student_tasks
+      SET
+        title         = COALESCE($3, title),
+        question_ids  = COALESCE($4::jsonb, question_ids),
+        ai_prompt_id  = COALESCE($5::int, ai_prompt_id),
+        widget_path   = COALESCE($6, widget_path),
+        dashboard_path= COALESCE($7, dashboard_path),
+        widget_config = COALESCE($8::jsonb, widget_config),
+        is_active     = COALESCE($9::boolean, is_active),
+        updated_at    = now()
+      WHERE school_id = $1 AND id = $2 AND student_id IS NULL
+      `,
+      [
+        schoolId,
+        templateId,
+        title,
+        questionIdsJson,
+        aiPromptId,
+        widgetPath,
+        dashboardPath,
+        widgetConfig,
+        isActive,
+      ]
+    );
+
+    return res.json({ ok: true, slug: schoolSlug || slug, schoolId, template_id: templateId });
+  } catch (e) {
+    console.error("PUT /api/teacher/task-templates/:template_id failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// TASK TEMPLATES - deactivate (soft delete)
+// DELETE /api/teacher/task-templates/:template_id?slug=...
+// =====================================================================
+app.delete("/api/teacher/task-templates/:template_id", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    const templateId = Number(req.params.template_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!templateId) return res.status(400).json({ ok: false, error: "bad_template_id" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const r = await pool.query(
+      `
+      UPDATE student_tasks
+      SET is_active = false, updated_at = now()
+      WHERE school_id = $1 AND id = $2 AND student_id IS NULL
+      RETURNING id
+      `,
+      [schoolId, templateId]
+    );
+
+    if (!r.rowCount) return res.status(404).json({ ok: false, error: "template_not_found" });
+
+    return res.json({ ok: true, slug: schoolSlug || slug, schoolId, template_id: templateId });
+  } catch (e) {
+    console.error("DELETE /api/teacher/task-templates/:template_id failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// STUDENTS - profile (StudentProfile page load)
+// GET /api/teacher/students/:student_id/profile?slug=...
+// Access: teacher | admin | superadmin (staff)
+// =====================================================================
+app.get("/api/teacher/students/:student_id/profile", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    const studentId = Number(req.params.student_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!studentId) return res.status(400).json({ ok: false, error: "bad_student_id" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const st = await pool.query(
+      `
+      SELECT
+        id,
+        full_name,
+        email,
+        external_id,
+        l1,
+        l1_other,
+        gender,
+        is_active,
+        created_at,
+        updated_at
+      FROM students
+      WHERE school_id = $1 AND id = $2
+      LIMIT 1
+      `,
+      [schoolId, studentId]
+    );
+
+    if (!st.rowCount) return res.status(404).json({ ok: false, error: "student_not_found" });
+
+    // Assigned tasks (tolerant: table may not exist yet)
+    let assigned = [];
+    try {
+      const t = await pool.query(
+        `
+        SELECT
+          id,
+          COALESCE(title, name, 'Task ' || id::text) AS title,
+          task_token,
+          created_at,
+          status
+        FROM student_tasks
+        WHERE school_id = $1 AND student_id = $2
+        ORDER BY created_at DESC, id DESC
+        LIMIT 50
+        `,
+        [schoolId, studentId]
+      );
+      assigned = t.rows || [];
+    } catch (e) {
+      // If student_tasks not ready yet, keep page alive
+      assigned = [];
+    }
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug || slug,
+      schoolId,
+      student: st.rows[0],
+      assigned_tasks: assigned,
+    });
+  } catch (e) {
+    console.error("GET /api/teacher/students/:student_id/profile failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// STUDENTS - update (CRUD-lite)
+// PUT /api/teacher/students/:student_id
+// Body: { slug, full_name, email, external_id, l1, l1_other, gender, is_active }
+// Access: teacher | admin | superadmin (staff)
+// =====================================================================
+app.put("/api/teacher/students/:student_id", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    const studentId = Number(req.params.student_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!studentId) return res.status(400).json({ ok: false, error: "bad_student_id" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const full_name = req.body?.full_name != null ? String(req.body.full_name).trim() : null;
+    const email = req.body?.email != null ? String(req.body.email).trim() : null;
+    const external_id = req.body?.external_id != null ? String(req.body.external_id).trim() : null;
+
+    const l1 = req.body?.l1 != null ? String(req.body.l1).trim() : null;
+    const l1_other = req.body?.l1_other != null ? String(req.body.l1_other).trim() : null;
+
+    const gender = req.body?.gender != null ? String(req.body.gender).trim() : null;
+    const is_active = (req.body?.is_active != null) ? !!req.body.is_active : null;
+
+    // Validate gender
+    if (gender != null && !["male", "female", "not_saying", ""].includes(gender)) {
+      return res.status(400).json({ ok: false, error: "bad_gender" });
+    }
+    const genderFinal = gender === "" ? null : gender;
+
+    // Validate L1 / Other (light validation; DB constraint can enforce more)
+    if (l1 === "other" && (!l1_other || l1_other.length < 2)) {
+      return res.status(400).json({ ok: false, error: "missing_l1_other" });
+    }
+
+    // Ensure student belongs to school
+    const chk = await pool.query(
+      `SELECT id FROM students WHERE school_id = $1 AND id = $2 LIMIT 1`,
+      [schoolId, studentId]
+    );
+    if (!chk.rowCount) return res.status(404).json({ ok: false, error: "student_not_found" });
+
+    await pool.query(
+      `
+      UPDATE students
+      SET
+        full_name   = COALESCE($3, full_name),
+        email       = COALESCE($4, email),
+        external_id = COALESCE($5, external_id),
+        l1          = COALESCE($6, l1),
+        l1_other    = CASE WHEN $6 = 'other' THEN $7 ELSE NULL END,
+        gender      = COALESCE($8, gender),
+        is_active   = COALESCE($9, is_active),
+        updated_at  = now()
+      WHERE school_id = $1 AND id = $2
+      `,
+      [
+        schoolId,
+        studentId,
+        full_name,
+        email,
+        external_id,
+        l1,
+        l1_other,
+        genderFinal,
+        is_active,
+      ]
+    );
+
+    return res.json({ ok: true, slug: schoolSlug || slug, schoolId });
+  } catch (e) {
+    console.error("PUT /api/teacher/students/:student_id failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// STUDENTS - notes list
+// GET /api/teacher/students/:student_id/notes?slug=...
+// entity_type='student', entity_id=student_id
+// =====================================================================
+app.get("/api/teacher/students/:student_id/notes", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    const studentId = Number(req.params.student_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!studentId) return res.status(400).json({ ok: false, error: "bad_student_id" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const r = await pool.query(
+      `
+      SELECT id, body, status, due_at, done_at, tags, meta, created_at, updated_at
+      FROM notes
+      WHERE school_id = $1 AND entity_type = 'student' AND entity_id = $2
+      ORDER BY created_at DESC, id DESC
+      LIMIT 100
+      `,
+      [schoolId, studentId]
+    );
+
+    return res.json({ ok: true, slug: schoolSlug || slug, schoolId, notes: r.rows || [] });
+  } catch (e) {
+    console.error("GET /api/teacher/students/:student_id/notes failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// STUDENTS - notes create
+// POST /api/teacher/students/:student_id/notes
+// Body: { slug, body }
+// =====================================================================
+app.post("/api/teacher/students/:student_id/notes", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    const studentId = Number(req.params.student_id || 0);
+    const bodyText = String(req.body?.body || "").trim();
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!studentId) return res.status(400).json({ ok: false, error: "bad_student_id" });
+    if (!bodyText) return res.status(400).json({ ok: false, error: "missing_body" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const createdBy = req.actor_ctx?.actorType === "admin" ? Number(req.actor_ctx?.actorId || 0) : null;
+
+    const r = await pool.query(
+      `
+      INSERT INTO notes (school_id, entity_type, entity_id, body, status, created_by_admin_id)
+      VALUES ($1, 'student', $2, $3, 'open', $4)
+      RETURNING id, body, status, created_at, updated_at
+      `,
+      [schoolId, studentId, bodyText, createdBy || null]
+    );
+
+    return res.json({ ok: true, slug: schoolSlug || slug, schoolId, note: r.rows[0] });
+  } catch (e) {
+    console.error("POST /api/teacher/students/:student_id/notes failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// TASK TEMPLATES - list reusable templates
+// GET /api/teacher/task-templates?slug=...
+// Access: teacher | admin | superadmin
+// =====================================================================
+// =====================================================================
+// TASK TEMPLATES - list reusable templates
+// GET /api/teacher/task-templates?slug=...
+// =====================================================================
+app.get("/api/teacher/task-templates", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    const r = await pool.query(
+      `
+      SELECT
+        id,
+        title,
+        question_ids,
+        ai_prompt_id,
+        widget_path,
+        dashboard_path,
+        created_at,
+        updated_at,
+        jsonb_array_length(question_ids) AS question_count
+      FROM student_tasks
+      WHERE school_id = $1
+        AND student_id IS NULL
+        AND is_active = true
+      ORDER BY updated_at DESC, id DESC
+      `,
+      [schoolId]
+    );
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug || slug,
+      schoolId,
+      templates: r.rows || [],
+    });
+  } catch (e) {
+    console.error("GET /api/teacher/task-templates failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
+// =====================================================================
+// TASK TEMPLATES - assign to student (clone)
+// POST /api/teacher/students/:student_id/assign-template
+// Body: { slug, template_id }
+// =====================================================================
+// =====================================================================
+// TASK TEMPLATES - assign to student (clone)
+// POST /api/teacher/students/:student_id/assign-template
+// Body: { slug, template_id }
+// =====================================================================
+app.post("/api/teacher/students/:student_id/assign-template", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    const studentId = Number(req.params.student_id || 0);
+    const templateId = Number(req.body?.template_id || 0);
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!studentId) return res.status(400).json({ ok: false, error: "bad_student_id" });
+    if (!templateId) return res.status(400).json({ ok: false, error: "bad_template_id" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
+    const { schoolId, schoolSlug } = await resolveSchoolBySlug(slug);
+
+    // Ensure student exists in school
+    const st = await pool.query(
+      `SELECT id FROM students WHERE school_id = $1 AND id = $2 LIMIT 1`,
+      [schoolId, studentId]
+    );
+    if (!st.rowCount) return res.status(404).json({ ok: false, error: "student_not_found" });
+
+    // Load template (student_id IS NULL)
+    const tpl = await pool.query(
+      `
+      SELECT
+        id,
+        title,
+        question_ids,
+        ai_prompt_id,
+        widget_config,
+        widget_path,
+        dashboard_path,
+        assessment_id
+      FROM student_tasks
+      WHERE school_id = $1
+        AND id = $2
+        AND student_id IS NULL
+        AND is_active = true
+      LIMIT 1
+      `,
+      [schoolId, templateId]
+    );
+    if (!tpl.rowCount) return res.status(404).json({ ok: false, error: "template_not_found" });
+
+    const t = tpl.rows[0];
+
+    // Generate secure token (>= 20 chars)
+    
+    const { randomBytes } = await import("crypto");
+    const taskToken = randomBytes(16).toString("hex"); 
+
+    const teacherAdminId =
+      req.actor_ctx?.actorType === "admin" ? Number(req.actor_ctx?.actorId || 0) : null;
+    const teacherId =
+      req.actor_ctx?.actorType === "teacher" ? Number(req.actor_ctx?.actorId || 0) : null;
+
+    const r = await pool.query(
+      `
+      INSERT INTO student_tasks (
+        school_id,
+        student_id,
+        teacher_admin_id,
+        teacher_id,
+        assessment_id,
+        task_token,
+        title,
+        question_ids,
+        ai_prompt_id,
+        widget_config,
+        widget_path,
+        dashboard_path,
+        is_active
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8::jsonb, $9,
+        $10::jsonb, $11, $12,
+        true
+      )
+      RETURNING id, task_token, title
+      `,
+      [
+        schoolId,
+        studentId,
+        teacherAdminId || null,
+        teacherId || null,
+        t.assessment_id || null,
+        taskToken,
+        t.title,
+        JSON.stringify(t.question_ids || []),
+        t.ai_prompt_id || null,
+        JSON.stringify(t.widget_config || {}),
+        t.widget_path || "/Widget.html",
+        t.dashboard_path || null,
+      ]
+    );
+
+    const newTask = r.rows[0];
+
+    const basePath = (t.widget_path && String(t.widget_path).trim()) ? String(t.widget_path).trim() : "/Widget.html";
+    const taskUrl = new URL(basePath, req.protocol + "://" + req.get("host"));
+    taskUrl.searchParams.set("task", newTask.task_token);
+    taskUrl.searchParams.set("slug", schoolSlug || slug);
+
+    return res.json({
+      ok: true,
+      slug: schoolSlug || slug,
+      schoolId,
+      task_id: newTask.id,
+      task_token: newTask.task_token,
+      task_url: taskUrl.toString(),
+    });
+  } catch (e) {
+    console.error("POST /assign-template failed:", e);
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
+  }
+});
 // ---------------------------------------------------------------------
 // AI Reports - generate (cache + OpenAI + store)
 // POST /api/admin/reports/generate
@@ -8002,6 +9465,92 @@ app.put(
   }
 );
 
+// GET /api/teacher/questions?slug=&visibility=&assessment_id=
+app.get("/api/teacher/questions", requireTeacherOrAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    const visibility = String(req.query.visibility || "private").trim().toLowerCase();
+    const assessmentIdRaw = req.query.assessment_id;
+    const assessment_id = assessmentIdRaw != null && String(assessmentIdRaw).trim() !== ""
+      ? Number(assessmentIdRaw)
+      : null;
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!["private", "public", "all"].includes(visibility)) {
+      return res.status(400).json({ ok: false, error: "bad_visibility" });
+    }
+    if (assessment_id != null && !Number.isFinite(assessment_id)) {
+      return res.status(400).json({ ok: false, error: "bad_assessment_id" });
+    }
+
+    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = Number(s.rows[0].id);
+
+    const q = await pool.query(
+      `
+      SELECT
+        q.id, q.question, q.is_public, q.assessment_id,
+        q.level, q.category, q.sort_order, q.position, q.is_active,
+        q.created_at, q.updated_at
+      FROM questions q
+      WHERE
+        q.school_id = $1
+        AND q.is_active = true
+        AND (
+          $2::text = 'all'
+          OR ($2::text = 'public'  AND q.is_public = true)
+          OR ($2::text = 'private' AND q.is_public = false)
+        )
+        AND ($3::int IS NULL OR q.assessment_id = $3)
+      ORDER BY q.sort_order ASC, q.position ASC, q.id ASC
+      `,
+      [schoolId, visibility, assessment_id]
+    );
+
+    return res.json({ ok: true, schoolId, slug, visibility, questions: q.rows });
+  } catch (err) {
+    console.error("❌ /api/teacher/questions:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+// POST /api/teacher/questions
+// body: { slug, question, assessment_id? }
+// creates PRIVATE question (is_public=false)
+app.post("/api/teacher/questions", requireTeacherOrAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.body.slug || "").trim();
+    const question = String(req.body.question || "").trim();
+    const assessment_id = req.body.assessment_id != null && String(req.body.assessment_id).trim() !== ""
+      ? Number(req.body.assessment_id)
+      : null;
+
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!question) return res.status(400).json({ ok: false, error: "missing_question" });
+    if (assessment_id != null && !Number.isFinite(assessment_id)) {
+      return res.status(400).json({ ok: false, error: "bad_assessment_id" });
+    }
+
+    const s = await pool.query(`SELECT id FROM schools WHERE slug = $1 LIMIT 1`, [slug]);
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = Number(s.rows[0].id);
+
+    const ins = await pool.query(
+      `
+      INSERT INTO questions (school_id, assessment_id, question, is_public, is_active, sort_order, position)
+      VALUES ($1, $2, $3, false, true, 1, 1)
+      RETURNING id, question, is_public, school_id, assessment_id
+      `,
+      [schoolId, assessment_id, question]
+    );
+
+    return res.json({ ok: true, created: ins.rows[0] });
+  } catch (err) {
+    console.error("❌ /api/teacher/questions POST:", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
 // ---------------------------------------------------------------------
 // Teacher Admin - v1 (list + upsert)
 // ---------------------------------------------------------------------
@@ -8291,42 +9840,43 @@ app.get("/api/admin/me", requireAdminAuth, async (req, res) => {
   }
 });
 //=================== AI Prompt CRUD =======================//
-app.get("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
+//OK
+app.get("/api/admin/ai-prompts/:slug", requireStaffAuth, async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!slug) return res.status(400).json({ ok:false, error:"missing_slug" });
+
+    assertStaffSchoolScopeBySlug(req, slug);
 
     const { schoolId } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
 
-    const r = await pool.query(
-      `
+    const r = await pool.query(`
       SELECT id, school_id, name, prompt_text, is_default, is_active, sort_order,
              notes, language, created_at, updated_at
       FROM ai_prompts
       WHERE school_id = $1
-        AND COALESCE(name, '') <> '__SUGGEST_PREAMBLE__'
+        AND COALESCE(name,'') <> '__SUGGEST_PREAMBLE__'
       ORDER BY 
         COALESCE(sort_order, 999999) ASC,
         is_default DESC,
         updated_at DESC,
         id DESC
-      `,
-      [schoolId]
-    );
+    `, [schoolId]);
 
-    return res.json({ ok: true, prompts: r.rows });
+    return res.json({ ok:true, prompts:r.rows });
   } catch (e) {
-    const status = e.status || 500;
-    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+    return res.status(e.status || 500).json({ ok:false, error:e.message || "server_error" });
   }
 });
-
-app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
+//OK
+app.post("/api/admin/ai-prompts/:slug", requireStaffAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    // Deterministic scope gate
+    assertStaffSchoolScopeBySlug(req, slug);
 
     const name = String(req.body.name || "").trim();
     const promptText = String(req.body.prompt_text || "").trim();
@@ -8335,7 +9885,6 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
     if (!promptText) return res.status(400).json({ ok: false, error: "missing_prompt_text" });
 
     const { schoolId } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
 
     const isDefault = req.body.is_default === true;
     const isActive = req.body.is_active !== false; // default true
@@ -8371,13 +9920,13 @@ app.post("/api/admin/ai-prompts/:slug", requireAdminAuth, async (req, res) => {
       return res.status(409).json({ ok: false, error: "duplicate_name" });
     }
 
-    const status = e.status || 500;
-    return res.status(status).json({ ok: false, error: e.message || "server_error" });
+    return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   } finally {
     client.release();
   }
 });
-app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
+//OK
+app.put("/api/admin/ai-prompts/:slug/:id", requireStaffAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     const slug = String(req.params.slug || "").trim();
@@ -8386,8 +9935,10 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
 
+    // Deterministic scope gate
+    assertStaffSchoolScopeBySlug(req, slug);
+
     const { schoolId } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
 
     // Ensure prompt belongs to school
     const exists = await client.query(
@@ -8406,7 +9957,6 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
       vals.push(v);
     };
 
-    // ✅ DEFINE wantsDefault (this is your crash today)
     const wantsDefault = req.body?.is_default === true;
 
     // Build updates (only set fields that were provided)
@@ -8467,7 +10017,8 @@ app.put("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) =>
     client.release();
   }
 });
-app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res) => {
+//OK
+app.delete("/api/admin/ai-prompts/:slug/:id", requireStaffAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     const slug = String(req.params.slug || "").trim();
@@ -8475,8 +10026,10 @@ app.delete("/api/admin/ai-prompts/:slug/:id", requireAdminAuth, async (req, res)
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
     if (!id) return res.status(400).json({ ok: false, error: "bad_id" });
 
+    // Deterministic scope gate
+    assertStaffSchoolScopeBySlug(req, slug);
+
     const school = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, school.id);
 
     await client.query("BEGIN");
 
@@ -8577,15 +10130,18 @@ app.post("/api/admin/ai-prompts/:slug/:id/set-default", requireAdminAuth, async 
     client.release();
   }
 });
-app.put("/api/admin/ai-prompts/:slug/reorder", requireAdminAuth, async (req, res) => {
+//Ok
+app.put("/api/admin/ai-prompts/:slug/reorder", requireStaffAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     const slug = String(req.params.slug || "").trim();
     const order = Array.isArray(req.body.order) ? req.body.order : [];
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
+    // Deterministic scope gate
+    assertStaffSchoolScopeBySlug(req, slug);
+
     const school = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, school.id);
 
     await client.query("BEGIN");
 
@@ -8620,21 +10176,21 @@ app.put("/api/admin/ai-prompts/:slug/reorder", requireAdminAuth, async (req, res
 // body: { preamble, default_language, default_notes, default_selected_metrics }
 // also accepts: default_metrics (FE transition key)
 // ---------------------------------------------------------------------
-
-app.get("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async (req, res) => {
+//OK
+app.get("/api/admin/ai-prompts/:slug/suggest-settings", requireStaffAuth, async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    const { schoolId } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
+    assertStaffSchoolScopeBySlug(req, slug);
 
+    const { schoolId } = await resolveSchoolBySlug(slug);
     const s = await getOrCreateSuggestSettings({ schoolId });
 
     return res.json({
       ok: true,
       id: s.id,
-      preamble_prompt_id: s.id, // keep FE stable (legacy name)
+      preamble_prompt_id: s.id,
       preamble: s.preamble,
       default_language: s.default_language,
       default_notes: s.default_notes,
@@ -8646,39 +10202,32 @@ app.get("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async 
     return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   }
 });
-
-app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireAdminAuth, async (req, res) => {
+//OK
+app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireStaffAuth, async (req, res) => {
   try {
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
+    assertStaffSchoolScopeBySlug(req, slug);
+
     const { schoolId } = await resolveSchoolBySlug(slug);
-    assertSchoolScope(req, schoolId);
 
-    console.log("[SUGGEST-SETTINGS v2] PUT", req.originalUrl, "schoolId=", schoolId);
-
-    const preamble = req.body?.preamble != null ? String(req.body.preamble) : null;
+    const preamble = (req.body?.preamble != null) ? String(req.body.preamble) : null;
     if (preamble == null) return res.status(400).json({ ok: false, error: "missing_preamble" });
 
-    const default_language = req.body?.default_language != null ? String(req.body.default_language) : "";
-    const default_notes = req.body?.default_notes != null ? String(req.body.default_notes) : "";
+    const default_language = (req.body?.default_language != null) ? String(req.body.default_language).trim() : "";
+    const default_notes    = (req.body?.default_notes != null) ? String(req.body.default_notes).trim() : "";
 
     const default_selected_metrics = Array.isArray(req.body?.default_selected_metrics)
       ? req.body.default_selected_metrics
       : (Array.isArray(req.body?.default_metrics) ? req.body.default_metrics : []);
 
-    const saved = await upsertSuggestSettings({
-      schoolId,
-      preamble,
-      default_language,
-      default_notes,
-      default_selected_metrics,
-    });
+    const saved = await upsertSuggestSettings({ schoolId, preamble, default_language, default_notes, default_selected_metrics });
 
     return res.json({
       ok: true,
       id: saved.id,
-      preamble_prompt_id: saved.id, // keep FE stable
+      preamble_prompt_id: saved.id,
       preamble: saved.preamble,
       default_language: saved.default_language,
       default_notes: saved.default_notes,
@@ -8718,13 +10267,19 @@ function collectRoutes(stack, prefix = "") {
 
 app.get("/api/__routes_probe", (req, res) => {
   const routes = collectRoutes(app._router?.stack || []);
-  const ai = routes.filter(r => r.includes("ai-prompts"));
-  const hasSuggest = ai.some(r => r.includes("POST /api/admin/ai-prompts/:slug/suggest"));
+  const uniq = Array.from(new Set(routes));
+
+  const ai = uniq.filter(r => r.includes("ai-prompts"));
+
+  const hasSuggestSettings =
+    ai.some(r => r.includes("GET /api/admin/ai-prompts/:slug/suggest-settings")) &&
+    ai.some(r => r.includes("PUT /api/admin/ai-prompts/:slug/suggest-settings"));
+
   res.json({
     ok: true,
-    total: routes.length,
+    total: uniq.length,
     ai_count: ai.length,
-    hasSuggest,
+    hasSuggestSettings,
     ai_routes: ai.sort()
   });
 });

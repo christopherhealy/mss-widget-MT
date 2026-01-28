@@ -1,0 +1,333 @@
+<!-- ============================================================
+ StudentProfile.html  (v=4)
+ Notes:
+ - Keeps your existing layout.
+ - Adds CRUD buttons + modal (Add/Edit/Remove->inactive).
+ - No dependency on any framework.
+============================================================ -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Profile | ESL Success</title>
+
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <style>
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
+    .muted { color: #666; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; background:#fff; }
+
+    .status { margin: 10px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid #ddd; background:#fff; }
+    .status.ok { background:#eaffea; border-color:#9be19b; }
+    .status.warn { background:#fff7e5; border-color:#ffd37a; }
+    .status.error { background:#ffeaea; border-color:#ff9d9d; }
+
+    .btn { padding:8px 10px; border-radius: 8px; border:1px solid #ccc; background:#f7f7f7; cursor:pointer; }
+    .btn.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+    .btn.danger { background:#b42318; border-color:#b42318; color:#fff; }
+    .btn:disabled { opacity:0.6; cursor:not-allowed; }
+
+    .input, select { width:100%; padding: 8px; border-radius: 8px; border: 1px solid #ddd; background:#fff; }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .layout { display:grid; grid-template-columns: 380px 1fr; gap: 14px; margin-top: 14px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; background: #fff; }
+    .card h2 { margin: 0 0 10px; font-size: 16px; }
+
+    table { width:100%; border-collapse: collapse; }
+    th, td { border-top: 1px solid #eee; padding: 8px 6px; text-align: left; font-size: 13px; vertical-align: top; }
+    th { font-size: 12px; color:#444; background:#fafafa; }
+
+    .students-wrap { max-height: 560px; overflow:auto; border: 1px solid #eee; border-radius: 10px; }
+    .students-row { cursor:pointer; }
+    .students-row:hover { background:#f7f7f7; }
+    .students-row.active { background:#e8f0ff; }
+    .students-meta { font-size:12px; color:#666; }
+
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .actions button { margin-right: 8px; }
+
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .topbar h1 { margin:4px 0 0; font-size:20px; }
+
+    .pager { display:flex; align-items:center; gap:8px; justify-content:space-between; margin-top:10px; }
+    .pager .left { display:flex; gap:8px; align-items:center; }
+
+    /* Modal */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; padding:18px; z-index:9999; }
+    .modal { width:min(720px, 100%); background:#fff; border-radius: 12px; border:1px solid #ddd; padding:14px; }
+    .modal-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <!-- Header -->
+    <div class="topbar">
+      <div>
+        <div class="muted" style="font-size:12px;">Student Portal</div>
+        <h1>Students</h1>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center;">
+        <span class="pill" id="pill-slug">slug: —</span>
+        <span class="pill" id="pill-studentid">student: —</span>
+        <button class="btn" id="btn-back">Back</button>
+      </div>
+    </div>
+
+    <div id="status-top" class="status" style="display:none;"></div>
+
+    <div class="layout">
+      <!-- LEFT: Students list -->
+      <div class="card">
+        <h2>Students</h2>
+
+        <div class="muted" style="margin-bottom:8px;">
+          Search filters the list. Click a student to open their profile.
+        </div>
+
+        <input id="students-search" class="input" type="text" placeholder="Search by name, email, ID, external ID…" autocomplete="off" />
+
+        <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+          <button class="btn" id="btn-students-refresh">Refresh</button>
+
+          <!-- CRUD -->
+          <button class="btn" id="btn-students-add">+ Add</button>
+          <button class="btn" id="btn-students-edit" disabled>Edit</button>
+          <button class="btn danger" id="btn-students-remove" disabled>Remove</button>
+        </div>
+
+        <div id="status-students" class="status" style="display:none; margin-top:10px;"></div>
+
+        <div class="students-wrap" style="margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:44%;">Name</th>
+                <th style="width:44%;">Email</th>
+                <th style="width:12%;">L1</th>
+              </tr>
+            </thead>
+            <tbody id="students-tbody">
+              <tr><td colspan="3" class="muted" style="padding:10px;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pager">
+          <div class="left">
+            <button class="btn" id="btn-prev">Prev</button>
+            <button class="btn" id="btn-next">Next</button>
+          </div>
+          <div class="muted" id="students-count">0 students</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Student cockpit -->
+      <div>
+        <!-- Student Overview -->
+        <div class="card">
+          <h2>Student Overview</h2>
+          <div class="muted" id="student-empty-hint" style="margin-bottom:10px;">
+            Select a student from the list to view details.
+          </div>
+
+          <div class="grid2">
+            <div>
+              <div class="muted">Full name</div>
+              <div id="st-name">—</div>
+            </div>
+            <div>
+              <div class="muted">Email</div>
+              <div id="st-email">—</div>
+            </div>
+            <div>
+              <div class="muted">Student ID</div>
+              <div id="st-id" class="mono">—</div>
+            </div>
+            <div>
+              <div class="muted">External ID</div>
+              <div id="st-external" class="mono">—</div>
+            </div>
+            <div>
+              <div class="muted">L1</div>
+              <div id="st-l1">—</div>
+            </div>
+            <div>
+              <div class="muted">Gender</div>
+              <div id="st-gender">—</div>
+            </div>
+            <div>
+              <div class="muted">Created</div>
+              <div id="st-created">—</div>
+            </div>
+            <div>
+              <div class="muted">Last activity</div>
+              <div id="st-last">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assign Task -->
+        <div class="card" style="margin-top:14px;">
+          <h2>Assign a Task</h2>
+          <div class="muted" style="margin-bottom:10px;">
+            Select a reusable task template and assign it to this student.
+          </div>
+
+          <label class="muted" for="sel-template">Task Template</label>
+          <select id="sel-template" class="input">
+            <option value="">(Select a template)</option>
+          </select>
+
+          <div style="margin-top:10px; display:flex; gap:10px;">
+            <button class="btn primary" id="btn-assign" disabled>Assign to Student</button>
+            <button class="btn" id="btn-refresh-profile" disabled>Refresh Profile</button>
+          </div>
+
+          <div id="status-assign" class="status" style="display:none; margin-top:12px;"></div>
+
+          <div style="margin-top:12px;">
+            <div class="muted">Assigned Task URL</div>
+            <div id="out-task-url" class="mono" style="padding:8px; border:1px solid #eee; border-radius:8px;">—</div>
+            <div class="actions" style="margin-top:10px;">
+              <button class="btn" id="btn-copy-url">Copy URL</button>
+              <button class="btn" id="btn-open-url">Open URL</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assigned Tasks -->
+        <div class="card" style="margin-top:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Assigned Tasks</h2>
+            <div class="muted" id="tasks-count">0 tasks</div>
+          </div>
+
+          <div id="status-tasks" class="status" style="display:none; margin-top:10px;"></div>
+
+          <div id="tasks-wrap" style="margin-top:10px;">
+            <div class="muted" style="padding:10px;">Select a student to load tasks.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CRUD Modal -->
+  <div class="modal-backdrop" id="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-head">
+        <strong id="modal-title">Student</strong>
+        <button class="btn" id="btn-modal-close">Close</button>
+      </div>
+
+      <div id="modal-body" style="margin-top:10px;">
+        <div class="grid2">
+          <div>
+            <div class="muted">First name</div>
+            <input id="m-first" class="input" />
+          </div>
+          <div>
+            <div class="muted">Last name</div>
+            <input id="m-last" class="input" />
+          </div>
+
+          <div>
+            <div class="muted">Email</div>
+            <input id="m-email" class="input" />
+          </div>
+          <div>
+            <div class="muted">External ID</div>
+            <input id="m-external" class="input" />
+          </div>
+
+          <div>
+            <div class="muted">L1</div>
+            <select id="m-l1" class="input">
+              <option value="">—</option>
+              <option value="en">English</option>
+              <option value="fr">French</option>
+              <option value="es">Spanish</option>
+              <option value="pt">Portuguese</option>
+              <option value="it">Italian</option>
+              <option value="de">German</option>
+              <option value="nl">Dutch</option>
+              <option value="sv">Swedish</option>
+              <option value="no">Norwegian</option>
+              <option value="da">Danish</option>
+              <option value="fi">Finnish</option>
+              <option value="pl">Polish</option>
+              <option value="cs">Czech</option>
+              <option value="sk">Slovak</option>
+              <option value="hu">Hungarian</option>
+              <option value="ro">Romanian</option>
+              <option value="bg">Bulgarian</option>
+              <option value="el">Greek</option>
+              <option value="tr">Turkish</option>
+              <option value="ru">Russian</option>
+              <option value="uk">Ukrainian</option>
+              <option value="sr">Serbian</option>
+              <option value="hr">Croatian</option>
+              <option value="sl">Slovenian</option>
+              <option value="lt">Lithuanian</option>
+              <option value="lv">Latvian</option>
+              <option value="et">Estonian</option>
+              <option value="ar">Arabic</option>
+              <option value="fa">Farsi</option>
+              <option value="ur">Urdu</option>
+              <option value="he">Hebrew</option>
+              <option value="ku">Kurdish</option>
+              <option value="hi">Hindi</option>
+              <option value="bn">Bengali</option>
+              <option value="pa">Punjabi</option>
+              <option value="ta">Tamil</option>
+              <option value="te">Telugu</option>
+              <option value="mr">Marathi</option>
+              <option value="gu">Gujarati</option>
+              <option value="ml">Malayalam</option>
+              <option value="kn">Kannada</option>
+              <option value="zh">Chinese</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="vi">Vietnamese</option>
+              <option value="th">Thai</option>
+              <option value="id">Indonesian</option>
+              <option value="ms">Malay</option>
+              <option value="tl">Tagalog</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <div class="muted">L1 (Other)</div>
+            <input id="m-l1-other" class="input" placeholder="If L1 = Other" />
+          </div>
+
+          <div>
+            <div class="muted">Gender</div>
+            <select id="m-gender" class="input">
+              <option value="">—</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="not_saying">Not saying</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="status-modal" class="status" style="display:none; margin-top:10px;"></div>
+
+        <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:10px;">
+          <button class="btn primary" id="btn-modal-save">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/student-portal/StudentProfile.js?v=4"></script>
+</body>
+</html>
