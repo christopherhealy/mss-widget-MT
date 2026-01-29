@@ -21,6 +21,8 @@ import { adminTeachersRouter } from "./routes/adminTeachers.routes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
+
+
 //dev switch for MSS API
 const MSS_API_ALT =
   String(process.env.MSS_API_ALT || "false").toLowerCase() === "true";
@@ -75,8 +77,10 @@ const UPLOADS_DIR = path.join(__dirname, "uploads");
 const ENABLE_LEGACY_ADMIN_KEY =
   String(process.env.MSS_ENABLE_LEGACY_ADMIN_KEY || "").toLowerCase() === "true";
 
-// Fail-fast in environments where you expect auth to work
+// Fail-fast in environments
+//  where you expect auth to work
 // (You can relax this locally if you intentionally run without secrets.)
+
 function requireEnvSecret(name, value) {
   if (!value) throw new Error(`Missing ${name}`);
 }
@@ -85,6 +89,7 @@ function requireEnvSecret(name, value) {
 // requireEnvSecret("MSS_ACTOR_JWT_SECRET", ACTOR_JWT_SECRET);
 // (Optional) Only require legacy if you still accept it:
 // if (ADMIN_JWT_SECRET) requireEnvSecret("MSS_ADMIN_JWT_SECRET", ADMIN_JWT_SECRET);
+
 
 function readBearer(req) {
   const h = String(req.headers.authorization || "");
@@ -667,19 +672,27 @@ async function requireAdminAuth(req, res, next) {
   }
 }
 
-async function requireTeacherOrAdminAuth(req, res, next) {
+export async function requireTeacherOrAdminAuth(req, res, next) {
   try {
-    // 1) Try TEACHER via unified actor JWT (teacher actor)
+    // ------------------------------------------------------------
+    // 1) Preferred path: unified ACTOR JWT (teacher OR admin)
+    // ------------------------------------------------------------
     const token = getBearer(req);
 
     if (token) {
-      const actorPayload = tryVerifyJwt(token, process.env.MSS_ACTOR_JWT_SECRET, {
-        issuer: "mss-widget-mt",
-        audience: "mss-actor",
-      });
+      const actorPayload = tryVerifyJwt(
+        token,
+        process.env.MSS_ACTOR_JWT_SECRET,
+        {
+          issuer: "mss-widget-mt",
+          audience: "mss-actor",
+        }
+      );
 
-      if (actorPayload && String(actorPayload.actorType || "").toLowerCase() === "teacher") {
-        // Normalize school scope: prefer token, else resolve from slug
+      const actorType = String(actorPayload?.actorType || "").toLowerCase();
+
+      if (actorPayload && (actorType === "teacher" || actorType === "admin")) {
+        // Resolve school scope (token first, slug fallback)
         let schoolId =
           actorPayload.schoolId ??
           actorPayload.school_id ??
@@ -694,59 +707,94 @@ async function requireTeacherOrAdminAuth(req, res, next) {
           }
         }
 
-        // ✅ Fail fast if this endpoint requires school scope
         if (!schoolId) {
-          return res.status(400).json({ ok: false, error: "missing_school_scope", message: "Provide slug or a scoped token." });
+          return res.status(400).json({
+            ok: false,
+            error: "missing_school_scope",
+            message: "Provide slug or a scoped actor token.",
+          });
         }
 
-        req.teacherAuth = { mode: "actor_jwt", payload: actorPayload };
-
-        const tid =
+        // Normalize teacher/admin context
+        const teacherId =
           actorPayload.teacherId ??
           actorPayload.teacher_id ??
           actorPayload.actorId ??
           actorPayload.actor_id ??
           null;
 
+        req.teacherAuth = {
+          mode: "actor_jwt",
+          actorType,
+          payload: actorPayload,
+        };
+
         req.teacher = {
-          id: tid,
-          teacherId: tid,
-          email: actorPayload.email || actorPayload.teacher_email || null,
-          school_id: Number(schoolId),
+          id: teacherId,
+          teacherId,
+          email: actorPayload.email || null,
           schoolId: Number(schoolId),
-          role: actorPayload.role || actorPayload.teacher_role || actorPayload.teacherRole || null,
+          school_id: Number(schoolId),
+          role: actorPayload.role || actorType,
+          isAdmin: actorType === "admin",
         };
 
         req.teacher_ctx = {
-          teacherId: req.teacher.teacherId,
-          schoolId: req.teacher.schoolId,
+          teacherId,
+          schoolId: Number(schoolId),
           role: req.teacher.role,
           email: req.teacher.email,
+          actorType,
         };
 
         return next();
       }
     }
 
-    // 2) Otherwise: try ADMIN
-    // Await admin auth deterministically
+    // ------------------------------------------------------------
+    // 2) Legacy fallback: ADMIN session auth
+    // ------------------------------------------------------------
     await new Promise((resolve, reject) => {
-      requireAdminAuth(req, res, (err) => (err ? reject(err) : resolve()));
+      requireAdminAuth(req, res, (err) =>
+        err ? reject(err) : resolve()
+      );
     });
 
     const slug = String(req.query.slug || req.body?.slug || "").trim();
-    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+    if (!slug) {
+      return res.status(400).json({ ok: false, error: "missing_slug" });
+    }
 
-    // Build teacher ctx from admin + slug
-    const ok = await requireTeacherCtxFromAdmin(req, res, slug);
-    if (!ok) return; // assume helper already responded
+    const ctx = await requireTeacherCtxFromAdmin(req, res, slug);
+    if (!ctx) return; // helper already responded
+
+    // Attach normalized context
+    req.teacherAuth = { mode: "legacy_admin" };
+
+    req.teacher = {
+      id: ctx.teacherId,
+      teacherId: ctx.teacherId,
+      email: ctx.adminEmail,
+      schoolId: ctx.schoolId,
+      school_id: ctx.schoolId,
+      role: ctx.isAdminTeacher ? "admin" : "teacher",
+      isAdmin: true,
+    };
+
+    req.teacher_ctx = {
+      teacherId: ctx.teacherId,
+      schoolId: ctx.schoolId,
+      role: req.teacher.role,
+      email: ctx.adminEmail,
+      actorType: "admin",
+    };
 
     return next();
-  } catch (e) {
-    return next(e);
+  } catch (err) {
+    console.error("[requireTeacherOrAdminAuth]", err);
+    return next(err);
   }
 }
-
 // ---------------------------------------------------------------------
 
 // --- Widget image uploads ---
@@ -841,6 +889,27 @@ const allowedOrigins = [
 // - Wildcards support patterns like: https://mss-widget-mt-*.vercel.app
 // ---------------------------------------------------------------------
 
+// ---------------------------------------------------------------------
+// CORS — exact + wildcard patterns + env augment
+// ---------------------------------------------------------------------
+const corsOptions = {
+  origin: (origin, cb) => {
+    // do NOT throw; deny by returning false
+    cb(null, isAllowedOrigin(origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/widget/") || req.path.startsWith("/api/teacher/")) {
+    console.log("[CORSDBG]", req.method, req.path, "origin=", req.headers.origin, "host=", req.headers.host);
+  }
+  next();
+});
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
 function parseAllowedOrigins(raw) {
   return String(raw || "")
     .split(",")
@@ -849,65 +918,60 @@ function parseAllowedOrigins(raw) {
 }
 
 const DEFAULT_ALLOWED_ORIGINS = [
+  // local dev
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:5173",
-  "https://mss-widget-mt.vercel.app",
-  "https://mss-widget-mt.onrender.com",
+
+  // prod sites
   "https://eslsuccess.club",
   "https://www.eslsuccess.club",
+
+  // legacy/known deployments (keep if still used)
+  "https://mss-widget-mt.vercel.app",
+  "https://mss-widget-mt.onrender.com",
 ];
 
-// Env augment (CSV). Example: CORS_ORIGIN="https://foo.com,https://bar.com,https://mss-widget-mt-*.vercel.app"
+// Optional env augment (CSV).
+// Example:
+// CORS_ORIGIN="https://foo.com,https://bar.com,https://mss-widget-mt-*.vercel.app,https://*.vercel.app"
 const ENV_ORIGINS = parseAllowedOrigins(process.env.CORS_ORIGIN);
 
-// Single source of truth (deduped)
-const ALLOWED_ORIGINS = Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...ENV_ORIGINS]));
+// Normalize ENV wildcards like https://mss-widget-mt-*.vercel.app → regex
+function envOriginToMatcher(s) {
+  if (!s) return null;
+  if (s instanceof RegExp) return s;
 
-function originMatches(allowed, origin) {
-  if (!allowed || !origin) return false;
-  if (allowed === origin) return true;
-
-  // Wildcard support
-  if (allowed.includes("*")) {
-    // Escape regex special chars, then turn '*' into '.*'
-    const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp("^" + escaped.replace(/\*/g, ".*") + "$", "i");
-    return re.test(origin);
+  // support "*" wildcard in hostname
+  if (s.includes("*")) {
+    // escape dots, replace * with .*
+    const re = "^" + s.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$";
+    return new RegExp(re);
   }
 
-  return false;
+  return s; // exact string
 }
 
-function isAllowedOrigin(origin) {
-  // No Origin header: allow (curl, server-to-server, same-origin in some cases)
-  if (!origin) return true;
-  return ALLOWED_ORIGINS.some((a) => originMatches(a, origin));
-}
-
-// Keep allowedHeaders aligned to what your FE actually sends.
-// NOTE: We include Authorization + legacy headers for migration.
-const CORS_ALLOWED_HEADERS = [
-  "Content-Type",
-  "Authorization",
-  "x-admin-key",
-  "x-mss-admin-key",
+// Built-in wildcard support for Vercel previews (common pattern)
+const BUILTIN_WILDCARDS = [
+  /^https:\/\/.*\.vercel\.app$/,
 ];
 
-// IMPORTANT: When credentials=true, origin cannot be '*'.
-// We echo back the request origin if it is in our allowlist.
-const corsOptions = {
-  origin: (origin, cb) => {
-    if (isAllowedOrigin(origin)) return cb(null, true);
-    console.warn("[CORS] Blocked origin:", origin, "Allowed:", ALLOWED_ORIGINS);
-    return cb(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: CORS_ALLOWED_HEADERS,
-  maxAge: 86400,
-};
+const ALLOWED_MATCHERS = [
+  ...DEFAULT_ALLOWED_ORIGINS,
+  ...ENV_ORIGINS.map(envOriginToMatcher).filter(Boolean),
+  ...BUILTIN_WILDCARDS,
+];
 
+// Safe matcher
+function isAllowedOrigin(origin) {
+  if (!origin) return true; // allow non-browser / same-origin / server-to-server
+  for (const m of ALLOWED_MATCHERS) {
+    if (typeof m === "string" && m === origin) return true;
+    if (m instanceof RegExp && m.test(origin)) return true;
+  }
+  return false;
+}
 // Apply once (single source of truth)
 app.use(cors(corsOptions));
 
