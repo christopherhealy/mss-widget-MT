@@ -20,13 +20,24 @@ function setText(id, txt) {
   el.textContent = txt == null ? "—" : String(txt);
 }
 
-function escapeHtml(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function setQueryParam(name, value) {
+  try {
+    const u = new URL(window.location.href);
+    if (value == null || value === "" || value === "0") u.searchParams.delete(name);
+    else u.searchParams.set(name, String(value));
+    window.history.replaceState({}, "", u.toString());
+  } catch {}
+}
+
+function getStudentIdFromUrl() {
+  const sid =
+    getQueryParam("student_id") ||
+    getQueryParam("studentId") ||
+    getQueryParam("student") ||
+    getQueryParam("id");
+
+  const n = Number(sid || 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function getQueryParam(name) {
@@ -355,6 +366,7 @@ function renderStudentsTable(opts = {}) {
     const email = escapeHtml(s.email || "");
     const l1 = escapeHtml(s.l1 || "");
     const active = (id === Number(state.selectedStudentId)) ? "active" : "";
+
     return `
       <tr class="students-row ${active}" data-student-id="${id}">
         <td>
@@ -375,26 +387,27 @@ function renderStudentsTable(opts = {}) {
     });
   });
 }
-
 /* ------------------------------------------------------------
    Select + load profile
 ------------------------------------------------------------ */
 async function selectStudent(studentId) {
   state.selectedStudentId = Number(studentId);
 
+  // ✅ keep URL in sync (only when we actually select)
+  setQueryParam("student_id", state.selectedStudentId);
+  setQueryParam("student", state.selectedStudentId); // optional backwards compat
+
   setText("pill-studentid", `student: ${state.selectedStudentId}`);
   $("student-empty-hint") && ($("student-empty-hint").style.display = "none");
 
-  // enable actions
   $("btn-refresh-profile") && ($("btn-refresh-profile").disabled = false);
   $("btn-students-edit") && ($("btn-students-edit").disabled = false);
   $("btn-students-remove") && ($("btn-students-remove").disabled = false);
 
-  // highlight
   renderStudentsTable();
 
   await loadStudentProfile();
-  await loadTemplates(); // keep simple
+  await loadTemplates();
 }
 
 async function loadStudentProfile() {
@@ -937,7 +950,6 @@ async function init() {
   setText("pill-studentid", "student: —");
   setText("out-task-url", "—");
 
-  // Disable assign/profile until a student is selected
   $("btn-assign") && ($("btn-assign").disabled = true);
   $("btn-refresh-profile") && ($("btn-refresh-profile").disabled = true);
   $("btn-students-edit") && ($("btn-students-edit").disabled = true);
@@ -947,13 +959,13 @@ async function init() {
 
   await loadStudentsList();
 
-  // If URL provides a student_id, auto-select
-  const sid = getQueryParam("student_id") || getQueryParam("studentId") || getQueryParam("id");
-  if (sid) {
-    await selectStudent(Number(sid));
-  } else {
-    await loadTemplates();
-  }
+  // ✅ Prefer URL student; otherwise pick first student in list (demo-friendly)
+  let sid = getStudentIdFromUrl();
+  if (sid && !state.students.some(s => Number(s.id) === sid)) sid = 0;
+  if (!sid && state.students.length) sid = Number(state.students[0].id);
+
+  if (sid) await selectStudent(sid);
+  else await loadTemplates();
 }
 
 document.addEventListener("DOMContentLoaded", () => {

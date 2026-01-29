@@ -10244,15 +10244,6 @@ app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireStaffAuth, async 
     return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   }
 });
-// ---------------------------------------------------------------------
-// Teacher ESL Success Overview (MVP)
-// GET /api/teacher/eslsuccess/overview?slug=...
-// ---------------------------------------------------------------------
-// ---------------------------------------------------------------------
-// Teacher ESL Success Overview (MVP)
-// GET /api/teacher/eslsuccess/overview?slug=...
-// ---------------------------------------------------------------------
-// ---------------------------------------------------------------------
 // Teacher ESL Success Overview (MVP)
 // GET /api/teacher/eslsuccess/overview?slug=...
 // ---------------------------------------------------------------------
@@ -10404,6 +10395,101 @@ app.get(
     }
   }
 );
+// ---------------------------------------------------------------------
+// Teacher Students (MVP)
+// GET /api/teacher/students?slug=...&limit=...&offset=...
+// ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Teacher Students (MVP)
+// GET /api/teacher/students?slug=...&limit=...&offset=...
+// ---------------------------------------------------------------------
+app.get("/api/teacher/students", requireTeacherOrAdminAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit || 50)));
+    const offset = Math.max(0, Number(req.query.offset || 0));
+
+    const sRes = await pool.query(`SELECT id FROM schools WHERE slug=$1 LIMIT 1`, [slug]);
+    if (!sRes.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = Number(sRes.rows[0].id);
+
+    // teacher ctx is guaranteed by requireTeacherOrAdminAuth
+    const teacherId = Number(req.teacher?.teacherId || req.teacher?.id || 0);
+    const role = String(req.teacher?.role || "").toLowerCase();
+    const isPrivileged = ["admin", "teacher_admin", "superadmin"].includes(role);
+
+    const sql = `
+      WITH teacher_students AS (
+        SELECT DISTINCT st.student_id
+        FROM student_tasks st
+        WHERE st.school_id = $1
+          AND (st.is_active IS NULL OR st.is_active = true)
+          AND (
+            $2::boolean = true
+            OR st.teacher_id = $3
+            OR st.teacher_admin_id = $3
+          )
+      )
+      SELECT
+        s.id,
+        s.school_id,
+        s.email,
+        s.full_name,
+        s.first_name,
+        s.last_name,
+        s.external_id,
+        s.l1,
+        s.gender,
+        s.created_at,
+        s.updated_at
+      FROM students s
+      WHERE s.school_id = $1
+        AND (s.is_active IS NULL OR s.is_active = true)
+        AND (
+          $2::boolean = true
+          OR EXISTS (SELECT 1 FROM teacher_students ts WHERE ts.student_id = s.id)
+        )
+      ORDER BY
+        COALESCE(NULLIF(s.last_name,''), NULLIF(s.full_name,''), s.email, '') ASC,
+        COALESCE(NULLIF(s.first_name,''), '') ASC,
+        s.id ASC
+      LIMIT $4 OFFSET $5
+    `;
+
+    const rows = (await pool.query(sql, [schoolId, isPrivileged, teacherId, limit, offset])).rows;
+
+    // Optional: total for pagination UI
+    const countSql = `
+      WITH teacher_students AS (
+        SELECT DISTINCT st.student_id
+        FROM student_tasks st
+        WHERE st.school_id = $1
+          AND (st.is_active IS NULL OR st.is_active = true)
+          AND (
+            $2::boolean = true
+            OR st.teacher_id = $3
+            OR st.teacher_admin_id = $3
+          )
+      )
+      SELECT COUNT(*)::int AS total
+      FROM students s
+      WHERE s.school_id = $1
+        AND (s.is_active IS NULL OR s.is_active = true)
+        AND (
+          $2::boolean = true
+          OR EXISTS (SELECT 1 FROM teacher_students ts WHERE ts.student_id = s.id)
+        )
+    `;
+    const total = (await pool.query(countSql, [schoolId, isPrivileged, teacherId])).rows?.[0]?.total ?? rows.length;
+
+    return res.json({ ok: true, slug, schoolId, limit, offset, total, students: rows });
+  } catch (err) {
+    console.error("GET /api/teacher/students failed", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
 //bug tracking
 
 // Deep route probe: recursively traverses nested routers
