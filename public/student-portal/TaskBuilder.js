@@ -1,615 +1,743 @@
 // /public/student-portal/TaskBuilder.js
-"use strict";
+// v1.1 (2026-01-28) — Templates CRUD + Question selection (no filters)
+// - Uses MSSClient.bootGuard for canonical auth + slug scope
+// - Loads: templates, widgets, dashboards (static), AI prompts, questions
+// - CRUD: New / Save / Duplicate / Delete templates
+// - Selection: question_ids stored on template; UI syncs to checkboxes
+// NOTE: Share task URL remains placeholder until “assign template → create task token” flow is wired.
 
-/* ------------------------------------------------------------
-   Minimal helpers
------------------------------------------------------------- */
-const $ = (id) => document.getElementById(id);
+console.log("✅ TaskBuilder.js loaded");
 
-function setText(id, txt) {
-  const el = $(id);
-  if (!el) return;
-  el.textContent = txt == null ? "" : String(txt);
-}
+(function () {
+  "use strict";
 
-function setStatus(id, msg, kind) {
-  const el = $(id);
-  if (!el) return;
-  el.textContent = msg || "";
-  el.classList.remove("ok", "error", "warn");
-  if (kind) el.classList.add(kind);
-}
+  const $ = (id) => document.getElementById(id);
 
-function escapeHtml(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function getQueryParam(name) {
-  try {
-    const p = new URLSearchParams(window.location.search || "");
-    const v = (p.get(name) || "").trim();
-    return v || "";
-  } catch {
-    return "";
-  }
-}
-
-function readLS(k) {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
-
-function safeJsonParse(s) {
-  try { return JSON.parse(s); } catch { return null; }
-}
-
-// Canonical session/token keys in your platform
-const LS_SESSION_KEY = "mssSession";
-const LS_TOKEN_KEY = "mssActorToken";
-
-/* ------------------------------------------------------------
-   Auth + session context
------------------------------------------------------------- */
-function readSession() {
-  const raw = readLS(LS_SESSION_KEY);
-  return raw ? safeJsonParse(raw) : null;
-}
-
-function readToken() {
-  return String(readLS(LS_TOKEN_KEY) || "").trim();
-}
-
-function getSlugContext() {
-  const slugUrl = getQueryParam("slug");
-  const s = readSession() || {};
-  const slugSession = String(s.slug || "").trim();
-  return slugUrl || slugSession || "";
-}
-
-async function apiFetchJson(url, opts = {}) {
-  const headers = new Headers(opts.headers || {});
-  const token = readToken();
-  if (token) headers.set("Authorization", "Bearer " + token);
-  headers.set("Accept", "application/json");
-
-  // If we are sending JSON, enforce content-type
-  const hasBody = opts.body != null;
-  const method = String(opts.method || "GET").toUpperCase();
-  const isJsonBody =
-    hasBody &&
-    typeof opts.body === "string" &&
-    (opts.headers?.["Content-Type"] === "application/json" || headers.get("Content-Type") === "application/json");
-
-  if (hasBody && method !== "GET" && !headers.get("Content-Type") && typeof opts.body === "string") {
-    // Safe default if caller forgot
-    headers.set("Content-Type", "application/json");
+  // -------------------------------------------------------------------
+  // Canonical auth/session boot
+  // -------------------------------------------------------------------
+  if (!window.MSSClient) {
+    console.error("[TaskBuilder] MSSClient not loaded");
+    window.location.href = "/admin-login/AdminLogin.html?reason=mssclient_missing";
+    throw new Error("mssclient_missing");
   }
 
-  let res;
-  let text = "";
-  try {
-    res = await fetch(url, { ...opts, headers, cache: "no-store" });
-    text = await res.text(); // read once, then parse ourselves
-  } catch (err) {
-    return {
-      res: { ok: false, status: 0 },
-      body: { ok: false, error: "network_error", detail: String(err?.message || err) },
-      rawText: "",
-      contentType: "",
-    };
+  const boot = window.MSSClient.bootGuard({
+    allow: ["admin", "teacher", "superadmin"],
+    requireSlug: true,
+    requireToken: false,
+  });
+
+  const apiFetch = boot.apiFetch;
+  const slug = String(boot.slug || "").trim();
+  const session = boot.session || {};
+
+  // -------------------------------------------------------------------
+  // State
+  // -------------------------------------------------------------------
+  const state = {
+    slug,
+    schoolId: session.schoolId || null,
+
+    questionsAll: [],
+    selectedIds: new Set(),
+
+    templates: [],
+    currentTemplateId: null,
+
+    widgets: [],
+    dashboards: [
+      { label: "Dashboard3 (Default)", value: "/dashboards/Dashboard3.html" },
+      { label: "Dashboard4", value: "/dashboards/Dashboard4.html" },
+      { label: "Dashboard5", value: "/dashboards/Dashboard5.html" },
+      { label: "No dashboard", value: "" },
+    ],
+
+    prompts: [],
+  };
+
+  // -------------------------------------------------------------------
+  // UI helpers
+  // -------------------------------------------------------------------
+  function setStatus(id, msg, kind) {
+    const el = $(id);
+    if (!el) return;
+    el.style.display = msg ? "block" : "none";
+    el.textContent = msg || "";
+    el.classList.remove("ok", "error", "warn");
+    if (kind) el.classList.add(kind);
   }
 
-  const contentType = String(res.headers.get("content-type") || "");
+  function setText(id, txt) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = txt == null ? "—" : String(txt);
+  }
 
-  // Try JSON parse only if it looks like JSON
-  let body = {};
-  if (contentType.includes("application/json")) {
+  function escHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  function updateSelectedCount() {
+    const n = state.selectedIds.size;
+    const el = $("pill-selected-count");
+    if (el) el.textContent = `Selected: ${n}`;
+  }
+
+  async function apiJson(url, opts) {
+  const ensureSlug =
+    opts && Object.prototype.hasOwnProperty.call(opts, "ensureSlug")
+      ? !!opts.ensureSlug
+      : true;
+
+  const { ensureSlug: _drop, ...rest } = (opts || {});
+
+  const res = await apiFetch(url, { ...rest, ensureSlug });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+     const msg = data?.error || data?.message || ("http_" + res.status);
+     const err = new Error(msg);
+     err.status = res.status;
+     err.data = data;
+     throw err;
+   }
+   return data;
+ }
+
+  function buildUrl(pathname, params) {
+    const u = new URL(pathname, window.location.origin);
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v == null || v === "") continue;
+      u.searchParams.set(k, String(v));
+    }
+    return u.toString();
+  }
+
+  function fillSelect(elId, items, placeholderLabel) {
+    const el = $(elId);
+    if (!el) return;
+    const opts = [];
+    if (placeholderLabel) opts.push(`<option value="">${escHtml(placeholderLabel)}</option>`);
+    for (const it of (items || [])) {
+      opts.push(`<option value="${escHtml(it.value)}">${escHtml(it.label)}</option>`);
+    }
+    el.innerHTML = opts.join("");
+  }
+
+  function fillAiPromptSelect() {
+    const el = $("sel-ai-prompt");
+    if (!el) return;
+
+    const opts = [`<option value="">(none)</option>`];
+    for (const p of state.prompts) {
+      const id = Number(p.id);
+      const name = p.name || `Prompt ${id}`;
+      opts.push(`<option value="${id}">${escHtml(name)} (id=${id})</option>`);
+    }
+    el.innerHTML = opts.join("");
+  }
+
+  // -------------------------------------------------------------------
+  // Data loaders
+  // -------------------------------------------------------------------
+  async function loadWidgets() {
+    // Prefer admin listing, fallback to legacy /api/widgets, then hard defaults
     try {
-      body = text ? JSON.parse(text) : {};
-    } catch (err) {
-      body = { ok: false, error: "bad_json", detail: String(err?.message || err) };
+      const d = await apiJson("/api/admin/widgets", { method: "GET" });
+      const arr = Array.isArray(d.widgets) ? d.widgets : [];
+      if (arr.length) {
+        state.widgets = arr.map((name) => ({ label: name.replace(".html", ""), value: `/widgets/${name}` }));
+        return;
+      }
+    } catch (e) {
+      console.warn("[TaskBuilder] /api/admin/widgets failed; fallback", e?.message || e);
     }
-  } else {
-    // Non-JSON response (often HTML 404 page, login page, etc.)
-    body = {
-      ok: false,
-      error: "non_json_response",
-      http_status: res.status,
-      content_type: contentType || "(none)",
-      preview: text.slice(0, 300),
+
+    try {
+      const d2 = await apiJson("/api/widgets", { method: "GET" });
+      const arr2 = Array.isArray(d2.widgets) ? d2.widgets : [];
+      if (arr2.length) {
+        state.widgets = arr2.map((name) => ({ label: name.replace(".html", ""), value: `/widgets/${name}` }));
+        return;
+      }
+    } catch (e2) {
+      console.warn("[TaskBuilder] /api/widgets failed; using defaults", e2?.message || e2);
+    }
+
+    state.widgets = [
+      { label: "Widget (Standard)", value: "/Widget.html" },
+      { label: "Widget-Min (Minimal)", value: "/Widget-Min.html" },
+      { label: "Widget3", value: "/Widget3.html" },
+    ];
+  }
+
+  async function loadPrompts() {
+    setStatus("status-prompts", "Loading AI prompts…", "");
+    try {
+      const d = await apiJson(`/api/admin/ai-prompts/${encodeURIComponent(state.slug)}`, { method: "GET" });
+      const prompts = Array.isArray(d.prompts) ? d.prompts : (Array.isArray(d.rows) ? d.rows : []);
+      state.prompts = (prompts || []).map((p) => ({
+        id: Number(p.id),
+        name: p.name || p.prompt_name || "",
+      })).filter((p) => Number.isFinite(p.id) && p.id > 0);
+
+      fillAiPromptSelect();
+      setStatus("status-prompts", state.prompts.length ? "" : "No AI prompts found (optional).", state.prompts.length ? "" : "warn");
+    } catch (e) {
+      console.warn("[TaskBuilder] loadPrompts failed", e);
+      state.prompts = [];
+      fillAiPromptSelect();
+      setStatus("status-prompts", `AI prompts unavailable: ${e.message || "error"}`, "warn");
+    }
+  }
+
+  function normalizeQuestionRow(r) {
+    return {
+      id: Number(r.id),
+      question: String(r.question || r.text || "").trim(),
+      is_public: r.is_public === true,
     };
   }
 
-  return { res, body, rawText: text, contentType };
-}
-
-/* ------------------------------------------------------------
-   State
------------------------------------------------------------- */
-const state = {
-  slug: "",
-  schoolId: null,
-  actorType: "",
-  email: "",
-  role: "",
-  studentId: null, // optional; only used if passed in URL for MVP
-  questions: [],
-  selectedIds: new Set(),
-  aiPrompts: [],
-
-  // UI config defaults
-  widgetPath: "/widgets/Widget.html",
-  dashboardPath: "/dashboards/Dashboard3.html",
-  aiPromptId: null,
-};
-
-/* ------------------------------------------------------------
-   Widget/Dashboard options (MVP)
------------------------------------------------------------- */
-const WIDGET_OPTIONS = [
-  { label: "Widget (default)", path: "widgets/Widget.html" },
-  { label: "Widget-Min", path: "widgets/WidgetMin.html" },
-  { label: "Widget-Max", path: "widgets/WidgetMaxhtml" },
-  { label: "Widget-3", path: "widgets/Widget3.html" },
-  {label: "Widget-One", path: "widgets/WidgetOne.html" },
-];
-
-const DASHBOARD_OPTIONS = [
-  { label: "Dashboard3 (default)", path: "/dashboards/Dashboard3.html" },
-  { label: "Dashboard", path: "/dashboards/Dashboard.html" },
-  { label: "Dashboard-Min", path: "/dashboards/Dashboard-Min.html" },
-];
-
-/* ------------------------------------------------------------
-   Load: “Me” (UI only)
------------------------------------------------------------- */
-async function loadMe() {
-  const s = readSession() || {};
-  state.actorType = String(s.actorType || "").toLowerCase();
-  state.email = String(s.email || "").trim();
-  state.role =
-    state.actorType === "admin"
-      ? (s.isSuperadmin ? "Super admin" : "Admin")
-      : (s.isTeacherAdmin ? "Teacher Admin" : "Teacher");
-
-  // Optional MVP: allow TaskBuilder to run without student_id
-  const sid = getQueryParam("student_id") || getQueryParam("studentId");
-  state.studentId = sid ? Number(sid) : null;
-
-  setText("who-email", state.email || "—");
-  setText("who-role", state.role || "—");
-
-  state.slug = getSlugContext();
-  setText("pill-slug", state.slug || "—");
-
-  // school id may exist in session
-  const schoolId = s.schoolId ?? s.school_id ?? null;
-  state.schoolId = schoolId != null ? Number(schoolId) : null;
-  setText("pill-schoolid", state.schoolId != null ? `id: ${state.schoolId}` : "id: —");
-
-  if (!state.slug) {
-    setStatus("status-top", "Missing slug. Open this page with ?slug=... or select school in Admin Home.", "error");
-  } else {
-    setStatus("status-top", "", "");
-  }
-}
-
-/* ------------------------------------------------------------
-   Questions: fetch + render + filters
------------------------------------------------------------- */
-function getVisibilityMode() {
-  const v = ($("filter-visibility")?.value || "private").toLowerCase();
-  if (v !== "private" && v !== "public" && v !== "all") return "private";
-  return v;
-}
-
-function getTextFilter() {
-  return String($("filter-text")?.value || "").trim().toLowerCase();
-}
-
-function applyQuestionFilters(allQuestions) {
-  const mode = getVisibilityMode();
-  const q = getTextFilter();
-
-  return (allQuestions || []).filter((row) => {
-    const isPublic = !!row.is_public;
-    if (mode === "private" && isPublic) return false;
-    if (mode === "public" && !isPublic) return false;
-
-    if (q) {
-      const hay =
-        (row.question || "") +
-        " " +
-        (row.category || "") +
-        " " +
-        (row.level || "") +
-        " " +
-        String(row.assessment_id || "");
-      if (!hay.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-}
-
-function renderQuestions() {
-  const wrap = $("questions-list");
-  if (!wrap) return;
-
-  const filtered = applyQuestionFilters(state.questions);
-  setText("pill-selected-count", `Selected: ${state.selectedIds.size}`);
-
-  if (!filtered.length) {
-    wrap.innerHTML = `<div class="muted" style="padding:12px;">No questions match your filters.</div>`;
-    setStatus("status-questions", "Loaded 0 questions.", "warn");
-    return;
-  }
-
-  wrap.innerHTML = filtered
-    .map((row) => {
-      const id = Number(row.id);
-      const checked = state.selectedIds.has(id) ? "checked" : "";
-      const badge = row.is_public ? `<span class="tag public">Public</span>` : `<span class="tag private">Private</span>`;
-      const a = row.assessment_id != null ? `<span class="tag subtle">assessment:${escapeHtml(row.assessment_id)}</span>` : "";
-      return `
-        <label class="qrow">
-          <input type="checkbox" class="qchk" data-qid="${id}" ${checked} />
-          <div class="qbody">
-            <div class="qtext">${escapeHtml(row.question || "")}</div>
-            <div class="qmeta">${badge} ${a}</div>
-          </div>
-        </label>
-      `;
-    })
-    .join("");
-
-  wrap.querySelectorAll(".qchk").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      const id = Number(cb.getAttribute("data-qid"));
-      if (!id) return;
-      if (cb.checked) state.selectedIds.add(id);
-      else state.selectedIds.delete(id);
-      setText("pill-selected-count", `Selected: ${state.selectedIds.size}`);
-    });
-  });
-
-  setStatus("status-questions", `Loaded ${filtered.length} questions.`, "ok");
-}
-
-async function loadQuestions() {
-  if (!state.slug) return;
-
+  async function loadQuestions() {
   setStatus("status-questions", "Loading questions…", "");
-  const url = `/api/teacher/questions?slug=${encodeURIComponent(state.slug)}&ts=${Date.now()}`;
-  const { res, body } = await apiFetchJson(url);
 
-  if (!res.ok || body.ok === false) {
-    const msg = body.error || `http_${res.status}`;
-    setStatus("status-questions", `Failed to load questions: ${msg}`, "error");
-    state.questions = [];
+  // read filter
+  const visibility = String($("filter-visibility")?.value || "private")
+    .trim()
+    .toLowerCase();
+
+  // build url
+  const url =
+    `/api/teacher/questions?slug=${encodeURIComponent(state.slug)}` +
+    `&visibility=${encodeURIComponent(visibility)}` +
+    `&ts=${Date.now()}`;
+
+  console.log("[TaskBuilder] loadQuestions", { visibility, url });
+
+  try {
+    // IMPORTANT: ensureSlug false so apiFetch doesn't stomp query params
+    const d = await apiJson(url, { method: "GET", ensureSlug: false });
+
+    const rows = Array.isArray(d.questions) ? d.questions : [];
+    state.questionsAll = rows
+      .map(normalizeQuestionRow)
+      .filter((q) => Number.isFinite(q.id) && q.id > 0 && q.question);
+
     renderQuestions();
-    return;
+    setStatus("status-questions", "", "");
+  } catch (e) {
+    console.error("[TaskBuilder] loadQuestions failed", e);
+    state.questionsAll = [];
+    renderQuestions();
+    setStatus("status-questions", `Load failed: ${e.message || "error"}`, "error");
+  }
+}
+
+  // -------------------------------------------------------------------
+  // Templates CRUD (tolerant route shapes)
+  // -------------------------------------------------------------------
+  async function loadTemplates() {
+    setStatus("status-templates", "Loading templates…", "");
+    try {
+      // Most likely list route already used elsewhere:
+      // GET /api/teacher/task-templates?slug=...
+      const d = await apiJson(`/api/teacher/task-templates?slug=${encodeURIComponent(state.slug)}&ts=${Date.now()}`, { method: "GET" });
+
+      const rows =
+        Array.isArray(d.templates) ? d.templates :
+        Array.isArray(d.task_templates) ? d.task_templates :
+        Array.isArray(d.rows) ? d.rows :
+        Array.isArray(d.items) ? d.items :
+        [];
+
+      state.templates = rows
+        .map((r) => ({
+          id: Number(r.id || r.template_id || r.task_template_id),
+          title: String(r.title || r.name || r.template_title || "").trim() || "Untitled template",
+          widget_path: r.widget_path || r.widget || r.widgetUrl || r.widget_url || null,
+          dashboard_path: r.dashboard_path || r.dashboard || r.dashboardUrl || r.dashboard_url || null,
+          ai_prompt_id: r.ai_prompt_id != null ? Number(r.ai_prompt_id) : null,
+          question_ids: Array.isArray(r.question_ids) ? r.question_ids.map(Number) : [],
+          is_active: r.is_active == null ? true : !!r.is_active,
+          updated_at: r.updated_at || null,
+          created_at: r.created_at || null,
+        }))
+        .filter((t) => Number.isFinite(t.id) && t.id > 0);
+
+      // If current selection vanished, clear it
+      if (state.currentTemplateId && !state.templates.some(t => t.id === state.currentTemplateId)) {
+        state.currentTemplateId = null;
+      }
+
+      renderTemplates();
+      setStatus("status-templates", "", "");
+    } catch (e) {
+      console.error("[TaskBuilder] loadTemplates failed", e);
+      state.templates = [];
+      renderTemplates();
+      setStatus("status-templates", `Load failed: ${e.message || "error"}`, "error");
+    }
   }
 
-  state.questions = Array.isArray(body.questions) ? body.questions : [];
-  renderQuestions();
-}
+  function renderTemplates() {
+    const list = $("templates-list");
+    if (!list) return;
 
-/* ------------------------------------------------------------
-   AI prompts (optional): handle 404 gracefully
------------------------------------------------------------- */
-function renderAiPrompts() {
-  const sel = $("sel-ai-prompt");
-  if (!sel) return;
-
-  const opts = [`<option value="">(None)</option>`]
-    .concat(
-      state.aiPrompts.map((p) => {
-        const id = Number(p.id);
-        const name = String(p.name || p.title || `Prompt ${id}`);
-        return `<option value="${id}">${escapeHtml(name)}</option>`;
-      })
-    )
-    .join("");
-
-  sel.innerHTML = opts;
-  sel.value = state.aiPromptId != null ? String(state.aiPromptId) : "";
-}
-
-async function loadAiPrompts() {
-  if (!state.slug) return;
-
-  // Your server currently has suggest + suggest-settings, but NO list endpoint.
-  // So: treat 404 as "not ready yet" and do not break TaskBuilder.
-  setStatus("status-prompts", "Loading AI prompts…", "");
-
-  const candidates = [
-  // Server supports path-param list endpoint:
-  // GET /api/admin/ai-prompts/:slug
-  `/api/admin/ai-prompts/${encodeURIComponent(state.slug)}?ts=${Date.now()}`,
-];
-
-  for (const url of candidates) {
-    const { res, body } = await apiFetchJson(url);
-
-    // 404 = endpoint not implemented (expected right now)
-    if (res.status === 404) continue;
-
-    // Other failure (auth, etc.)
-    if (!res.ok || body.ok === false) {
-      setStatus("status-prompts", `AI prompts unavailable (${body.error || "http_" + res.status}).`, "warn");
-      state.aiPrompts = [];
-      renderAiPrompts();
+    if (!state.templates.length) {
+      list.innerHTML = `<div style="padding:12px;" class="muted">No templates yet. Click <strong>New template</strong>.</div>`;
       return;
     }
 
-    const list = body.prompts || body.ai_prompts || body.aiPrompts || body.items || [];
-    state.aiPrompts = Array.isArray(list) ? list : [];
-    setStatus("status-prompts", state.aiPrompts.length ? `Loaded ${state.aiPrompts.length} prompts.` : "No prompts found.", "ok");
-    renderAiPrompts();
-    return;
+    const html = state.templates.map((t) => {
+      const active = t.id === state.currentTemplateId ? "active" : "";
+      const aiTag = t.ai_prompt_id ? `<span class="tag subtle">AI: ${t.ai_prompt_id}</span>` : `<span class="tag subtle">AI: —</span>`;
+      const qTag = `<span class="tag subtle">Qs: ${Array.isArray(t.question_ids) ? t.question_ids.length : 0}</span>`;
+      const wTag = t.widget_path ? `<span class="tag subtle">Widget</span>` : `<span class="tag subtle">Widget: —</span>`;
+      const dTag = t.dashboard_path ? `<span class="tag subtle">Dash</span>` : `<span class="tag subtle">Dash: —</span>`;
+
+      return `
+        <div class="trow ${active}" data-tid="${t.id}">
+          <div>
+            <div class="tname"><strong>${escHtml(t.title)}</strong></div>
+            <div class="tmeta">
+              ${aiTag}${qTag}${wTag}${dTag}
+            </div>
+          </div>
+          <div class="tactions">
+            <button class="btn ghost btn-select-template" data-tid="${t.id}">Select</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    list.innerHTML = html;
+
+    list.querySelectorAll("button.btn-select-template").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const id = Number(btn.getAttribute("data-tid") || 0);
+        if (!id) return;
+        selectTemplateById(id);
+      });
+    });
   }
 
-  setStatus("status-prompts", "AI prompt list endpoint not available yet (404). Safe to ignore for now.", "warn");
-  state.aiPrompts = [];
-  renderAiPrompts();
-}
+  function selectTemplateById(id) {
+    const t = state.templates.find(x => x.id === id);
+    if (!t) return;
 
-/* ------------------------------------------------------------
-   Save task
------------------------------------------------------------- */
-function getTaskTitle() {
-  return String($("task-title")?.value || "").trim();
-}
+    state.currentTemplateId = t.id;
+    setText("pill-template-id", `template: ${t.id}`);
 
-function getWidgetPath() {
-  return String($("sel-widget")?.value || state.widgetPath || "/widgets/Widget.html").trim();
-}
+    // Fill editor fields
+    const titleEl = $("task-title");
+    if (titleEl) titleEl.value = t.title || "";
 
-function getDashboardPath() {
-  return String($("sel-dashboard")?.value || state.dashboardPath || "/dashboards/Dashboard3.html").trim();
-}
+    const w = $("sel-widget");
+    if (w && t.widget_path) w.value = t.widget_path;
 
-function getAiPromptId() {
-  const v = String($("sel-ai-prompt")?.value || "").trim();
-  return v ? Number(v) : null;
-}
+    const d = $("sel-dashboard");
+    if (d) d.value = t.dashboard_path || "";
 
-function buildTaskUrl(taskToken) {
-  const u = new URL(getWidgetPath() || "/widgets/Widget.html", window.location.origin);
-  u.searchParams.set("task", taskToken);
-  if (state.slug) u.searchParams.set("slug", state.slug); // optional belt+suspenders
-  return u.toString();
-}
+    const p = $("sel-ai-prompt");
+    if (p) p.value = t.ai_prompt_id ? String(t.ai_prompt_id) : "";
 
-async function saveTask() {
-  if (!state.slug) {
-    setStatus("status-save", "Missing slug. Open Admin Home and select a school, then return.", "error");
-    return;
+    // Sync question selection
+    state.selectedIds.clear();
+    const ids = Array.isArray(t.question_ids) ? t.question_ids : [];
+    for (const qid of ids) {
+      const n = Number(qid);
+      if (Number.isFinite(n) && n > 0) state.selectedIds.add(n);
+    }
+
+    renderQuestions();
+    renderTemplates();
+
+    setStatus("status-save", `Loaded template ${t.id}.`, "ok");
   }
 
-  const title = getTaskTitle();
-  const widget_path = getWidgetPath();
-  const dashboard_path = getDashboardPath();
-  const ai_prompt_id = getAiPromptId();
+  function clearTemplateEditor() {
+    state.currentTemplateId = null;
+    setText("pill-template-id", "template: —");
 
-  if (!state.selectedIds.size) {
-    setStatus("status-save", "Select at least one question.", "error");
-    return;
+    if ($("task-title")) $("task-title").value = "";
+    if ($("sel-widget")) $("sel-widget").selectedIndex = 0;
+    if ($("sel-dashboard")) $("sel-dashboard").value = "/dashboards/Dashboard3.html";
+    if ($("sel-ai-prompt")) $("sel-ai-prompt").value = "";
+
+    state.selectedIds.clear();
+    renderQuestions();
+    renderTemplates();
   }
 
-  // remove student_id from payload entirely for templates:
-const payload = {
-  slug: state.slug,
-  title: title || null,
-  question_ids: Array.from(state.selectedIds),
-  widget_path,
-  dashboard_path,
-  ai_prompt_id: ai_prompt_id || null,
-};
+  function buildTemplatePayload() {
+    const title = String($("task-title")?.value || "").trim();
+    const widget_path = String($("sel-widget")?.value || "").trim() || null;
+    const dashboard_path = String($("sel-dashboard")?.value || "").trim() || null;
 
-  setStatus("status-save", "Saving task…", "");
-  const { res, body } = await apiFetchJson("/api/teacher/task-templates", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+    const ai_prompt_raw = String($("sel-ai-prompt")?.value || "").trim();
+    const ai_prompt_id = ai_prompt_raw ? Number(ai_prompt_raw) : null;
 
-  if (!res.ok || body.ok === false) {
-    const msg = body.error || `http_${res.status}`;
-    setStatus(
-      "status-save",
-      `Failed to save task: ${msg}${
-        msg === "missing_student_id" || msg === "bad_student_id"
-          ? " (Backend still requires student_id. Either relax schema or keep MVP as single-student tasks.)"
-          : ""
-      }`,
-      "error"
+    const question_ids = Array.from(state.selectedIds.values())
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    return {
+      slug: state.slug,
+      title: title || "Untitled template",
+      widget_path,
+      dashboard_path,
+      ai_prompt_id: Number.isFinite(ai_prompt_id) ? ai_prompt_id : null,
+      question_ids,
+      widget_config: {},   // placeholder for later (task-scoped overrides)
+      is_active: true,
+    };
+  }
+
+  function extractTemplateId(body) {
+    return (
+      body?.template_id ||
+      body?.id ||
+      body?.template?.id ||
+      body?.task_template?.id ||
+      body?.created?.id ||
+      null
     );
-    return;
   }
 
-  const task_token = body.task_token || body.taskToken || body.token || "";
-  if (!task_token) {
-    setStatus("status-save", "Task saved, but no task_token returned by server.", "warn");
-    return;
+  async function createTemplate() {
+    const payload = buildTemplatePayload();
+    setStatus("status-save", "Creating template…", "");
+    $("btn-save-template") && ($("btn-save-template").disabled = true);
+
+    try {
+      const d = await apiJson("/api/teacher/task-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const newId = Number(extractTemplateId(d) || 0) || null;
+      await loadTemplates();
+
+      if (newId) {
+        selectTemplateById(newId);
+        setStatus("status-save", `Created template ${newId}.`, "ok");
+      } else {
+        setStatus("status-save", "Created, but server did not return an id (shape mismatch).", "warn");
+      }
+    } catch (e) {
+      console.error("[TaskBuilder] createTemplate failed", e);
+      setStatus("status-save", `Create failed: ${e.message || "error"}`, "error");
+    } finally {
+      $("btn-save-template") && ($("btn-save-template").disabled = false);
+    }
   }
 
-  const url = buildTaskUrl(task_token);
-  setText("out-task-url", url);
+  async function updateTemplate() {
+    if (!state.currentTemplateId) {
+      // If nothing selected, treat Save as Create
+      return createTemplate();
+    }
 
-  setStatus("status-save", "Task saved. Share the URL below.", "ok");
-}
+    const payload = buildTemplatePayload();
+    payload.id = state.currentTemplateId;
 
-/* ------------------------------------------------------------
-   Quick add private question (text-only; no help)
------------------------------------------------------------- */
-async function quickAddQuestion() {
-  if (!state.slug) {
-    setStatus("status-quickadd", "Missing slug.", "error");
-    return;
-  }
-  const q = String($("quick-question")?.value || "").trim();
-  if (!q) {
-    setStatus("status-quickadd", "Enter a question.", "error");
-    return;
-  }
+    setStatus("status-save", `Saving template ${state.currentTemplateId}…`, "");
+    $("btn-save-template") && ($("btn-save-template").disabled = true);
 
-  const payload = {
-    slug: state.slug,
-    question: q,
-    is_public: false,
-    help_level: "none",
-  };
+    try {
+      // Best-practice: PUT /api/teacher/task-templates/:id
+      // Fallback: PUT /api/teacher/task-templates (if that’s how your server is)
+      try {
+        await apiJson(`/api/teacher/task-templates/${encodeURIComponent(String(state.currentTemplateId))}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (e1) {
+        console.warn("[TaskBuilder] PUT /task-templates/:id failed; fallback to PUT /task-templates", e1?.message || e1);
+        await apiJson("/api/teacher/task-templates", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
 
-  setStatus("status-quickadd", "Saving private question…", "");
-  const { res, body } = await apiFetchJson("/api/teacher/questions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok || body.ok === false) {
-    setStatus("status-quickadd", `Failed: ${body.error || "http_" + res.status}`, "error");
-    return;
-  }
-
-  $("quick-question").value = "";
-  setStatus("status-quickadd", "Saved. Refreshing list…", "ok");
-  await loadQuestions();
-}
-
-/* ------------------------------------------------------------
-   Share controls
------------------------------------------------------------- */
-function copyUrl() {
-  const txt = String($("out-task-url")?.textContent || "").trim();
-  if (!txt || txt === "—") {
-    setStatus("status-share", "No URL to copy yet. Save a task first.", "error");
-    return;
-  }
-  navigator.clipboard.writeText(txt)
-    .then(() => setStatus("status-share", "Copied URL to clipboard.", "ok"))
-    .catch(() => setStatus("status-share", "Clipboard failed. Copy manually.", "warn"));
-}
-
-function openUrl() {
-  const txt = String($("out-task-url")?.textContent || "").trim();
-  if (!txt || txt === "—") {
-    setStatus("status-share", "No URL to open yet. Save a task first.", "error");
-    return;
-  }
-  window.open(txt, "_blank", "noopener,noreferrer");
-  setStatus("status-share", "Opened URL in a new tab.", "ok");
-}
-
-/* ------------------------------------------------------------
-   Wire UI
------------------------------------------------------------- */
-function wireSelectors() {
-  const w = $("sel-widget");
-  if (w) {
-    w.innerHTML = WIDGET_OPTIONS
-      .map(o => `<option value="${escapeHtml(o.path)}">${escapeHtml(o.label)}</option>`)
-      .join("");
-    w.value = state.widgetPath;
-    w.addEventListener("change", () => { state.widgetPath = getWidgetPath(); });
+      await loadTemplates();
+      selectTemplateById(state.currentTemplateId);
+      setStatus("status-save", `Saved template ${state.currentTemplateId}.`, "ok");
+    } catch (e) {
+      console.error("[TaskBuilder] updateTemplate failed", e);
+      setStatus("status-save", `Save failed: ${e.message || "error"}`, "error");
+    } finally {
+      $("btn-save-template") && ($("btn-save-template").disabled = false);
+    }
   }
 
-  const d = $("sel-dashboard");
-  if (d) {
-    d.innerHTML = DASHBOARD_OPTIONS
-      .map(o => `<option value="${escapeHtml(o.path)}">${escapeHtml(o.label)}</option>`)
-      .join("");
-    d.value = state.dashboardPath;
-    d.addEventListener("change", () => { state.dashboardPath = getDashboardPath(); });
+  async function duplicateTemplate() {
+    if (!state.currentTemplateId) {
+      setStatus("status-save", "Select a template to duplicate.", "warn");
+      return;
+    }
+
+    const t = state.templates.find(x => x.id === state.currentTemplateId);
+    if (!t) {
+      setStatus("status-save", "Template not found in list.", "warn");
+      return;
+    }
+
+    // Duplicate payload with new title
+    const payload = buildTemplatePayload();
+    payload.title = `${(t.title || "Template").trim()} (copy)`;
+
+    setStatus("status-save", "Duplicating…", "");
+    try {
+      const d = await apiJson("/api/teacher/task-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const newId = Number(extractTemplateId(d) || 0) || null;
+      await loadTemplates();
+
+      if (newId) {
+        selectTemplateById(newId);
+        setStatus("status-save", `Duplicated to template ${newId}.`, "ok");
+      } else {
+        setStatus("status-save", "Duplicated, but server did not return an id.", "warn");
+      }
+    } catch (e) {
+      console.error("[TaskBuilder] duplicateTemplate failed", e);
+      setStatus("status-save", `Duplicate failed: ${e.message || "error"}`, "error");
+    }
   }
 
-  const p = $("sel-ai-prompt");
-  p?.addEventListener("change", () => {
-    state.aiPromptId = getAiPromptId();
-  });
-}
+  async function deleteTemplate() {
+    if (!state.currentTemplateId) {
+      setStatus("status-save", "Select a template to delete.", "warn");
+      return;
+    }
 
-function wireActions() {
-  $("btn-clear")?.addEventListener("click", (e) => {
-    if (e) e.preventDefault();
+    const id = state.currentTemplateId;
+    const ok = window.confirm(`Delete template ${id}? This cannot be undone.`);
+    if (!ok) return;
+
+    setStatus("status-save", `Deleting template ${id}…`, "");
+    try {
+      // Best-practice: DELETE /api/teacher/task-templates/:id
+      // Fallback: DELETE /api/teacher/task-templates (with body)
+      try {
+        await apiJson(`/api/teacher/task-templates/${encodeURIComponent(String(id))}?slug=${encodeURIComponent(state.slug)}`, {
+          method: "DELETE",
+        });
+      } catch (e1) {
+        console.warn("[TaskBuilder] DELETE /task-templates/:id failed; fallback to DELETE body", e1?.message || e1);
+        await apiJson("/api/teacher/task-templates", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: state.slug, id }),
+        });
+      }
+
+      await loadTemplates();
+      clearTemplateEditor();
+      setStatus("status-save", `Deleted template ${id}.`, "ok");
+    } catch (e) {
+      console.error("[TaskBuilder] deleteTemplate failed", e);
+      setStatus("status-save", `Delete failed: ${e.message || "error"}`, "error");
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Rendering questions list + selection (no filters)
+  // -------------------------------------------------------------------
+  function renderQuestions() {
+    const list = $("questions-list");
+    if (!list) return;
+
+    if (!state.questionsAll.length) {
+      list.innerHTML = `<div style="padding:12px;" class="muted">No questions available.</div>`;
+      updateSelectedCount();
+      return;
+    }
+
+    const html = state.questionsAll.map((q) => {
+      const checked = state.selectedIds.has(q.id) ? "checked" : "";
+      const tag = q.is_public ? `<span class="tag public">Public</span>` : `<span class="tag private">Private</span>`;
+      return `
+        <div class="qrow" data-qid="${q.id}">
+          <div>
+            <input type="checkbox" class="qcheck" data-qid="${q.id}" ${checked} />
+          </div>
+          <div>
+            <div class="qtext">${escHtml(q.question)}</div>
+            <div class="qmeta">
+              ${tag}
+              <span class="tag subtle">id: ${q.id}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    list.innerHTML = html;
+
+    list.querySelectorAll("input.qcheck").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const id = Number(cb.getAttribute("data-qid") || 0);
+        if (!id) return;
+        if (cb.checked) state.selectedIds.add(id);
+        else state.selectedIds.delete(id);
+        updateSelectedCount();
+      });
+    });
+
+    updateSelectedCount();
+  }
+
+  function clearSelection() {
     state.selectedIds.clear();
     renderQuestions();
     setStatus("status-questions", "Selection cleared.", "ok");
-  });
+  }
 
-  $("btn-autoselect-3")?.addEventListener("click", (e) => {
-    if (e) e.preventDefault();
-    const filtered = applyQuestionFilters(state.questions);
+  function autoSelect3() {
+    const top = state.questionsAll.slice(0, 3).map((x) => x.id);
     state.selectedIds.clear();
-    filtered.slice(0, 3).forEach((q) => state.selectedIds.add(Number(q.id)));
+    for (const id of top) state.selectedIds.add(id);
     renderQuestions();
-    setStatus("status-questions", "Auto-selected 3.", "ok");
-  });
+    setStatus("status-questions", top.length ? "Auto-selected 3." : "No questions to auto-select.", top.length ? "ok" : "warn");
+  }
 
-  $("filter-visibility")?.addEventListener("change", () => renderQuestions());
-  $("filter-text")?.addEventListener("input", () => renderQuestions());
-
-  $("btn-save-task")?.addEventListener("click", (e) => {
-    if (e) e.preventDefault();
-    saveTask().catch((err) => {
-      console.warn(err);
-      setStatus("status-save", "Save failed (unexpected).", "error");
-    });
-  });
-
-  $("btn-copy-url")?.addEventListener("click", (e) => {
-    if (e) e.preventDefault();
-    copyUrl();
-  });
-
-  $("btn-open-url")?.addEventListener("click", (e) => {
-    if (e) e.preventDefault();
-    openUrl();
-  });
-
-  // FINISHES THE PART YOU SAID WAS TRUNCATED:
-  $("btn-quickadd")?.addEventListener("click", (e) => {
-    if (e) e.preventDefault();
-    quickAddQuestion().catch((err) => {
-      console.warn(err);
-      setStatus("status-quickadd", "Quick add failed (unexpected).", "error");
-    });
-  });
-
-  $("btn-back")?.addEventListener("click", (e) => {
-    if (e) e.preventDefault();
-
-    // safest navigation: prefer history; otherwise fall back to a known portal path
-    if (window.history.length > 1) {
-      window.history.back();
+  // -------------------------------------------------------------------
+  // Share box placeholder
+  // -------------------------------------------------------------------
+  async function copyUrl() {
+    const txt = String($("out-task-url")?.textContent || "").trim();
+    if (!txt || txt === "—") {
+      setStatus("status-share", "No URL yet. (Token generation happens on assignment.)", "warn");
       return;
     }
-    const slug = state.slug ? `?slug=${encodeURIComponent(state.slug)}` : "";
-    window.location.href = `/student-portal/StudentPortalHome.html${slug}`;
-  });
-}
+    try {
+      await navigator.clipboard.writeText(txt);
+      setStatus("status-share", "Copied URL.", "ok");
+    } catch {
+      setStatus("status-share", "Clipboard failed. Copy manually.", "warn");
+    }
+  }
 
-/* ------------------------------------------------------------
-   Init
------------------------------------------------------------- */
-async function init() {
-  await loadMe();
-  wireSelectors();
-  wireActions();
+  function openUrl() {
+    const txt = String($("out-task-url")?.textContent || "").trim();
+    if (!txt || txt === "—") {
+      setStatus("status-share", "No URL yet. (Token generation happens on assignment.)", "warn");
+      return;
+    }
+    window.open(txt, "_blank", "noopener,noreferrer");
+  }
 
-  // Load data
-  await loadQuestions();
-  await loadAiPrompts();
-}
+  function goBack() {
+    const url = buildUrl("/student-portal/StudentPortalHome.html", { slug: state.slug });
+    window.location.href = url;
+  }
 
-document.addEventListener("DOMContentLoaded", () => {
-  init().catch((err) => {
-    console.error("[TaskBuilder] init failed", err);
-    setStatus("status-top", "TaskBuilder failed to initialize. Check console for details.", "error");
-  });
-});
+  // -------------------------------------------------------------------
+  // Init
+  // -------------------------------------------------------------------
+  async function init() {
+    // Identity / context
+    setText("who-email", session.email || "—");
+    setText("who-role", session.actorType || "—");
+    setText("pill-slug", state.slug ? `slug: ${state.slug}` : "slug: —");
+    setText("pill-schoolid", state.schoolId ? `id: ${state.schoolId}` : "id: —");
+    setText("pill-template-id", "template: —");
+
+    // Defaults
+    setText("out-task-url", "—");
+    updateSelectedCount();
+
+    if (!state.slug) {
+      setStatus("status-top", "Missing slug. Open with ?slug=... and ensure bootGuard provides scope.", "error");
+      return;
+    }
+
+    // Wire events
+    $("btn-back")?.addEventListener("click", (e) => { e.preventDefault(); goBack(); });
+
+    $("btn-new-template")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      clearTemplateEditor();
+      setStatus("status-save", "New template: set fields + select questions, then Save.", "ok");
+    });
+
+    $("btn-refresh-templates")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadTemplates();
+    });
+
+    $("btn-save-template")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      updateTemplate();
+    });
+
+    $("btn-duplicate-template")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      duplicateTemplate();
+    });
+
+    $("btn-delete-template")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      deleteTemplate();
+    });
+
+    $("btn-clear")?.addEventListener("click", (e) => { e.preventDefault(); clearSelection(); });
+    $("btn-autoselect-3")?.addEventListener("click", (e) => { e.preventDefault(); autoSelect3(); });
+
+    $("btn-copy-url")?.addEventListener("click", (e) => { e.preventDefault(); copyUrl(); });
+    $("btn-open-url")?.addEventListener("click", (e) => { e.preventDefault(); openUrl(); });
+
+    $("filter-visibility")?.addEventListener("change", () => loadQuestions());
+
+    // Load dropdowns + data
+    try {
+      setStatus("status-top", "Loading…", "");
+
+      await loadWidgets();
+      fillSelect("sel-widget", state.widgets, null);
+
+      // Default widget (prefer Widget.html)
+      const w = $("sel-widget");
+      if (w) {
+        const hasStandard = state.widgets.some((x) => (x.value || "").includes("Widget.html") || x.value === "/Widget.html");
+        if (hasStandard) {
+          const pick = state.widgets.find((x) => (x.value || "").includes("Widget.html"))?.value;
+          if (pick) w.value = pick;
+        }
+      }
+
+      fillSelect("sel-dashboard", state.dashboards, null);
+      const d = $("sel-dashboard");
+      if (d) d.value = "/dashboards/Dashboard3.html";
+
+      await loadPrompts();
+      await loadQuestions();
+      await loadTemplates();
+
+      // Auto-select first template if present
+      if (!state.currentTemplateId && state.templates.length) {
+        selectTemplateById(state.templates[0].id);
+      }
+
+      setStatus("status-top", "", "");
+    } catch (e) {
+      console.error("[TaskBuilder] init failed", e);
+      setStatus("status-top", `Init failed: ${e.message || "error"}`, "error");
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();

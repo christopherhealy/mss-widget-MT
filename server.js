@@ -9495,20 +9495,21 @@ app.get("/api/teacher/questions", requireTeacherOrAdminAuth, async (req, res) =>
     const q = await pool.query(
       `
       SELECT
-        q.id, q.question, q.is_public, q.assessment_id,
-        q.level, q.category, q.sort_order, q.position, q.is_active,
-        q.created_at, q.updated_at
-      FROM questions q
-      WHERE
-        q.school_id = $1
-        AND q.is_active = true
-        AND (
-          $2::text = 'all'
-          OR ($2::text = 'public'  AND q.is_public = true)
-          OR ($2::text = 'private' AND q.is_public = false)
-        )
-        AND ($3::int IS NULL OR q.assessment_id = $3)
-      ORDER BY q.sort_order ASC, q.position ASC, q.id ASC
+          q.id, q.question, q.is_public, q.assessment_id,
+          q.level, q.category, q.sort_order, q.position, q.is_active,
+          q.created_at, q.updated_at
+        FROM questions q
+        JOIN assessments a ON a.id = q.assessment_id
+        WHERE
+          a.school_id = $1
+          AND q.is_active = true
+          AND (
+            $2::text = 'all'
+            OR ($2::text = 'public'  AND q.is_public = true)
+            OR ($2::text = 'private' AND q.is_public = false)
+          )
+          AND ($3::int IS NULL OR q.assessment_id = $3)
+        ORDER BY q.sort_order ASC, q.position ASC, q.id ASC
       `,
       [schoolId, visibility, assessment_id]
     );
@@ -10243,6 +10244,166 @@ app.put("/api/admin/ai-prompts/:slug/suggest-settings", requireStaffAuth, async 
     return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   }
 });
+// ---------------------------------------------------------------------
+// Teacher ESL Success Overview (MVP)
+// GET /api/teacher/eslsuccess/overview?slug=...
+// ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Teacher ESL Success Overview (MVP)
+// GET /api/teacher/eslsuccess/overview?slug=...
+// ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Teacher ESL Success Overview (MVP)
+// GET /api/teacher/eslsuccess/overview?slug=...
+// ---------------------------------------------------------------------
+app.get(
+  "/api/teacher/eslsuccess/overview",
+  requireTeacherOrAdminAuth,
+  async (req, res) => {
+    try {
+      const slug = String(req.query.slug || "").trim();
+      if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+      const sRes = await pool.query(`SELECT id FROM schools WHERE slug=$1 LIMIT 1`, [slug]);
+      if (!sRes.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+      const schoolId = Number(sRes.rows[0].id);
+
+      // ✅ Canonical actor identity from middleware
+      const teacherId = Number(req.teacher?.id || req.teacher_ctx?.teacherId || 0);
+      const teacherRole = String(req.teacher?.role || req.teacher_ctx?.role || "").toLowerCase();
+
+      // If admin path, your helper may set role differently; treat admin as privileged.
+      const isPrivileged = ["admin", "teacher_admin", "superadmin"].includes(teacherRole);
+
+      // If we still don't have a teacherId, that's a bug in auth ctx wiring
+      if (!teacherId && !isPrivileged) {
+        return res.status(401).json({ ok: false, error: "missing_auth", message: "No teacherId in auth context." });
+      }
+
+      const studentsSql = `
+        WITH teacher_students AS (
+          SELECT DISTINCT st.student_id
+          FROM student_tasks st
+          WHERE st.school_id = $1
+            AND (st.is_active IS NULL OR st.is_active = true)
+            AND (
+              $2::boolean = true
+              OR st.teacher_id = $3
+              OR st.teacher_admin_id = $3
+            )
+        )
+        SELECT
+          s.id,
+          s.first_name,
+          s.last_name,
+          s.email,
+          COALESCE(cnt.submissions_count, 0) AS submissions_count,
+          cnt.last_submission_at,
+          cnt.avg_toefl,
+          cnt.avg_cefr
+        FROM students s
+        JOIN teacher_students ts ON ts.student_id = s.id
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*)::int AS submissions_count,
+            MAX(sub.created_at) AS last_submission_at,
+            AVG(
+              NULLIF(
+                NULLIF(
+                  regexp_replace(
+                    COALESCE(
+                      to_jsonb(sub)->>'toefl_estimate',
+                      to_jsonb(sub)->>'toefl',
+                      to_jsonb(sub)->>'toefl_score',
+                      to_jsonb(sub)->>'toefl_est',
+                      ''
+                    ),
+                    '[^0-9\\.]', '', 'g'
+                  ),
+                  ''
+                )::numeric,
+                0
+              )
+            ) AS avg_toefl,
+            NULL::text AS avg_cefr
+          FROM submissions sub
+          WHERE sub.school_id = $1
+            AND sub.student_id = s.id
+        ) cnt ON true
+        WHERE s.school_id = $1
+          AND (s.is_active IS NULL OR s.is_active = true)
+        ORDER BY COALESCE(cnt.last_submission_at, '1970-01-01'::timestamp) DESC, s.id ASC
+      `;
+
+      const studentsRes = await pool.query(studentsSql, [schoolId, isPrivileged, teacherId]);
+
+      const recentSql = `
+        SELECT
+          sub.id,
+          sub.student_id,
+          sub.task_id,
+          sub.created_at,
+
+          NULLIF(
+            NULLIF(
+              regexp_replace(
+                COALESCE(
+                  to_jsonb(sub)->>'toefl_estimate',
+                  to_jsonb(sub)->>'toefl',
+                  to_jsonb(sub)->>'toefl_score',
+                  to_jsonb(sub)->>'toefl_est',
+                  ''
+                ),
+                '[^0-9\\.]', '', 'g'
+              ),
+              ''
+            )::numeric,
+            0
+          ) AS toefl_estimate,
+
+          COALESCE(
+            to_jsonb(sub)->>'cefr_level',
+            to_jsonb(sub)->>'cefr',
+            to_jsonb(sub)->>'cefr_estimate',
+            NULL
+          ) AS cefr_level,
+
+          st.title AS task_title,
+          s.first_name,
+          s.last_name
+        FROM submissions sub
+        LEFT JOIN student_tasks st ON st.id = sub.task_id
+        LEFT JOIN students s ON s.id = sub.student_id
+        WHERE sub.school_id = $1
+          AND (
+            $2::boolean = true
+            OR st.teacher_id = $3
+            OR st.teacher_admin_id = $3
+          )
+        ORDER BY sub.created_at DESC
+        LIMIT 50
+      `;
+
+      const recentRes = await pool.query(recentSql, [schoolId, isPrivileged, teacherId]);
+
+      return res.json({
+        ok: true,
+        slug,
+        schoolId,
+        actor: {
+          id: teacherId || null,
+          actorType: teacherRole || null,
+          isPrivileged,
+        },
+        students: studentsRes.rows,
+        recentSubmissions: recentRes.rows,
+      });
+    } catch (err) {
+      console.error("GET /api/teacher/eslsuccess/overview failed", err);
+      return res.status(500).json({ ok: false, error: "server_error" });
+    }
+  }
+);
 //bug tracking
 
 // Deep route probe: recursively traverses nested routers
@@ -10269,7 +10430,7 @@ function collectRoutes(stack, prefix = "") {
   }
   return out;
 }
-
+//routes checking - dupes
 app.get("/api/__routes_probe", (req, res) => {
   const routes = collectRoutes(app._router?.stack || []);
   const uniq = Array.from(new Set(routes));

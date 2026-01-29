@@ -134,7 +134,7 @@ function wireUi() {
       "?slug=" + encodeURIComponent(slug) +
       "&student_id=" + encodeURIComponent(studentId);
   });
-  
+
   // ✅ NEW: go to Task Builder now
   $("btn-tasks")?.addEventListener("click", (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -149,9 +149,14 @@ function wireUi() {
   });
 
   $("btn-submissions")?.addEventListener("click", (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    setStatus("status-mvp", "Submissions UI not wired yet. Next: list submissions by task/student.", "ok");
-  });
+  if (e && e.preventDefault) e.preventDefault();
+
+  const slug = String(window.MSSClient?.state?.slug || "").trim(); // if available
+  const u = new URL("/student-portal/ESLSuccess.html", window.location.origin);
+  if (slug) u.searchParams.set("slug", slug);
+
+  window.location.href = u.toString();
+});
 
   $("btn-open-task")?.addEventListener("click", (e) => {
     if (e && e.preventDefault) e.preventDefault();

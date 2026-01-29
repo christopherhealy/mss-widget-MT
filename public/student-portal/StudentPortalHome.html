@@ -45,6 +45,7 @@
       gap: 6px;
     }
     .meta .label { font-weight: 600; }
+
     .row {
       margin-top: 18px;
       display: grid;
@@ -67,6 +68,7 @@
       font-size: 13px;
       line-height: 1.4;
     }
+
     .btnrow {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -104,6 +106,7 @@
       background: #020617;
       box-shadow: 0 6px 14px rgba(15, 23, 42, 0.35);
     }
+
     .status {
       margin-top: 10px;
       font-size: 13px;
@@ -112,21 +115,6 @@
     .status.error { color: #b91c1c; }
     .status.ok { color: #166534; }
 
-    .formrow {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      align-items: center;
-      margin-top: 10px;
-    }
-    input[type="text"]{
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      font-size: 14px;
-      outline: none;
-    }
     .pill {
       display: inline-flex;
       align-items: center;
@@ -155,13 +143,17 @@
   <div class="shell">
     <header class="header">
       <h1>Student Portal</h1>
-      <p>Teacher workflow for assigning practice tasks, and student workflow for completing them via task token.</p>
+      <p></p>
     </header>
 
     <section class="meta" id="meta">
       <div><span class="label">Signed in as:</span> <span id="admin-email">—</span></div>
       <div><span class="label">Role:</span> <span id="admin-role">—</span></div>
-      <div><span class="label">School context:</span> <span id="school-slug">—</span> <span class="pill" id="school-id-pill" title="school_id">id: —</span></div>
+      <div>
+        <span class="label">School context:</span>
+        <span id="school-slug">—</span>
+        <span class="pill" id="school-id-pill" title="school_id">id: —</span>
+      </div>
     </section>
 
     <div class="row">
@@ -174,37 +166,17 @@
         </p>
         <div class="btnrow">
           <button class="btn" id="btn-students">Students</button>
-          <button class="btn" id="btn-tasks">Tasks / Assignments (placeholder)</button>
-          <button class="btn secondary" id="btn-submissions">Submissions (placeholder)</button>
-        </div>
-        <div class="status" id="status-mvp"></div>
-      </div>
-
-      <div class="card">
-        <h2>Task token tester (student-entry)</h2>
-        <p>
-          Paste a task token to open the student-facing task URL. This lets you validate
-          the end-to-end loop before building full UI.
-        </p>
-
-        <div class="formrow">
-          <input id="task-token" type="text" placeholder="task_token (e.g., 9b3f...)" autocomplete="off" />
-          <button class="btn" id="btn-open-task">Open task</button>
-        </div>
-
-        <div class="btnrow" style="margin-top:10px;">
-          <button class="btn secondary" id="btn-copy-task-url">Copy task URL</button>
+          <button class="btn" id="btn-tasks">Tasks / Assignments</button>
+          <button class="btn secondary" id="btn-submissions">ESL Success</button>
           <button class="btn secondary" id="btn-back-admin">Back to Admin Home</button>
         </div>
-
-        <div class="status" id="status-task"></div>
+        <div class="status" id="status-mvp"></div>
       </div>
 
     </div>
 
     <footer class="footer">
       <span class="pill" id="build-pill">Build: <span id="build-ts">—</span></span>
-    
     </footer>
   </div>
 

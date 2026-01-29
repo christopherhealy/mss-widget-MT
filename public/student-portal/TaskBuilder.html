@@ -15,7 +15,7 @@
     .tb-card { background: #fff; border-radius: 14px; padding: 18px; box-shadow: 0 1px 10px rgba(0,0,0,0.06); }
     .tb-h1 { font-size: 28px; margin: 0 0 6px 0; }
     .tb-sub { margin: 0 0 14px 0; opacity: 0.75; }
-    .tb-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 18px; margin-top: 14px; }
+    .tb-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; margin-top: 14px; }
     @media (max-width: 980px) { .tb-grid { grid-template-columns: 1fr; } }
 
     .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(0,0,0,0.06); }
@@ -39,6 +39,7 @@
     .btn.primary { background: #0b4fd6; color: #fff; border-color: transparent; }
     .btn.dark { background: #111827; color: #fff; border-color: transparent; }
     .btn.ghost { background: #fff; }
+    .btn.danger { background: #b91c1c; color:#fff; border-color: transparent; }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
     .status { font-size: 12px; margin-top: 8px; }
@@ -48,18 +49,24 @@
 
     .qpanel { border: 1px solid rgba(0,0,0,0.10); border-radius: 12px; padding: 12px; background: rgba(0,0,0,0.015); }
     .qlist { margin-top: 10px; border: 1px solid rgba(0,0,0,0.10); border-radius: 12px; background: #fff; overflow: hidden; }
+
     .qrow { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 12px; border-bottom: 1px solid rgba(0,0,0,0.06); }
     .qrow:last-child { border-bottom: none; }
     .qtext { font-size: 14px; }
     .qmeta { margin-top: 6px; }
 
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    /* Template list */
+    .tlist { margin-top: 10px; border: 1px solid rgba(0,0,0,0.10); border-radius: 12px; background:#fff; overflow:hidden; }
+    .trow { display:grid; grid-template-columns: 1fr auto; gap:12px; padding:12px; border-bottom:1px solid rgba(0,0,0,0.06); align-items:center; }
+    .trow:last-child { border-bottom:none; }
+    .trow.active { background: rgba(11,79,214,0.06); }
+    .tname { font-size:14px; }
+    .tmeta { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+    .tactions { display:flex; gap:8px; }
+
     .muted { opacity: 0.7; }
-
-    .sharebox { border: 1px dashed rgba(0,0,0,0.25); border-radius: 10px; padding: 12px; background: rgba(0,0,0,0.02); }
-    .shareurl { min-height: 24px; word-break: break-all; }
-
     .tiny { font-size: 12px; opacity: 0.8; margin-top: 6px; }
+    .divider { height:1px; background: rgba(0,0,0,0.08); margin: 12px 0; }
   </style>
 </head>
 
@@ -67,7 +74,9 @@
   <div class="tb-wrap">
     <div class="tb-card">
       <h1 class="tb-h1">Task Builder</h1>
-      <p class="tb-sub">Create a practice task: choose widget + dashboard + questions, optionally associate an AI prompt, then share the token URL.</p>
+      <p class="tb-sub">
+        Build a <strong>Task Template</strong> (widget + dashboard + questions + optional AI prompt), then generate a token URL when assigning.
+      </p>
 
       <div class="qpanel">
         <div><strong>Signed in as:</strong> <span id="who-email">—</span></div>
@@ -81,128 +90,116 @@
       </div>
 
       <div class="tb-grid">
-        <!-- LEFT: settings -->
+
+        <!-- LEFT: Templates + Editor -->
         <div class="tb-card" style="box-shadow:none; border:1px solid rgba(0,0,0,0.08);">
-          <h3 style="margin-top:0;">Task settings</h3>
+          <!-- TEMPLATES LIST -->
+          <h3 style="margin-top:0;">Task templates</h3>
           <div class="muted" style="font-size:13px; margin-bottom:10px;">
-            Most tasks will be <span class="tag private">Practice</span>.
-            For MVP: allow up to <strong>3 attempts</strong> per question (enforced later), and track per-task cost via Vox usage.
+            Templates are reusable definitions. Select one to edit. Create a new template for a new practice task shape.
+          </div>
+
+          <div class="btnrow">
+            <button class="btn primary" id="btn-new-template">New template</button>
+            <button class="btn ghost" id="btn-refresh-templates">Refresh</button>
+            <button class="btn dark" id="btn-back" style="margin-left:auto;">Back to Student Portal</button>
+          </div>
+          <div class="status" id="status-templates"></div>
+
+          <div class="tlist" id="templates-list">
+            <div style="padding:12px;" class="muted">Loading templates…</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- TEMPLATE EDITOR -->
+          <h3 style="margin-top:0;">Task template</h3>
+          <div class="muted" style="font-size:13px; margin-bottom:10px;">
+            Editing here updates the template definition (not an assignment).
           </div>
 
           <div class="field">
-            <label for="task-title">Task title</label>
-            <input id="task-title" type="text" placeholder="Optional, but recommended for reporting." />
-            <div class="tiny">Optional, but recommended for reporting.</div>
+            <label for="task-title">Template title</label>
+            <input id="task-title" type="text" placeholder="Recommended: short descriptive name (e.g., TOEFL L&amp;R Set 1)" />
+            <div class="tiny">Used for teacher workflows and reporting.</div>
           </div>
 
           <div class="row2" style="margin-top:10px;">
             <div class="field">
               <label for="sel-widget">Widget</label>
               <select id="sel-widget"></select>
-              <div class="tiny">Same concept as School Portal widget selector.</div>
+              <div class="tiny">Widget layout used for task-scoped links generated from this template.</div>
             </div>
 
             <div class="field">
               <label for="sel-dashboard">Dashboard</label>
               <select id="sel-dashboard"></select>
-              <div class="tiny">Where the student is sent after each submit (current single-question flow).</div>
+              <div class="tiny">Optional. Student can return to dashboard after submissions.</div>
             </div>
           </div>
 
           <div class="field" style="margin-top:10px;">
             <label for="sel-ai-prompt">AI prompt (optional)</label>
             <select id="sel-ai-prompt"></select>
-            <div class="tiny">Associate an AI prompt with the task so report generation can be automated on submission receipt.</div>
+            <div class="tiny">Attach an AI prompt so AI report generation can run automatically (or later).</div>
             <div class="status" id="status-prompts"></div>
           </div>
 
           <div class="btnrow">
-            <button class="btn primary" id="btn-save-task">Save task &amp; generate token</button>
-            <button class="btn dark" id="btn-back">Back to Student Portal</button>
+            <button class="btn primary" id="btn-save-template">Save template</button>
+            <button class="btn ghost" id="btn-duplicate-template">Duplicate</button>
+            <button class="btn danger" id="btn-delete-template">Delete</button>
+            <div style="margin-left:auto; align-self:center;">
+              <span class="pill" id="pill-template-id">template: —</span>
+            </div>
           </div>
           <div class="status" id="status-save"></div>
-
-          <div class="tb-card" style="box-shadow:none; border:1px solid rgba(0,0,0,0.08); margin-top:14px;">
-            <h3 style="margin-top:0;">Share task link</h3>
-            <div class="muted" style="font-size:13px;">
-              This URL can be sent to the student. The widget reads the task token and resolves school + student scope server-side.
-            </div>
-
-            <div class="sharebox" style="margin-top:10px;">
-              <div class="muted" style="font-size:12px; margin-bottom:6px;">Task URL</div>
-              <div id="out-task-url" class="shareurl mono">—</div>
-            </div>
-
-            <div class="btnrow" style="margin-top:10px;">
-              <button class="btn ghost" id="btn-copy-url">Copy URL</button>
-              <button class="btn ghost" id="btn-open-url">Open URL</button>
-            </div>
-            <div class="status" id="status-share"></div>
-          </div>
         </div>
 
-        <!-- RIGHT: questions -->
+        <!-- RIGHT: Questions -->
         <div class="tb-card" style="box-shadow:none; border:1px solid rgba(0,0,0,0.08);">
-          <h3 style="margin-top:0;">Questions</h3>
-          <div class="muted" style="font-size:13px; margin-bottom:10px;">
-            All questions in this widget instance comprise <strong>one task</strong>. For now the widget submits one question at a time; later we will support multi-question completion in one session.
-          </div>
+        <h3 style="margin-top:0;">Questions</h3>
+        <div class="muted" style="font-size:13px; margin-bottom:10px;">
+            Templates contain <strong>multiple questions</strong>. Students can complete one or more in a single session.
+            Each submission is saved per question.
+        </div>
 
-          <div class="row2">
+        <!-- Visibility filter (Public / Private / All) -->
+        <div class="row2">
             <div class="field">
-              <label for="filter-visibility">Visibility</label>
-              <select id="filter-visibility">
+            <label for="filter-visibility">Visibility</label>
+            <select id="filter-visibility">
                 <option value="private">Private</option>
                 <option value="public">Public</option>
                 <option value="all">All</option>
-              </select>
+            </select>
             </div>
-            <div class="field">
-              <label for="filter-text">Text filter</label>
-              <input id="filter-text" type="text" placeholder="Filter questions..." />
-            </div>
-          </div>
+            <div></div>
+        </div>
 
-          <div class="btnrow" style="margin-top:10px;">
+        <div class="btnrow" style="margin-top:10px;">
             <button class="btn dark" id="btn-clear">Clear selection</button>
             <button class="btn dark" id="btn-autoselect-3">Auto-select 3</button>
             <div style="margin-left:auto; align-self:center;">
-              <span class="pill" id="pill-selected-count">Selected: 0</span>
+            <span class="pill" id="pill-selected-count">Selected: 0</span>
             </div>
-          </div>
-
-          <div class="status" id="status-questions"></div>
-
-          <div class="qlist" id="questions-list">
-            <div style="padding:12px;" class="muted">Loading questions…</div>
-          </div>
-
-          <div class="tb-card" style="box-shadow:none; border:1px solid rgba(0,0,0,0.08); margin-top:14px;">
-            <h3 style="margin-top:0;">Quick add (private question)</h3>
-            <div class="muted" style="font-size:13px;">
-              Shortcut for teachers: add a simple text-only question (no help). This will be saved as <strong>private</strong>.
-              For full CRUD, use Admin Home → Questions.
-            </div>
-
-            <div class="field" style="margin-top:10px;">
-              <label for="quick-question">Question text</label>
-              <textarea id="quick-question" rows="3" placeholder="Type a new private question..."></textarea>
-            </div>
-
-            <div class="btnrow">
-              <button class="btn ghost" id="btn-quickadd">Add private question</button>
-            </div>
-            <div class="status" id="status-quickadd"></div>
-          </div>
         </div>
+
+        <div class="status" id="status-questions"></div>
+
+        <div class="qlist" id="questions-list">
+            <div style="padding:12px;" class="muted">Loading questions…</div>
+        </div>
+      </div>
+
       </div>
     </div>
   </div>
 
   <!-- Core auth/session client (needed) -->
-  <script src="/js/mss_client.js?v=2026-01-24b"></script>
+  <script src="/js/mss_client.js?v=2026-01-28c"></script>
 
   <!-- IMPORTANT: cache-bust while you iterate -->
-  <script src="/student-portal/TaskBuilder.js?v=2026-01-24b"></script>
+  <script src="/student-portal/TaskBuilder.js?v=2026-01-28c"></script>
 </body>
 </html>

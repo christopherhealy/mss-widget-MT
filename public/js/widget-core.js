@@ -496,15 +496,30 @@ function initWidget() {
   wireUiEvents();
   bootstrapWidget();
 }
+function getTaskTokenFromUrl() {
+  try {
+    const p = new URLSearchParams(window.location.search || "");
+    return String(
+      p.get("task") ||
+      p.get("task_token") ||
+      p.get("token") ||
+      ""
+    ).trim();
+  } catch {
+    return "";
+  }
+}
 
 function bootstrapWidget() {
   CURRENT_SLUG = getSlugFromUrlOrRoot();
   console.log("🚀 Bootstrapping widget for slug:", CURRENT_SLUG);
   setStatus("Loading…");
 
-  const url = `${API.BOOTSTRAP}/${encodeURIComponent(
-    CURRENT_SLUG
-  )}/bootstrap`;
+  const taskToken = getTaskTokenFromUrl();
+
+  const url = taskToken
+    ? `/api/task/${encodeURIComponent(taskToken)}?ts=${Date.now()}`
+    : `${API.BOOTSTRAP}/${encodeURIComponent(CURRENT_SLUG)}/bootstrap?ts=${Date.now()}`;
 
   fetch(url)
     .then((r) => {
