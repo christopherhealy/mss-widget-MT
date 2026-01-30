@@ -123,6 +123,20 @@ function pickTranscriptFromRow(row) {
 
   return "";
 }
+// helpers to get us to the workspace
+function getSlugFromUrlOrState() {
+  const u = new URL(window.location.href);
+  const slug = (u.searchParams.get("slug") || "").trim();
+  // If you also store slug in session/global, keep this fallback:
+  return slug || (window.__mss?.session?.slug || "");
+}
+
+function gotoWorkspace(slug, studentId) {
+  const qs = new URLSearchParams();
+  if (slug) qs.set("slug", slug);
+  qs.set("student_id", String(studentId));
+  window.location.href = `/student-portal/Workspace.html?${qs.toString()}`;
+}
 
 /**
  * Show transcript for a submission row.
@@ -354,38 +368,78 @@ function renderStudentsTable(opts = {}) {
   const list = Array.isArray(state.students) ? state.students : [];
   setText("students-count", `${list.length} student${list.length === 1 ? "" : "s"}`);
 
+  // NOTE: table now has 4 columns (Name, Email, L1, Workspace)
   if (!list.length) {
     const hint = opts.hint || (state.searchQ ? "No matches." : "No students found.");
-    tb.innerHTML = `<tr><td colspan="3" class="muted" style="padding:10px;">${escapeHtml(hint)}</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="4" class="muted" style="padding:10px;">${escapeHtml(hint)}</td></tr>`;
     return;
   }
 
-  tb.innerHTML = list.map((s) => {
-    const id = Number(s.id);
-    const name = escapeHtml(s.full_name || s.name || s.email || `Student ${id}`);
-    const email = escapeHtml(s.email || "");
-    const l1 = escapeHtml(s.l1 || "");
-    const active = (id === Number(state.selectedStudentId)) ? "active" : "";
+  tb.innerHTML = list
+    .map((s) => {
+      const id = Number(s.id);
+      const name = escapeHtml(s.full_name || s.name || s.email || `Student ${id}`);
+      const email = escapeHtml(s.email || "");
+      const l1 = escapeHtml(s.l1 || "");
+      const active = id === Number(state.selectedStudentId) ? "active" : "";
 
-    return `
-      <tr class="students-row ${active}" data-student-id="${id}">
-        <td>
-          <strong>${name}</strong>
-          <div class="students-meta muted">id: ${id}${s.external_id ? ` • ext: ${escapeHtml(s.external_id)}` : ""}</div>
-        </td>
-        <td>${email || "<span class='muted'>—</span>"}</td>
-        <td>${l1 || "<span class='muted'>—</span>"}</td>
-      </tr>
-    `;
-  }).join("");
+      return `
+        <tr class="students-row ${active}" data-student-id="${id}">
+          <td>
+            <strong>${name}</strong>
+            <div class="students-meta muted">
+              id: ${id}${s.external_id ? ` • ext: ${escapeHtml(s.external_id)}` : ""}
+            </div>
+          </td>
+          <td>${email || "<span class='muted'>—</span>"}</td>
+          <td>${l1 || "<span class='muted'>—</span>"}</td>
+          <td>
+            <button
+              class="btn btn-workspace"
+              type="button"
+              data-action="workspace"
+              data-student-id="${id}"
+              ${id ? "" : "disabled"}
+            >
+              Workspace →
+            </button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
 
-  tb.querySelectorAll(".students-row").forEach((tr) => {
-    tr.addEventListener("click", async () => {
-      const sid = Number(tr.getAttribute("data-student-id") || 0);
+  // Single delegated handler: row click selects; button click navigates to Workspace
+  tb.onclick = async (e) => {
+    const btn = e.target.closest("button[data-action='workspace']");
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const sid = Number(btn.getAttribute("data-student-id") || 0);
       if (!sid) return;
-      await selectStudent(sid);
-    });
-  });
+
+      // slug comes from state (preferred) or URL
+      const slug =
+        String(state.slug || "").trim() ||
+        String(new URL(window.location.href).searchParams.get("slug") || "").trim();
+
+      const qs = new URLSearchParams();
+      if (slug) qs.set("slug", slug);
+      qs.set("student_id", String(sid));
+
+      window.location.href = `/student-portal/Workspace.html?${qs.toString()}`;
+      return;
+    }
+
+    const tr = e.target.closest("tr.students-row");
+    if (!tr) return;
+
+    const sid = Number(tr.getAttribute("data-student-id") || 0);
+    if (!sid) return;
+
+    await selectStudent(sid);
+  };
 }
 /* ------------------------------------------------------------
    Select + load profile
@@ -831,11 +885,15 @@ async function onRemoveStudent() {
 ------------------------------------------------------------ */
 function wireActions() {
   $("btn-back")?.addEventListener("click", (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    if (window.history.length > 1) return window.history.back();
-    const slug = state.slug ? `?slug=${encodeURIComponent(state.slug)}` : "";
-    window.location.href = `/student-portal/StudentPortalHome.html${slug}`;
-  });
+  if (e?.preventDefault) e.preventDefault();
+
+  const slug = state.slug
+    ? `?slug=${encodeURIComponent(state.slug)}`
+    : "";
+
+  // StudentProfile back ALWAYS goes to AdminHome / StudentPortalHome
+  window.location.href = `/student-portal/StudentPortalHome.html${slug}`;
+});
 
   $("btn-students-refresh")?.addEventListener("click", async (e) => {
     if (e && e.preventDefault) e.preventDefault();

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Workspace | ESL Success</title>
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+  <style>
+    body { background:#f5f7fb; margin:0; font-family:system-ui,-apple-system,Segoe UI,sans-serif; }
+    .wrap { max-width:1200px; margin: 0 auto; padding:18px; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .topbar h1 { margin:0; font-size:22px; }
+    .pill { display:inline-flex; gap:6px; align-items:center; padding:2px 8px; border-radius:999px; border:1px solid #e2e8f0; background:#fff; font-size:12px; }
+    .muted { color:#64748b; }
+    .btn { padding:8px 10px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; font-weight:600; }
+    .btn.primary { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
+    .btn:disabled { opacity:.6; cursor:not-allowed; }
+    .grid { display:grid; grid-template-columns: 1.4fr 1fr; gap:14px; margin-top:14px; }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:14px; box-shadow:0 10px 30px rgba(15,23,42,.06); }
+    .card h2 { margin:0 0 10px; font-size:16px; }
+    .status { margin-top:10px; font-size:13px; }
+    .status.error { color:#b91c1c; }
+    .status.ok { color:#166534; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-top:1px solid #eef2f7; padding:8px 6px; font-size:13px; vertical-align:top; }
+    th { color:#475569; font-size:12px; background:#f8fafc; }
+    .bars { display:grid; gap:10px; }
+    .barrow { display:grid; grid-template-columns: 90px 1fr 70px; gap:10px; align-items:center; }
+    .bartrack { height:10px; background:#e2e8f0; border-radius:999px; overflow:hidden; }
+    .barfill { height:10px; background:#1d4ed8; width:0%; border-radius:999px; transition:width .2s; }
+    .note { border:1px solid #e2e8f0; border-radius:12px; padding:10px; background:#fff; }
+    textarea, input, select { width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:12px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .rightcol { display:grid; gap:14px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="muted" style="font-size:12px;">Teacher Workspace</div>
+        <h1 id="page-title">Student Workspace</h1>
+        <div class="row" style="margin-top:8px;">
+          <span class="pill" id="pill-slug">slug: —</span>
+          <span class="pill" id="pill-student">student: —</span>
+          <span class="pill" id="pill-email">email: —</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="btn-back">Back to Students</button>
+        <button class="btn" id="btn-open-dashboard" disabled>Open Dashboard</button>
+      </div>
+    </div>
+
+    <div id="status-top" class="status"></div>
+
+    <div class="grid">
+      <!-- LEFT: Results -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h2 style="margin:0;">Results</h2>
+          <div class="row">
+            <button class="btn" id="btn-refresh">Refresh</button>
+          </div>
+        </div>
+
+        <div id="results-wrap" style="margin-top:10px;">
+          <div class="muted">Loading…</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: KPIs + Notes + Actions -->
+      <div class="rightcol">
+        <div class="card">
+          <h2>Student Snapshot</h2>
+          <div class="muted" style="margin-bottom:10px;">Latest submission indicators</div>
+          <div class="bars" id="kpi-bars"></div>
+        </div>
+
+        <div class="card">
+          <h2>Assign Template</h2>
+          <div class="muted" style="margin-bottom:10px;">Assign a task template to this student.</div>
+          <select id="sel-template">
+            <option value="">(Select a template)</option>
+          </select>
+          <div class="row" style="margin-top:10px; justify-content:flex-end;">
+            <button class="btn primary" id="btn-assign" disabled>Assign</button>
+          </div>
+          <div id="status-assign" class="status"></div>
+        </div>
+
+        <div class="card">
+          <h2>Notes</h2>
+          <div class="muted" style="margin-bottom:10px;">Teacher notes (NotesAPI)</div>
+          <textarea id="note-text" rows="3" placeholder="Add a quick note…"></textarea>
+          <div class="row" style="margin-top:10px; justify-content:flex-end;">
+            <button class="btn" id="btn-add-note">Add Note</button>
+          </div>
+          <div id="notes-list" style="margin-top:10px; display:grid; gap:10px;"></div>
+          <div id="status-notes" class="status"></div>
+        </div>
+
+        <div class="card">
+          <h2>Notify Student</h2>
+          <div class="muted" style="margin-bottom:10px;">Send the student their practice link or a reminder.</div>
+          <button class="btn" id="btn-email" disabled>Email Student</button>
+          <div id="status-email" class="status"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <script src="/js/mss_client.js?v=20260117_44"></script>
+  <script src="/student-portal/Workspace.js?v=1"></script>
+</body>
+</html>

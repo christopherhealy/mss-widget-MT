@@ -2366,7 +2366,14 @@ async function getQuestionsSchema() {
   console.log("✅ questions schema:", questionsSchemaCache);
   return questionsSchemaCache;
 }
-
+//helper for our Student Workspace
+async function firstExistingTable(pool, names = []) {
+  for (const n of names) {
+    const r = await pool.query(`SELECT to_regclass($1) AS reg`, [n]);
+    if (r.rows?.[0]?.reg) return n; // returns the actual registered table/view name
+  }
+  return null;
+}
 // CSV log in /tmp (ephemeral on free Render)
 const LOG_CSV = "/tmp/msswidget-log.csv";
 const LOG_HEADERS = [
@@ -10552,6 +10559,86 @@ app.get("/api/teacher/students", requireTeacherOrAdminAuth, async (req, res) => 
   } catch (err) {
     console.error("GET /api/teacher/students failed", err);
     return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+// GET /api/admin/students?slug=...
+app.get("/api/admin/students", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const s = await pool.query(`SELECT id FROM schools WHERE slug=$1 LIMIT 1`, [slug]);
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = Number(s.rows[0].id);
+
+    const r = await pool.query(
+      `SELECT id, email, full_name, first_name, last_name, l1
+         FROM students
+        WHERE school_id = $1
+          AND is_active = TRUE
+        ORDER BY COALESCE(full_name, email) ASC`,
+      [schoolId]
+    );
+
+    return res.json({ ok: true, students: r.rows });
+  } catch (e) {
+    console.error("❌ /api/admin/students:", e);
+    return res.status(500).json({ ok: false, error: "students_failed", message: e.message });
+  }
+});
+// ---------------------------------------------------------------------
+// GET /api/admin/task-templates?slug=...
+// Returns templates visible to staff for this school
+// ---------------------------------------------------------------------
+app.get("/api/admin/task-templates", requireStaffAuth, async (req, res) => {
+  try {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    const s = await pool.query(`SELECT id FROM schools WHERE slug=$1 LIMIT 1`, [slug]);
+    if (!s.rowCount) return res.status(404).json({ ok: false, error: "school_not_found" });
+    const schoolId = Number(s.rows[0].id);
+
+    // Try common candidates (table OR view). Adjust/add your real ones.
+    const tname = await firstExistingTable(pool, [
+      "public.task_templates",
+      "public.task_templates_mt",
+      "public.task_templates_v2",
+      "public.vw_task_templates",
+      "public.vw_taskbuilder_templates",
+    ]);
+
+    if (!tname) {
+      // demo-safe: endpoint works, just no templates
+      return res.json({ ok: true, templates: [], note: "no_templates_table_found" });
+    }
+
+    // IMPORTANT: since schema differs, query minimally + defensively
+    // You may need to tweak columns once you see what exists.
+    const q = await pool.query(
+      `
+      SELECT
+        id,
+        COALESCE(title, name, template_name, 'Template ' || id::text) AS title,
+        COALESCE(description, details, '') AS description,
+        COALESCE(is_active, active, TRUE) AS is_active,
+        COALESCE(updated_at, created_at, now()) AS updated_at
+      FROM ${tname}
+      WHERE (school_id = $1 OR $1 IS NULL)
+      ORDER BY updated_at DESC, id DESC
+      `,
+      [schoolId]
+    );
+
+    return res.json({ ok: true, templates: q.rows, source: tname });
+  } catch (err) {
+    console.error("❌ /api/admin/task-templates:", err);
+    const isDev = String(process.env.NODE_ENV || "").toLowerCase() !== "production";
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: isDev ? (err?.message || String(err)) : undefined,
+    });
   }
 });
 //bug tracking

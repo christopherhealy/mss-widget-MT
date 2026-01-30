@@ -1,9 +1,9 @@
 <!-- ============================================================
- StudentProfile.html  (v=4)
+ StudentProfile.html  (v=5 regen)
  Notes:
- - Keeps your existing layout.
- - Adds CRUD buttons + modal (Add/Edit/Remove->inactive).
- - No dependency on any framework.
+ - Same DOM structure + IDs (StudentProfile.js should keep working).
+ - Consolidated CSS + modal grid overflow fix.
+ - Optional Actions column for future Workspace button (commented).
 ============================================================ -->
 <!doctype html>
 <html lang="en">
@@ -15,303 +15,274 @@
   <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
 
   <style>
-  :root{
-    --bg: #f5f7fb;
-    --card: #ffffff;
-    --ink: #0f172a;
-    --muted: #64748b;
-    --line: #e2e8f0;
-    --line2:#eef2f7;
-    --brand: #1d4ed8;
-    --brand2:#1e40af;
-    --danger:#b42318;
-    --danger2:#8a1c13;
-    --shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
-    --shadow2: 0 6px 16px rgba(15, 23, 42, 0.10);
-    --radius: 12px;
-    --radius2: 10px;
-  }
+    :root{
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --line2:#eef2f7;
+      --brand: #1d4ed8;
+      --brand2:#1e40af;
+      --danger:#b42318;
+      --danger2:#8a1c13;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
+      --shadow2: 0 6px 16px rgba(15, 23, 42, 0.10);
+      --radius: 12px;
+      --radius2: 10px;
+    }
 
-  html, body { height: 100%; }
-  body{
-    margin: 0;
-    padding: 0;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-  }
+    /* Critical baseline */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; }
 
-  /* Page shell */
-  .wrap{
-    max-width: 1200px;
-    margin: 36px auto;
-    padding: 18px;
-  }
+    body{
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
 
-  /* Header */
-  .topbar{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:12px;
-    padding: 14px 16px;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow2);
-  }
-  .topbar h1{
-    margin: 2px 0 0;
-    font-size: 22px;
-    letter-spacing: -0.2px;
-  }
+    /* Page shell */
+    .wrap{
+      max-width: 1200px;
+      margin: 36px auto;
+      padding: 18px;
+    }
 
-  .muted{ color: var(--muted); }
+    .muted{ color: var(--muted); }
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
 
-  /* Pills */
-  .pill{
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    background: #f1f5f9;
-    color: var(--ink);
-    border: 1px solid var(--line);
-  }
+    /* Header */
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      padding: 14px 16px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow2);
+    }
+    .topbar h1{
+      margin: 2px 0 0;
+      font-size: 22px;
+      letter-spacing: -0.2px;
+    }
 
-  /* Layout */
-  .layout{
-    display:grid;
-    grid-template-columns: 400px 1fr;
-    gap: 14px;
-    margin-top: 14px;
-  }
-  @media (max-width: 980px){
-    .layout{ grid-template-columns: 1fr; }
-  }
+    /* Pills */
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #f1f5f9;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
 
-  /* Cards */
-  .card{
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    box-shadow: var(--shadow2);
-  }
-  .card h2{
-    margin: 0 0 10px;
-    font-size: 16px;
-    letter-spacing: -0.1px;
-  }
+    /* Layout */
+    .layout{
+       display:grid;
+       grid-template-columns: 1.15fr 2fr;
+       gap: 14px;
+       margin-top: 14px;
+    }
+    @media (max-width: 980px){
+      .layout{ grid-template-columns: 1fr; }
+    }
 
-  /* Inputs */
-  .input, select{
-    width:100%;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    background: #fff;
-    outline: none;
-  }
-  .input:focus, select:focus{
-    border-color: rgba(29, 78, 216, 0.55);
-    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
-  }
+    /* Cards */
+    .card{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow2);
+    }
+    .card h2{
+      margin: 0 0 10px;
+      font-size: 16px;
+      letter-spacing: -0.1px;
+    }
 
-  .mono{
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  }
+    /* Inputs */
+    .input, select{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      outline: none;
+      min-width: 0; /* safe in grids */
+    }
+    .input:focus, select:focus{
+      border-color: rgba(29, 78, 216, 0.55);
+      box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+    }
 
-  /* Buttons */
-  .btn{
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    background: #f8fafc;
-    color: var(--ink);
-    cursor: pointer;
-    font-weight: 700;
-    font-size: 14px;
-    transition: transform .05s ease-out, box-shadow .08s ease-out, background .12s ease-out, border-color .12s ease-out;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    gap:8px;
-    user-select:none;
-  }
-  .btn:hover:not(:disabled){
-    background: #f1f5f9;
-    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
-    transform: translateY(-1px);
-  }
-  .btn:disabled{
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform:none;
-    box-shadow:none;
-  }
+    /* Buttons */
+    .btn{
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 14px;
+      transition: transform .05s ease-out, box-shadow .08s ease-out, background .12s ease-out, border-color .12s ease-out;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      user-select:none;
+    }
+    .btn:hover:not(:disabled){
+      background: #f1f5f9;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+      transform: translateY(-1px);
+    }
+    .btn:disabled{
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform:none;
+      box-shadow:none;
+    }
+    .btn.primary{
+      background: var(--brand);
+      border-color: var(--brand);
+      color:#fff;
+    }
+    .btn.primary:hover:not(:disabled){
+      background: var(--brand2);
+      border-color: var(--brand2);
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
+    }
+    .btn.danger{
+      background: var(--danger);
+      border-color: var(--danger);
+      color:#fff;
+    }
+    .btn.danger:hover:not(:disabled){
+      background: var(--danger2);
+      border-color: var(--danger2);
+      box-shadow: 0 8px 18px rgba(180, 35, 24, 0.20);
+    }
 
-  .btn.primary{
-    background: var(--brand);
-    border-color: var(--brand);
-    color:#fff;
-  }
-  .btn.primary:hover:not(:disabled){
-    background: var(--brand2);
-    border-color: var(--brand2);
-    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
-  }
+    /* Status */
+    .status{
+      margin: 10px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+    }
+    .status.ok{ background:#ecfdf3; border-color:#bbf7d0; color:#166534; }
+    .status.warn{ background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
+    .status.error{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
 
-  .btn.danger{
-    background: var(--danger);
-    border-color: var(--danger);
-    color:#fff;
-  }
-  .btn.danger:hover:not(:disabled){
-    background: var(--danger2);
-    border-color: var(--danger2);
-    box-shadow: 0 8px 18px rgba(180, 35, 24, 0.20);
-  }
+    /* Students list table */
+    table{ width:100%; border-collapse: collapse; }
+    th, td{
+      border-top: 1px solid var(--line2);
+      padding: 10px 8px;
+      text-align: left;
+      font-size: 13px;
+      vertical-align: top;
+    }
+    th{
+      font-size: 12px;
+      color: var(--muted);
+      background: #f8fafc;
+      border-top: none;
+    }
 
-  /* Status */
-  .status{
-    margin: 10px 0;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    background: #fff;
-    color: var(--muted);
-  }
-  .status.ok{ background:#ecfdf3; border-color:#bbf7d0; color:#166534; }
-  .status.warn{ background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
-  .status.error{ background:#fef2f2; border-color:#fecaca; color:#991b1b; }
+    .students-wrap{
+      max-height: 560px;
+      overflow:auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius2);
+    }
+    .students-row{ cursor:pointer; }
+    .students-row:hover{ background:#f8fafc; }
+    .students-row.active{ background:#e8f0ff; }
+    .students-meta{ font-size:12px; color: var(--muted); }
 
-  /* Students list table */
-  table{ width:100%; border-collapse: collapse; }
-  th, td{
-    border-top: 1px solid var(--line2);
-    padding: 10px 8px;
-    text-align: left;
-    font-size: 13px;
-    vertical-align: top;
-  }
-  th{
-    font-size: 12px;
-    color: var(--muted);
-    background: #f8fafc;
-    border-top: none;
-  }
+    .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 980px){
+      .grid2{ grid-template-columns: 1fr; }
+    }
 
-  .students-wrap{
-    max-height: 560px;
-    overflow:auto;
-    border: 1px solid var(--line);
-    border-radius: var(--radius2);
-  }
+    .actions button{ margin-right: 8px; }
 
-  .students-row{ cursor:pointer; }
-  .students-row:hover{ background:#f8fafc; }
-  .students-row.active{ background:#e8f0ff; }
-  .students-meta{ font-size:12px; color: var(--muted); }
+    .pager{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .pager .left{ display:flex; gap:8px; align-items:center; }
 
-  .grid2{
-    display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  @media (max-width: 980px){
-    .grid2{ grid-template-columns: 1fr; }
-  }
+    /* Modal */
+    .modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15, 23, 42, .45);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+    .modal{
+      width:min(720px, 100%);
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+    .modal-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
+    #modal-title{
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.1px;
+    }
 
-  .actions button{ margin-right: 8px; }
-
-  .pager{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap: 10px;
-    margin-top: 10px;
-  }
-  .pager .left{ display:flex; gap:8px; align-items:center; }
-
-  /* Modal */
-  .modal-backdrop{
-    position:fixed;
-    inset:0;
-    background:rgba(15, 23, 42, .45);
-    display:none;
-    align-items:center;
-    justify-content:center;
-    padding:18px;
-    z-index:9999;
-  }
-  .modal{
-    width:min(720px, 100%);
-    background: var(--card);
-    border-radius: var(--radius);
-    border: 1px solid var(--line);
-    padding: 14px 16px;
-    box-shadow: var(--shadow);
-  }
-  .modal-head{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:10px;
-  }
-  /* --- Critical: prevent 100% inputs from overflowing grid cells --- */
-*, *::before, *::after { box-sizing: border-box; }
-
-/* Modal layout polish */
-.modal { padding: 18px 20px; }
-#modal-title { font-size: 16px; font-weight: 800; letter-spacing: -0.1px; }
-
-/* Make the modal grid “shrink-safe” */
-.modal .grid2{
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px 16px;
-}
-.modal .grid2 > div { min-width: 0; }   /* key in grids */
-.modal .input, .modal select { min-width: 0; width: 100%; }
-
-/* Labels look intentional */
-.modal .muted{
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-
-/* Inputs: less “flat”, nicer focus */
-.modal .input, .modal select{
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: #fff;
-}
-.modal .input:focus, .modal select:focus{
-  border-color: rgba(29, 78, 216, 0.55);
-  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
-  outline: none;
-}
-
-/* Modal header + buttons */
-.modal-head{
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 14px;
-}
-
-/* Footer row: align Save nicely */
-.modal #btn-modal-save{
-  padding: 10px 14px;
-  border-radius: 10px;
-}
-</style>
+    /* Modal: shrink-safe grid (prevents overlap) */
+    .modal .grid2{
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px 16px;
+    }
+    .modal .grid2 > div{ min-width: 0; }
+    .modal .muted{
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+  </style>
 </head>
 
 <body>
@@ -357,11 +328,12 @@
         <div class="students-wrap" style="margin-top:10px;">
           <table>
             <thead>
-              <tr>
-                <th style="width:44%;">Name</th>
-                <th style="width:44%;">Email</th>
-                <th style="width:12%;">L1</th>
-              </tr>
+                <tr>
+                    <th style="width:38%;">Name</th>
+                    <th style="width:34%;">Email</th>
+                    <th style="width:8%;">L1</th>
+                    <th style="width:20%;">Workspace</th>
+                </tr>
             </thead>
             <tbody id="students-tbody">
               <tr><td colspan="3" class="muted" style="padding:10px;">Loading…</td></tr>
@@ -444,7 +416,7 @@
 
           <div style="margin-top:12px;">
             <div class="muted">Assigned Task URL</div>
-            <div id="out-task-url" class="mono" style="padding:8px; border:1px solid #eee; border-radius:8px;">—</div>
+            <div id="out-task-url" class="mono" style="padding:8px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">—</div>
             <div class="actions" style="margin-top:10px;">
               <button class="btn" id="btn-copy-url">Copy URL</button>
               <button class="btn" id="btn-open-url">Open URL</button>
@@ -500,57 +472,57 @@
           <div>
             <div class="muted">L1</div>
             <select id="m-l1" class="input">
-              <option value="">—</option>
-              <option value="en">English</option>
-              <option value="fr">French</option>
-              <option value="es">Spanish</option>
-              <option value="pt">Portuguese</option>
-              <option value="it">Italian</option>
-              <option value="de">German</option>
-              <option value="nl">Dutch</option>
-              <option value="sv">Swedish</option>
-              <option value="no">Norwegian</option>
-              <option value="da">Danish</option>
-              <option value="fi">Finnish</option>
-              <option value="pl">Polish</option>
-              <option value="cs">Czech</option>
-              <option value="sk">Slovak</option>
-              <option value="hu">Hungarian</option>
-              <option value="ro">Romanian</option>
-              <option value="bg">Bulgarian</option>
-              <option value="el">Greek</option>
-              <option value="tr">Turkish</option>
-              <option value="ru">Russian</option>
-              <option value="uk">Ukrainian</option>
-              <option value="sr">Serbian</option>
-              <option value="hr">Croatian</option>
-              <option value="sl">Slovenian</option>
-              <option value="lt">Lithuanian</option>
-              <option value="lv">Latvian</option>
-              <option value="et">Estonian</option>
-              <option value="ar">Arabic</option>
-              <option value="fa">Farsi</option>
-              <option value="ur">Urdu</option>
-              <option value="he">Hebrew</option>
-              <option value="ku">Kurdish</option>
-              <option value="hi">Hindi</option>
-              <option value="bn">Bengali</option>
-              <option value="pa">Punjabi</option>
-              <option value="ta">Tamil</option>
-              <option value="te">Telugu</option>
-              <option value="mr">Marathi</option>
-              <option value="gu">Gujarati</option>
-              <option value="ml">Malayalam</option>
-              <option value="kn">Kannada</option>
-              <option value="zh">Chinese</option>
-              <option value="ja">Japanese</option>
-              <option value="ko">Korean</option>
-              <option value="vi">Vietnamese</option>
-              <option value="th">Thai</option>
-              <option value="id">Indonesian</option>
-              <option value="ms">Malay</option>
-              <option value="tl">Tagalog</option>
-              <option value="other">Other</option>
+                <option value="">—</option>
+                <option value="ar">Arabic</option>
+                <option value="bn">Bengali</option>
+                <option value="bg">Bulgarian</option>
+                <option value="zh">Chinese</option>
+                <option value="hr">Croatian</option>
+                <option value="cs">Czech</option>
+                <option value="da">Danish</option>
+                <option value="nl">Dutch</option>
+                <option value="en">English</option>
+                <option value="et">Estonian</option>
+                <option value="fa">Farsi</option>
+                <option value="fi">Finnish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="el">Greek</option>
+                <option value="gu">Gujarati</option>
+                <option value="he">Hebrew</option>
+                <option value="hi">Hindi</option>
+                <option value="hu">Hungarian</option>
+                <option value="id">Indonesian</option>
+                <option value="it">Italian</option>
+                <option value="ja">Japanese</option>
+                <option value="kn">Kannada</option>
+                <option value="ko">Korean</option>
+                <option value="ku">Kurdish</option>
+                <option value="lv">Latvian</option>
+                <option value="lt">Lithuanian</option>
+                <option value="ms">Malay</option>
+                <option value="ml">Malayalam</option>
+                <option value="mr">Marathi</option>
+                <option value="no">Norwegian</option>
+                <option value="pa">Punjabi</option>
+                <option value="pl">Polish</option>
+                <option value="pt">Portuguese</option>
+                <option value="ro">Romanian</option>
+                <option value="ru">Russian</option>
+                <option value="sr">Serbian</option>
+                <option value="sk">Slovak</option>
+                <option value="sl">Slovenian</option>
+                <option value="es">Spanish</option>
+                <option value="sv">Swedish</option>
+                <option value="tl">Tagalog</option>
+                <option value="ta">Tamil</option>
+                <option value="te">Telugu</option>
+                <option value="th">Thai</option>
+                <option value="tr">Turkish</option>
+                <option value="uk">Ukrainian</option>
+                <option value="ur">Urdu</option>
+                <option value="vi">Vietnamese</option>
+                <option value="other">Other</option>
             </select>
           </div>
 
