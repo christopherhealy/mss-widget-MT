@@ -1338,3 +1338,104 @@ body.modal-open {
   z-index: 6000;               /* higher than #reportOverlay (5000) */
   pointer-events: auto;
 }
+/* --- vNext polish: safe overrides (keep markup intact) --- */
+
+body {
+  background: #f5f7fb;
+}
+
+/* Make the whole portal feel like the newer shell */
+.portal-shell {
+  max-width: 1200px;
+  margin: 28px auto;
+  padding: 18px;
+}
+
+/* Header: clearer hierarchy */
+.portal-header {
+  background: transparent;
+  border: none;
+  padding: 8px 0 14px;
+}
+
+.portal-header-main h1#portal-title {
+  margin: 0 0 6px;
+  font-size: 28px;
+  letter-spacing: -0.2px;
+}
+
+#portal-subtitle {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+/* Badges: closer to the new pill look */
+.portal-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* School picker alignment */
+.portal-school-picker {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.portal-school-label {
+  color: #334155;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* Cards: softer + modern shadow */
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+/* Card headers: spacing + alignment */
+.card-header {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 10px;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Buttons: keep your system, just unify spacing */
+.card-actions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Keep tables stable: only tighten wrapper, no structural changes */
+.tests-table-wrapper {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Optional: reduce harshness of the table header without changing columns */
+.tests-table thead th {
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+}

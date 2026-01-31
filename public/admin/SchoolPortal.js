@@ -720,9 +720,21 @@ async function loadAdminSession() {
       slugBadgeEl.textContent = `slug: ${slug}`;
     }
 
-    if (CURRENT_SCHOOL && titleEl) {
-      titleEl.textContent = CURRENT_SCHOOL.name || "School Portal";
+    if (titleEl) {
+  const candidate = String(CURRENT_SCHOOL?.name || "").trim();
+
+  // If name is missing OR equals the slug, do NOT overwrite the title.
+  // (Slug is not a "school name".)
+  if (candidate && candidate !== String(CURRENT_SLUG || "").trim()) {
+    titleEl.textContent = candidate;
+  } else {
+    // leave whatever is already there (set earlier by fetchWidgetMeta)
+    // OR keep a safe default if empty
+    if (!String(titleEl.textContent || "").trim()) {
+      titleEl.textContent = "School Portal";
     }
+  }
+}
 
     if (subtitleEl) {
       if (!subtitleEl.textContent || subtitleEl.textContent.includes("Loading")) {
@@ -766,6 +778,10 @@ async function loadAdminSession() {
 let aiPromptsCache = [];     // prompts for CURRENT_SLUG
 let currentSubmissionId = null;
 
+function setCurrentSchoolBySlug(slug) {
+  const s = String(slug || "").trim();
+  CURRENT_SCHOOL = SCHOOLS.find(x => String(x.slug || "").trim() === s) || null;
+}
 
 function setReportStatus(msg="", isError=false){
   const el = $("reportStatus");

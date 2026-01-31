@@ -1,0 +1,274 @@
+<!-- /dashboards/WidgetAcademy_signup.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Join Widget Academy – English Pathway</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- MSS shared styles -->
+  <link rel="stylesheet" href="https://codebot.myspeakingscore.com/dynamic-widget-vue.css" />
+  <link rel="stylesheet" href="/themes/MSSStylesheet.css" />
+
+  <style>
+    :root {
+      --wa-bg: #f3f4f6;
+      --wa-card: #ffffff;
+      --wa-border: #e5e7eb;
+      --wa-text: #111827;
+      --wa-muted: #6b7280;
+      --wa-primary: #1d4ed8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, system-ui, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(circle at top left, #e5f0ff, #f3f4f6 55%);
+      color: var(--wa-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    .wa-shell {
+      width: 100%;
+      max-width: 880px;
+    }
+
+    .wa-card {
+      background: var(--wa-card);
+      border-radius: 24px;
+      box-shadow:
+        0 18px 45px rgba(15, 23, 42, 0.08),
+        0 0 0 1px rgba(148, 163, 184, 0.25);
+      padding: 32px 32px 28px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      gap: 32px;
+    }
+
+    @media (max-width: 768px) {
+      .wa-card {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 24px 20px 20px;
+      }
+    }
+
+    .wa-heading {
+      font-size: 1.75rem;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin: 0 0 12px;
+    }
+
+    .wa-subtitle {
+      font-size: 0.975rem;
+      color: var(--wa-muted);
+      margin: 0 0 16px;
+    }
+
+    .wa-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      margin-bottom: 8px;
+    }
+
+    .wa-badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+    }
+
+    .wa-points {
+      list-style: none;
+      padding: 0;
+      margin: 8px 0 0;
+      font-size: 0.9rem;
+      color: var(--wa-muted);
+    }
+
+    .wa-points li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .wa-points li::before {
+      content: "•";
+      color: var(--wa-primary);
+      font-weight: 600;
+      margin-top: -1px;
+    }
+
+    .wa-form-shell {
+      border-radius: 18px;
+      border: 1px solid var(--wa-border);
+      padding: 18px 18px 16px;
+      background: linear-gradient(135deg, #f9fafb, #ffffff);
+    }
+
+    .wa-form-shell h2 {
+      margin-top: 0;
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    .wa-form-shell p {
+      margin: 0 0 14px;
+      font-size: 0.85rem;
+      color: var(--wa-muted);
+    }
+
+    .wa-form-placeholder {
+      font-size: 0.875rem;
+      color: var(--wa-muted);
+    }
+
+    /* Basic form styling to match admin-login look */
+    .mss-enroll-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 0.9rem;
+    }
+
+    .mss-enroll-form label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: var(--wa-muted);
+    }
+
+    .mss-enroll-form input[type="text"],
+    .mss-enroll-form input[type="email"] {
+      border-radius: 999px;
+      border: 1px solid var(--wa-border);
+      padding: 9px 14px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease,
+        background-color 0.15s ease;
+      background: #f9fafb;
+    }
+
+    .mss-enroll-form input[type="text"]:focus,
+    .mss-enroll-form input[type="email"]:focus {
+      border-color: var(--wa-primary);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
+      background: #ffffff;
+    }
+
+    .mss-enroll-form button[type="submit"] {
+      margin-top: 4px;
+      border-radius: 999px;
+      border: none;
+      padding: 9px 16px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #ffffff;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 10px 25px rgba(37, 99, 235, 0.35);
+      transition: transform 0.08s ease, box-shadow 0.08s ease,
+        filter 0.1s ease;
+    }
+
+    .mss-enroll-form button[type="submit"]:hover {
+      filter: brightness(1.03);
+      transform: translateY(-0.5px);
+      box-shadow: 0 14px 28px rgba(37, 99, 235, 0.4);
+    }
+
+    .mss-enroll-form button[type="submit"]:active {
+      transform: translateY(0.5px);
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.35);
+    }
+
+    #mssEnrollStatus {
+      margin-top: 6px;
+      font-size: 0.8rem;
+      color: var(--wa-muted);
+    }
+
+    .wa-footer {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: var(--wa-muted);
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <main class="wa-shell">
+    <section class="wa-card" aria-labelledby="wa-heading">
+      <!-- Left copy block -->
+      <div>
+        <div class="wa-badge">
+          <span class="wa-badge-dot"></span>
+          Live placement powered by MSS Vox
+        </div>
+        <h1 id="wa-heading" class="wa-heading">
+          Join Widget Academy’s English Pathway
+        </h1>
+        <p class="wa-subtitle">
+          Finish your speaking test? Enter your details to save your scores,
+          receive placement advice, and unlock your personal study Pathway.
+        </p>
+        <ul class="wa-points">
+          <li>Your latest MSS Vox scores are attached to your new student ID.</li>
+          <li>Widget Academy will use this to recommend classes and next steps.</li>
+          <li>You can unsubscribe from school emails at any time.</li>
+        </ul>
+      </div>
+
+      <!-- Right form block -->
+      <div class="wa-form-shell">
+        <h2>Step&nbsp;2 – Create your Widget Academy profile</h2>
+        <p>
+          Tell us who you are so we can save this test and email your
+          placement results.
+        </p>
+
+        <!-- This div is where student-enroll.js will render the form -->
+        <div
+          id="mss-student-enroll"
+          class="wa-form-placeholder"
+          data-mss-slug="widget-academy"
+        >
+          Loading enrollment form…
+        </div>
+
+        <div class="wa-footer">
+          Scores are processed by MySpeakingScore.com and shared with
+          Widget Academy.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Use local copy served from /public/js -->
+  <script src="/js/student-enroll.js"></script>
+</body>
+</html>
