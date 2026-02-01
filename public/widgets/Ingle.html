@@ -1,0 +1,188 @@
+<!-- MSS Ingle — Prototype Page (Ingle.html) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ingle — Daily Speaking Challenge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="/themes/MSSIngleCore.css" />
+  <link rel="stylesheet" href="/themes/MSSWidgetCore.css" />
+</head>
+
+<body>
+  <div id="mss-widget-root" class="ingle" data-school-slug="">
+
+    <!-- HEADER -->
+    <header class="ingle-header">
+      <div class="ingle-header-left">
+        <div class="ingle-logo">Ingle</div>
+        <div class="ingle-tagline">Daily • one take • instant CEFR</div>
+      </div>
+      <div class="ingle-header-right">
+        <span id="ingleDate" class="ingle-date">—</span>
+      </div>
+    </header>
+
+    <main class="ingle-main">
+
+      <!-- TODAY / TOMORROW -->
+      <section class="ingle-hero">
+        <div class="ingle-hero-top">
+          <span class="ingle-badge">Today’s Ingle</span>
+          <span class="ingle-rule">20–45s • one take</span>
+        </div>
+
+        <div class="ingle-qcard">
+          <p id="question" class="ingle-question">
+            Loading today’s question…
+          </p>
+        </div>
+
+        <div class="ingle-preview">
+          Tomorrow: <strong><span id="tomorrowPreview">Loading…</span></strong>
+        </div>
+
+        <!-- RECORDING -->
+        <section class="ingle-controls">
+          <div class="ingle-record-row">
+            <button id="recBtn" class="ingle-btn primary">Record</button>
+            <button id="stopBtn" class="ingle-btn">Stop</button>
+          </div>
+
+          <div class="ingle-timer-row">
+            <div class="ingle-rec-indicator">
+              <span id="recDot" class="ingle-rec-dot"></span>
+              <span id="recState">Not recording</span>
+            </div>
+            <div id="timer"></div>
+          </div>
+
+          <div id="playerWrap" class="ingle-player" style="display:none;">
+            <audio id="player" controls></audio>
+            <div id="lengthHint" class="ingle-hint"></div>
+          </div>
+
+          <div class="ingle-submit-row">
+            <button id="submitBtn" class="ingle-btn primary" disabled>
+              Submit for scoring
+            </button>
+          </div>
+
+          <div id="status" class="ingle-status">Ready when you are.</div>
+        </section>
+      </section>
+
+      <!-- YOUR SCORE -->
+      <section id="scoreWrap" class="ingle-score" style="display:none;">
+        <div class="ingle-score-header">
+          <div class="ingle-score-title">Your result</div>
+          <div class="ingle-score-meta">
+            <span>CEFR:</span>
+            <span id="cefrLabel" class="ingle-pill">—</span>
+            <span id="rankLabel" class="ingle-pill">Rank —</span>
+          </div>
+        </div>
+
+        <!-- Single progress-to-green bar -->
+        <div class="ingle-mini">
+          <div class="ingle-mini-fill" id="scoreFill" style="width:50%"></div>
+          <div class="ingle-mini-marker" id="scoreMarker" style="left:50%"></div>
+          <div class="ingle-cefr-pill" id="scoreCefrPill" style="left:50%">—</div>
+        </div>
+
+        <div id="scoreOneLine" class="ingle-oneline"></div>
+
+        <!-- AUTH (kept for prod, hidden in dev) -->
+        <div id="authGate" class="ingle-authgate" style="display:none;">
+          <div class="ingle-auth-title">Sign in to submit</div>
+          <div class="ingle-auth-sub">Takes about 5 seconds.</div>
+
+          <div class="ingle-auth-buttons">
+            <button id="btnGoogle" class="ingle-btn auth">Google</button>
+            <button id="btnApple" class="ingle-btn auth">Apple</button>
+            <button id="btnWhatsApp" class="ingle-btn auth">WhatsApp</button>
+            <button id="btnWeChat" class="ingle-btn auth">WeChat</button>
+            <button id="btnSMS" class="ingle-btn auth">SMS</button>
+            <button id="btnEmail" class="ingle-btn auth">Email</button>
+          </div>
+        </div>
+
+        <!-- MONETIZATION -->
+        <div class="ingle-upsell">
+          <div class="ingle-upsell-title">Get a detailed report</div>
+          <div class="ingle-upsell-sub">
+            Transcript + targeted feedback
+            <span class="ingle-upsell-note">
+              $0.15 / token • $5 = 35 tokens
+            </span>
+          </div>
+          <div class="ingle-upsell-actions">
+            <button id="buyTokensBtn" class="ingle-btn">Buy tokens</button>
+            <button id="useTokenBtn" class="ingle-btn primary">Use 1 token</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- LIVE FEED -->
+      <section class="ingle-feed">
+        <div class="ingle-feed-header">
+          <div class="ingle-feed-title">Live results (today)</div>
+          <div class="ingle-feed-sub">
+            One line • ranked • updates as people submit
+          </div>
+        </div>
+
+        <div id="feedList" class="ingle-feed-list">
+          <!-- rows injected -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- SUBMIT PROGRESS -->
+    <div id="submitProgress"
+         class="ingle-progress hidden mss-submit-progress mss-hidden">
+      <div class="ingle-progress-bar"></div>
+      <div class="ingle-progress-text">Submitting your Ingle…</div>
+    </div>
+
+    <!-- DEV identity -->
+    <input id="ingleEmail" type="email" style="display:none;" />
+
+    <!-- widget-core required stubs (hidden) -->
+    <div style="display:none;">
+      <button id="prevBtn"></button>
+      <button id="nextBtn"></button>
+      <span id="counter">QUESTION 1 OF 1</span>
+
+      <input id="fileInput" type="file" />
+      <button id="clearFileBtn"></button>
+      <span id="fileBadge"></span>
+
+      <input id="helpSlider" />
+      <span id="helpLabel"></span>
+      <button id="helpBtn"></button>
+      <div id="helpOverlay"></div>
+      <div id="helpModal">
+        <button id="helpCloseBtn"></button>
+        <div id="helpTitle"></div>
+        <div id="helpBody"></div>
+      </div>
+
+      <div id="dashboardContainer">
+        <button id="dashboardCloseBtn"></button>
+        <div id="dashboardBody"></div>
+      </div>
+
+      <img id="brandLogo" />
+      <div id="brand"></div>
+      <div id="powered"></div>
+    </div>
+
+  </div>
+
+  <script src="/js/widget-core.js" defer></script>
+  <script src="/js/ingle-core.js" defer></script>
+</body>
+</html>

@@ -1656,6 +1656,9 @@ async function onSubmitClick() {
     setStatus("Please record or upload an answer before submitting.");
     return;
   }
+  // for Ingle
+  const emailEl = document.getElementById("ingleEmail");
+  const emailForSubmit = emailEl ? String(emailEl.value || "").trim().toLowerCase() : "";
 
    // ✅ duration in seconds captured at Stop Recording (recording) or upload decode
    // Expect this to be set globally by setNewBlob(..., durationSec)
@@ -1892,6 +1895,8 @@ async function onSubmitClick() {
 
             // ✅ Task context (CRITICAL for task-mode submissions)
             ...(taskToken ? { task_token: taskToken, taskToken } : {}),
+
+            email: emailForSubmit || null,
 
             // Question content
             question: questionText || null,

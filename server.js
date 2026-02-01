@@ -1713,6 +1713,31 @@ app.post("/api/widget/submit", async (req, res) => {
       payload.dashboardVariant ??
       null;
 
+      // ✅ Ingle / Funnel identity: resolve student_id by email if provided
+const email =
+  (typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "") ||
+  "";
+
+if (!studentId && email) {
+  // Find existing student by (school_id, email), else create
+  const s1 = await pool.query(
+    `SELECT id FROM students WHERE school_id = $1 AND lower(email) = $2 LIMIT 1`,
+    [schoolId, email]
+  );
+
+  if (s1.rowCount) {
+    studentId = Number(s1.rows[0].id);
+  } else {
+    const ins = await pool.query(
+      `INSERT INTO students (school_id, email, created_at)
+       VALUES ($1, $2, NOW())
+       RETURNING id`,
+      [schoolId, email]
+    );
+    studentId = Number(ins.rows[0].id);
+  }
+}
+
     // ------------------------------------------------------------
 // 3) MSS / Vox results (OPTIONAL, with MSS_API_ALT support)
 // ------------------------------------------------------------
@@ -8941,6 +8966,7 @@ app.post("/api/teacher/students/:student_id/assign-template", requireStaffAuth, 
     return res.status(e.status || 500).json({ ok: false, error: e.message || "server_error" });
   }
 });
+
 // ---------------------------------------------------------------------
 // AI Reports - generate (cache + OpenAI + store)
 // POST /api/admin/reports/generate
