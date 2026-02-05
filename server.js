@@ -288,6 +288,7 @@ export function optionalActorAuth(req, _res, next) {
 // Ingle auth bridge
 // --------------------
 
+
 function attachIngleUserDevBypass(req, _res, next) {
   const allowDev =
     (req.hostname === "localhost" || req.hostname === "127.0.0.1") &&
@@ -967,6 +968,29 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 
+// ------------------------------------------------------------
+// PUBLIC: Ingle page + its assets (NO AUTH)
+// Keep this allowlist tight to avoid affecting task widgets.
+// ------------------------------------------------------------
+app.get("/widgets/ingle.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/widgets/ingle.html"));
+});
+
+// CSS needed by ingle.html (tight allowlist)
+app.get("/themes/MSSIngleCore.css", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/themes/MSSIngleCore.css"));
+});
+app.get("/themes/MSSWidgetCore.css", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/themes/MSSWidgetCore.css"));
+});
+
+// JS needed by ingle.html (tight allowlist)
+app.get("/js/ingle.js", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/js/ingle.js"));
+});
+app.get("/js/ingle-core.js", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/js/ingle-core.js"));
+});
 
 // ------------------------------------------------------------
 // EMAIL (Nodemailer) support (shared)
@@ -1072,13 +1096,6 @@ app.use((req, res, next) => {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// permit public access to Ingles
-app.get("/widgets/ingle.html", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/widgets/ingle.html"));
-});
-
-app.use("/themes", express.static(path.join(__dirname, "public", "themes")));
-app.use("/js", express.static(path.join(__dirname, "public", "js")));
 
 
 // ------------------------------------------------------------
