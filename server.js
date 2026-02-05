@@ -972,6 +972,12 @@ const app = express();
 // PUBLIC: Ingle page + its assets (NO AUTH)
 // Keep this allowlist tight to avoid affecting task widgets.
 // ------------------------------------------------------------
+
+app.get("/widgets/ingle.com", (_req, res) => {
+  res.redirect(301, "/widgets/ingle.html");
+});
+
+// ✅ Serve the Ingle page itself
 app.get("/widgets/ingle.html", (req, res) => {
   res.sendFile(path.join(__dirname, "public/widgets/ingle.html"));
 });
