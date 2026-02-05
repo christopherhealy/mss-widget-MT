@@ -1783,11 +1783,20 @@ async function onSubmitClick() {
 
     // ---------- endpoints ----------
     const SCORE_URL = (() => {
+      // if config supplies it, honor it
       const base = (CONFIG?.api?.baseUrl || "").trim();
       if (base) {
         const b = base.replace(/\/+$/, "");
         return /\/api\/vox($|\/|\?)/.test(b) ? b : `${b}/api/vox`;
       }
+
+      // default by hostname (avoid Vercel rewrite for multipart uploads)
+      const host = String(location.hostname || "");
+      if (host === "eslsuccess.club" || host === "www.eslsuccess.club") {
+        return "https://api.eslsuccess.club/api/vox";
+      }
+
+      // localhost / dev
       return `${BACKEND_BASE}/api/vox`;
     })();
 

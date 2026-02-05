@@ -19,6 +19,7 @@ import { adminTeachersRouter } from "./routes/adminTeachers.routes.js";
 import { inglesRouter } from "./routes/ingles.routes.js";
 
 
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -964,7 +965,17 @@ const uploadDir = path.join(__dirname, "uploads", "widget-images");
 
 const PORT = process.env.PORT || 3000;
 
+import { createMssClientServer } from "./src/mss_client_server.js";
+
 const app = express();
+
+try {
+  app.locals.mss_client = createMssClientServer();
+  console.log("[BOOT] mss_client attached:", !!app.locals.mss_client);
+} catch (e) {
+  console.error("[BOOT] mss_client init failed:", e?.message || e);
+  app.locals.mss_client = null;
+}
 
 
 // ------------------------------------------------------------
@@ -5381,6 +5392,22 @@ app.post(
     const apiKey = req.get("API-KEY") || process.env.MSS_API_KEY || "";
     const apiSecret = req.get("x-api-secret") || process.env.MSS_API_SECRET || "";
 
+    // ✅ Always resolve mss_client from app.locals (works in ESM + across routers)
+    const mss_client = req.app?.locals?.mss_client;
+    if (!mss_client || typeof mss_client.scoreSpeakingVox !== "function") {
+      console.error("❌ /api/vox: mss_client missing or invalid");
+      // If you want dev fallback even when mss_client is missing:
+      if (process.env.MSS_DEV_API === "1") {
+        const transcript = buildDevTranscript_B(question);
+        return res.json(buildMssDevApiResult({ questionText: question, transcript }));
+      }
+      return res.status(500).json({
+        ok: false,
+        error: "mss_client_missing",
+        message: "Server misconfiguration: scoring client not initialized.",
+      });
+    }
+
     try {
       const result = await mss_client.scoreSpeakingVox({
         buffer: req.file.buffer,
@@ -5409,7 +5436,6 @@ app.post(
     }
   })
 );
-
 // ---------------------------------------------------------------------
 // Invite School Sign-up (Super Admin only) — JWT
 // POST /api/admin/invite-school-signup
