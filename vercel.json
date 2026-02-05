@@ -6,7 +6,7 @@
       "destination": "https://api.eslsuccess.club/api/:path*"
     },
     {
-      "source": "/((?!admin-login/|admin-home/|config-admin/|admin-prompt/|js/|css/|images/|favicon\\.ico|robots\\.txt|manifest\\.json).*)",
+      "source": "/((?!admin-login/|admin-home/|config-admin/|admin-prompt/|widgets/|themes/|js/|css/|images/|favicon\\.ico|robots\\.txt|manifest\\.json).*)",
       "destination": "/index.html"
     }
   ]
