@@ -1029,6 +1029,23 @@ app.use("/widgets", express.static(path.join(PUBLIC_DIR, "widgets"), { fallthrou
 app.use("/themes",  express.static(path.join(PUBLIC_DIR, "themes"),  { fallthrough: false }));
 app.use("/js",      express.static(path.join(PUBLIC_DIR, "js"),      { fallthrough: false }));
 
+// ---- DEBUG: confirm files exist on the deployed Render instance ----
+app.get("/__debug/ingle-files", (_req, res) => {
+  const paths = {
+    ingle_html: path.join(PUBLIC_DIR, "widgets", "ingle.html"),
+    initle_css: path.join(PUBLIC_DIR, "themes", "MSSIngleCore.css"),
+    widget_css: path.join(PUBLIC_DIR, "themes", "MSSWidgetCore.css"),
+    ingle_js: path.join(PUBLIC_DIR, "js", "ingle.js"),
+    core_js: path.join(PUBLIC_DIR, "js", "ingle-core.js"),
+  };
+
+  const out = {};
+  for (const [k, p] of Object.entries(paths)) {
+    out[k] = { path: p, exists: fsSync.existsSync(p) };
+  }
+
+  res.json({ ok: true, out });
+});
 
 // ---------- CORS MIDDLEWARE (Render ↔ Vercel) ----------
 const allowedOrigins = [
