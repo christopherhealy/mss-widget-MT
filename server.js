@@ -1076,13 +1076,27 @@ const allowedOrigins = [
 // ---------------------------------------------------------------------
 // CORS — exact + wildcard patterns + env augment
 // ---------------------------------------------------------------------
+
 const corsOptions = {
   origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Range", "Accept"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Range",
+    "Accept",
+
+    // ✅ add these
+    "API-KEY",
+    "X-API-KEY",
+    "x-api-secret",
+    "X-API-SECRET",
+    "x-ingle-dev-email",
+  ],
   exposedHeaders: ["Content-Range", "Accept-Ranges", "Content-Length"],
 };
+
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
