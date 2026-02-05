@@ -502,8 +502,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-//const crypto = require("crypto");
-
 
 // ---------------------------------------------------------------------
 // ADMIN JWT AUTH (Dec 15) deprecated
@@ -968,35 +966,6 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 
-// ------------------------------------------------------------
-// PUBLIC: Ingle page + its assets (NO AUTH)
-// Keep this allowlist tight to avoid affecting task widgets.
-// ------------------------------------------------------------
-
-app.get("/widgets/ingle.com", (_req, res) => {
-  res.redirect(301, "/widgets/ingle.html");
-});
-
-// ✅ Serve the Ingle page itself
-app.get("/widgets/ingle.html", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/widgets/ingle.html"));
-});
-
-// CSS needed by ingle.html (tight allowlist)
-app.get("/themes/MSSIngleCore.css", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/themes/MSSIngleCore.css"));
-});
-app.get("/themes/MSSWidgetCore.css", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/themes/MSSWidgetCore.css"));
-});
-
-// JS needed by ingle.html (tight allowlist)
-app.get("/js/ingle.js", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/js/ingle.js"));
-});
-app.get("/js/ingle-core.js", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/js/ingle-core.js"));
-});
 
 // ------------------------------------------------------------
 // EMAIL (Nodemailer) support (shared)
@@ -1050,8 +1019,15 @@ async function sendMailSafe({ to, subject, html, text }) {
 const ROOT = __dirname;
 const SRC_DIR = path.join(ROOT, "src");
 const PUBLIC_DIR = path.join(ROOT, "public");
-const THEMES_DIR = path.join(ROOT, "themes");
+const THEMES_DIR = path.join(PUBLIC_DIR, "themes");
 
+// ------------------------------------------------------------
+// PUBLIC: Ingle page + assets (NO AUTH)
+// Put this BEFORE any auth gate or SPA fallback.
+// ------------------------------------------------------------
+app.use("/widgets", express.static(path.join(PUBLIC_DIR, "widgets"), { fallthrough: false }));
+app.use("/themes",  express.static(path.join(PUBLIC_DIR, "themes"),  { fallthrough: false }));
+app.use("/js",      express.static(path.join(PUBLIC_DIR, "js"),      { fallthrough: false }));
 
 
 // ---------- CORS MIDDLEWARE (Render ↔ Vercel) ----------
@@ -1099,10 +1075,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
-
-
 
 // ------------------------------------------------------------
 // Ingle public audio (PoC: local disk)
