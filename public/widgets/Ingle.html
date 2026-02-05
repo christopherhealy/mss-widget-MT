@@ -11,7 +11,12 @@
 </head>
 
 <body>
-  <div id="mss-widget-root" class="ingle" data-school-slug="">
+  <div
+    id="mss-widget-root"
+    class="ingle"
+    data-school-slug="ingle"
+    data-widget-mode="ingle"
+    >
 
     <!-- HEADER -->
     <header class="ingle-header">
@@ -31,6 +36,13 @@
         <div class="ingle-hero-top">
           <span class="ingle-badge">Today’s Ingle</span>
           <span class="ingle-rule">20–45s • one take</span>
+
+          <!-- DEV: stepping (shown only on localhost by JS) -->
+          <div class="ingle-dev-nav" id="devNav" style="display:none;">
+            <button id="devPrevDay" type="button" class="ingle-dev-btn" aria-label="Previous">‹</button>
+            <span id="devDateLabel" class="ingle-dev-date">—</span>
+            <button id="devNextDay" type="button" class="ingle-dev-btn" aria-label="Next">›</button>
+          </div>
         </div>
 
         <div class="ingle-qcard">
@@ -46,8 +58,8 @@
         <!-- RECORDING -->
         <section class="ingle-controls">
           <div class="ingle-record-row">
-            <button id="recBtn" class="ingle-btn primary">Record</button>
-            <button id="stopBtn" class="ingle-btn">Stop</button>
+            <button id="recBtn" type="button" class="ingle-btn primary">Record</button>
+            <button id="stopBtn" type="button" class="ingle-btn">Stop</button>
           </div>
 
           <div class="ingle-timer-row">
@@ -64,7 +76,7 @@
           </div>
 
           <div class="ingle-submit-row">
-            <button id="submitBtn" class="ingle-btn primary" disabled>
+            <button id="submitBtn" type="button" class="ingle-btn primary" disabled>
               Submit for scoring
             </button>
           </div>
@@ -99,12 +111,12 @@
           <div class="ingle-auth-sub">Takes about 5 seconds.</div>
 
           <div class="ingle-auth-buttons">
-            <button id="btnGoogle" class="ingle-btn auth">Google</button>
-            <button id="btnApple" class="ingle-btn auth">Apple</button>
-            <button id="btnWhatsApp" class="ingle-btn auth">WhatsApp</button>
-            <button id="btnWeChat" class="ingle-btn auth">WeChat</button>
-            <button id="btnSMS" class="ingle-btn auth">SMS</button>
-            <button id="btnEmail" class="ingle-btn auth">Email</button>
+            <button id="btnGoogle" type="button" class="ingle-btn auth">Google</button>
+            <button id="btnApple" type="button" class="ingle-btn auth">Apple</button>
+            <button id="btnWhatsApp" type="button" class="ingle-btn auth">WhatsApp</button>
+            <button id="btnWeChat" type="button" class="ingle-btn auth">WeChat</button>
+            <button id="btnSMS" type="button" class="ingle-btn auth">SMS</button>
+            <button id="btnEmail" type="button" class="ingle-btn auth">Email</button>
           </div>
         </div>
 
@@ -118,8 +130,8 @@
             </span>
           </div>
           <div class="ingle-upsell-actions">
-            <button id="buyTokensBtn" class="ingle-btn">Buy tokens</button>
-            <button id="useTokenBtn" class="ingle-btn primary">Use 1 token</button>
+            <button id="buyTokensBtn" type="button" class="ingle-btn">Buy tokens</button>
+            <button id="useTokenBtn" type="button" class="ingle-btn primary">Use 1 token</button>
           </div>
         </div>
       </section>
@@ -131,8 +143,25 @@
           <div class="ingle-feed-sub">
             One line • ranked • updates as people submit
           </div>
-        </div>
 
+<div class="cefrFilter" id="cefrFilter">
+            <div class="cefrTrackWrap" id="cefrTrackWrap">
+                <div class="cefrBar" id="cefrBar"></div>
+
+                <input
+                  id="cefrCenter"
+                  class="cefrCenter"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="50"
+                  step="1"
+                  aria-label="Filter center"
+                />
+              </div>
+
+            <div class="cefrLabel" id="cefrFilterLabel">Showing: All levels</div>
+          </div>
         <div id="feedList" class="ingle-feed-list">
           <!-- rows injected -->
         </div>
@@ -182,7 +211,7 @@
 
   </div>
 
-  <script src="/js/widget-core.js" defer></script>
-  <script src="/js/ingle-core.js" defer></script>
+  <script src="/js/ingle.js" defer></script>
+<script src="/js/ingle-core.js" defer></script>
 </body>
 </html>

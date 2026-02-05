@@ -16,6 +16,7 @@ import OpenAI from "openai";
 import bcrypt from "bcryptjs";
 import slugifyPkg from "slugify";
 import { adminTeachersRouter } from "./routes/adminTeachers.routes.js";
+import { inglesRouter } from "./routes/ingles.routes.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -77,6 +78,14 @@ const UPLOADS_DIR = path.join(__dirname, "uploads");
 const ENABLE_LEGACY_ADMIN_KEY =
   String(process.env.MSS_ENABLE_LEGACY_ADMIN_KEY || "").toLowerCase() === "true";
 
+// Multer for audio uploads (memory → we write to disk/R2 ourselves)
+const uploadAudio = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB (adjust)
+  },
+});
+
 // Fail-fast in environments
 //  where you expect auth to work
 // (You can relax this locally if you intentionally run without secrets.)
@@ -100,12 +109,11 @@ function readBearer(req) {
 function verifyJwtOrNull(token, secret, opts) {
   try {
     return jwt.verify(token, secret, opts);
-  } catch (_) {
+  } catch {
     return null;
   }
 }
 
-// Canonical shape: req.actor
 function normalizeActorFromActorJwt(p) {
   return {
     actorType: String(p.actorType || "").toLowerCase(),
@@ -113,24 +121,19 @@ function normalizeActorFromActorJwt(p) {
     email: String(p.email || "").trim().toLowerCase(),
     schoolId: p.schoolId ?? null,
     slug: String(p.slug || "").trim(),
-
-    // role flags
     isSuperAdmin: !!p.isSuperAdmin,
     isOwner: !!p.isOwner,
     isTeacherAdmin: !!p.isTeacherAdmin,
   };
 }
 
-// Legacy admin JWT payload -> canonical actor
-// signAdminToken uses: { aid, email, isSuperAdmin, schoolId }
 function normalizeActorFromAdminJwt(p) {
   return {
     actorType: "admin",
     actorId: Number(p.aid || 0) || null,
     email: String(p.email || "").trim().toLowerCase(),
     schoolId: p.schoolId ?? null,
-    slug: "", // legacy token did not carry slug
-
+    slug: "",
     isSuperAdmin: !!p.isSuperAdmin,
     isOwner: false,
     isTeacherAdmin: false,
@@ -141,7 +144,7 @@ function isValidCanonicalActor(a) {
   return !!(
     a &&
     typeof a === "object" &&
-    (a.actorType === "admin" || a.actorType === "teacher") &&
+    (a.actorType === "admin" || a.actorType === "teacher" || a.actorType === "ingle") &&
     Number(a.actorId || 0) > 0 &&
     String(a.email || "").includes("@")
   );
@@ -240,6 +243,164 @@ export function requireSuperAdmin(req, res, next) {
     return res.status(403).json({ ok: false, error: "superadmin_required" });
   }
   return next();
+}
+export function optionalActorAuth(req, _res, next) {
+  // default
+  req.auth = { mode: "none" };
+  req.actor = null;
+
+  const token = readBearer(req);
+  if (!token) return next();
+
+  const actorPayload = verifyJwtOrNull(token, ACTOR_JWT_SECRET, {
+    issuer: ACTOR_JWT_ISSUER,
+    audience: ACTOR_JWT_AUD,
+  });
+
+  if (actorPayload) {
+    const actor = normalizeActorFromActorJwt(actorPayload);
+    if (isValidCanonicalActor(actor)) {
+      req.auth = { mode: "actor_jwt" };
+      req.actor = actor;
+    }
+    return next();
+  }
+
+  if (ADMIN_JWT_SECRET) {
+    const adminPayload = verifyJwtOrNull(token, ADMIN_JWT_SECRET, {
+      issuer: ADMIN_JWT_ISSUER,
+      audience: ADMIN_JWT_AUD,
+    });
+
+    if (adminPayload) {
+      const actor = normalizeActorFromAdminJwt(adminPayload);
+      if (isValidCanonicalActor(actor)) {
+        req.auth = { mode: "admin_jwt_legacy" };
+        req.actor = actor;
+      }
+    }
+  }
+
+  return next();
+}
+
+/// --------------------
+// Ingle auth bridge
+// --------------------
+
+function attachIngleUserDevBypass(req, _res, next) {
+  const allowDev =
+    (req.hostname === "localhost" || req.hostname === "127.0.0.1") &&
+    String(process.env.INGLE_DEV_BYPASS || "").toLowerCase() === "true";
+
+  if (!allowDev) return next();
+
+  const devEmail = String(req.headers["x-ingle-dev-email"] || "").trim().toLowerCase();
+  if (!devEmail || !devEmail.includes("@")) return next();
+
+  req.ingleUser = {
+    email: devEmail,
+    handle: devEmail.split("@")[0],
+    actorId: null,
+    is_dev: true,
+  };
+  return next();
+}
+
+function attachIngleUser(req, _res, next) {
+  if (req.ingleUser?.email) return next();
+
+  const email = String(req.actor?.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    req.ingleUser = null;
+    return next();
+  }
+
+  req.ingleUser = {
+    email,
+    handle: email.split("@")[0],
+    actorId: req.actor?.actorId ?? null,
+    is_dev: false,
+  };
+
+  return next();
+}
+
+// uses existing: import crypto from "crypto";
+
+function normalizeEmail(raw) {
+  const e = String(raw || "").trim().toLowerCase();
+  return e.includes("@") ? e : "";
+}
+
+function handleFromEmail(email) {
+  const h = String(email || "").split("@")[0] || "anon";
+  return h.replace(/[^a-z0-9_]/gi, "").slice(0, 24) || "anon";
+}
+
+function sha256Hex(s) {
+  return crypto.createHash("sha256").update(String(s || ""), "utf8").digest("hex");
+}
+
+function stableUserPkFromEmail(email) {
+  const hex = sha256Hex(email).slice(0, 16); // 64-bit
+  const n = BigInt("0x" + hex) & BigInt("0x7FFFFFFFFFFFFFFF");
+  return n.toString(); // keep as string; cast in SQL
+}
+
+export function requireIngleAuth(pool) {
+  return async function (req, res, next) {
+    try {
+      const devEmail = normalizeEmail(req.headers["x-ingle-dev-email"]);
+
+      const allowDev =
+        process.env.INGLE_DEV_BYPASS === "1" ||
+        req.hostname === "localhost" ||
+        req.hostname === "127.0.0.1";
+
+      if (!devEmail || !allowDev) {
+        return res.status(401).json({ ok: false, error: "auth_required" });
+      }
+
+      const email = devEmail;
+      const handle = handleFromEmail(email);
+      const email_hash = sha256Hex(email);
+      const user_pk = stableUserPkFromEmail(email);
+
+      const auth_provider = "dev";
+      const provider_sub = `dev:${email}`;
+      const country_code = "CA";
+
+      await pool.query(
+        `
+        INSERT INTO ingle_users
+          (user_pk, email_hash, handle, country_code,
+           auth_provider, provider_sub,
+           created_at, updated_at)
+        VALUES
+          ($1::bigint, $2, $3, $4, $5, $6, now(), now())
+        ON CONFLICT (user_pk) DO UPDATE
+          SET updated_at = now()
+        `,
+        [user_pk, email_hash, "@" + handle, country_code, auth_provider, provider_sub]
+      );
+
+      req.ingleUser = {
+        user_pk,            // keep as string
+        email,
+        handle: "@" + handle,
+        country_code,
+        auth_provider,
+        provider_sub,
+        is_dev: true,
+      };
+
+      next();
+    } catch (e) {
+      console.error("[INGLE AUTH]", e);
+      res.status(500).json({ ok: false, error: "auth_error" });
+    }
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -893,14 +1054,15 @@ const allowedOrigins = [
 // CORS — exact + wildcard patterns + env augment
 // ---------------------------------------------------------------------
 const corsOptions = {
-  origin: (origin, cb) => {
-    // do NOT throw; deny by returning false
-    cb(null, isAllowedOrigin(origin));
-  },
+  origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "Range", "Accept"],
+  exposedHeaders: ["Content-Range", "Accept-Ranges", "Content-Length"],
 };
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/widget/") || req.path.startsWith("/api/teacher/")) {
     console.log("[CORSDBG]", req.method, req.path, "origin=", req.headers.origin, "host=", req.headers.host);
@@ -909,6 +1071,32 @@ app.use((req, res, next) => {
 });
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+// permit public access to Ingles
+app.get("/widgets/ingle.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/widgets/ingle.html"));
+});
+
+app.use("/themes", express.static(path.join(__dirname, "public", "themes")));
+app.use("/js", express.static(path.join(__dirname, "public", "js")));
+
+
+// ------------------------------------------------------------
+// Ingle public audio (PoC: local disk)
+// Writes happen in routes/ingles.routes.js under: public/ingle-audio/
+// Served publicly so everyone can replay after page refresh.
+// Later: swap implementation to Cloudflare R2 with same audio_key.
+// ------------------------------------------------------------
+const INGLE_AUDIO_DIR = path.join(process.cwd(), "public", "ingle-audio");
+
+app.use("/ingle-audio", express.static(INGLE_AUDIO_DIR, {
+  fallthrough: true,
+  setHeaders: (res) => {
+    res.setHeader("Accept-Ranges", "bytes");
+    // PoC cache optional:
+    // res.setHeader("Cache-Control", "public, max-age=86400");
+  },
+}));
 
 function parseAllowedOrigins(raw) {
   return String(raw || "")
@@ -1002,6 +1190,7 @@ app.use(
   "/themes",
   express.static(THEMES_DIR || path.join(PUBLIC_DIR, "themes"))
 );
+
 
 // ----- Postgres pool -----
 
@@ -5132,6 +5321,68 @@ const adminTeachers = adminTeachersRouter({
 });
 
 app.use("/api/admin", requireActorAuth, adminTeachers);
+
+const ingles = inglesRouter({ pool, asyncHandler });
+
+app.use(
+  "/api/ingles",
+  optionalActorAuth,          // may set req.actor
+  attachIngleUserDevBypass,   // localhost header bypass
+  attachIngleUser,            // derive req.ingleUser
+  ingles
+);
+
+const uploadMem = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+app.post(
+  "/api/vox",
+  uploadMem.single("file"),
+  asyncHandler(async (req, res) => {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ ok: false, error: "missing_file" });
+    }
+
+    const question = String(req.body.question || "").trim();
+    const length_sec_raw = req.body.length_sec ?? req.body.lengthSec ?? null;
+    const length_sec =
+      length_sec_raw != null && Number.isFinite(Number(length_sec_raw))
+        ? Number(length_sec_raw)
+        : null;
+
+    const apiKey = req.get("API-KEY") || process.env.MSS_API_KEY || "";
+    const apiSecret = req.get("x-api-secret") || process.env.MSS_API_SECRET || "";
+
+    try {
+      const result = await mss_client.scoreSpeakingVox({
+        buffer: req.file.buffer,
+        filename: req.file.originalname || "answer.wav",
+        mimetype: req.file.mimetype || "audio/wav",
+        question,
+        length_sec,
+        apiKey,
+        apiSecret,
+      });
+
+      return res.json(result);
+    } catch (err) {
+      console.error("❌ /api/vox error:", err);
+
+      if (process.env.MSS_DEV_API === "1") {
+        const transcript = buildDevTranscript_B(question);
+        return res.json(buildMssDevApiResult({ questionText: question, transcript }));
+      }
+
+      return res.status(502).json({
+        ok: false,
+        error: "upstream_scoring_failed",
+        message: err?.message || "Scoring failed",
+      });
+    }
+  })
+);
 
 // ---------------------------------------------------------------------
 // Invite School Sign-up (Super Admin only) — JWT

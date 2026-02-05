@@ -490,6 +490,10 @@ function initWidget() {
 
   // NEW: read widget mode from data-widget-mode
   WIDGET_MODE = root.dataset.widgetMode || "default";
+  // safety: infer ingle mode from class or slug
+  if (WIDGET_MODE === "default" && (root.classList.contains("ingle") || CURRENT_SLUG === "ingle")) {
+    WIDGET_MODE = "ingle";
+  }
 
   console.log("🎯 Active widget slug:", CURRENT_SLUG, "| mode:", WIDGET_MODE);
 
@@ -512,8 +516,13 @@ function getTaskTokenFromUrl() {
 
 function bootstrapWidget() {
   CURRENT_SLUG = getSlugFromUrlOrRoot();
-  console.log("🚀 Bootstrapping widget for slug:", CURRENT_SLUG);
+  console.log("🚀 Bootstrapping widget for slug:", CURRENT_SLUG, "| mode:", WIDGET_MODE);
   setStatus("Loading…");
+
+  // ✅ If Ingle mode, do NOT call /api/widget/:slug/bootstrap
+  if (String(WIDGET_MODE || "").toLowerCase() === "ingle") {
+    return bootstrapIngle();
+  }
 
   const taskToken = getTaskTokenFromUrl();
 
@@ -553,22 +562,16 @@ function bootstrapWidget() {
         SCHOOL_ID,
         ASSESSMENT_ID: CONFIG.assessmentId || null,
         questionsCount: QUESTIONS.length,
-        config: CONFIG,
-        form: FORM,
       });
 
       if (!QUESTIONS.length) {
         throw new Error("No questions returned from DB.");
       }
 
-      const hasDbApi =
-        CONFIG.api && CONFIG.api.key && CONFIG.api.secret;
+      const hasDbApi = CONFIG.api && CONFIG.api.key && CONFIG.api.secret;
 
-      // Local dev fallback: /config/widget
       if (!hasDbApi && isLocalHost()) {
-        console.log(
-          "🔎 No API creds in DB config; local dev → fetching /config/widget…"
-        );
+        console.log("🔎 No API creds in DB config; local dev → fetching /config/widget…");
         return fetch("/config/widget")
           .then((r) => {
             if (!r.ok) throw new Error(`/config/widget HTTP ${r.status}`);
@@ -576,46 +579,18 @@ function bootstrapWidget() {
           })
           .then((legacyCfg) => {
             CONFIG.api = CONFIG.api || {};
-
-            if (!CONFIG.api.key && legacyCfg.api?.key) {
-              CONFIG.api.key = legacyCfg.api.key;
-            }
-            if (!CONFIG.api.secret && legacyCfg.api?.secret) {
-              CONFIG.api.secret = legacyCfg.api.secret;
-            }
-            if (!CONFIG.api.baseUrl && legacyCfg.api?.baseUrl) {
-              CONFIG.api.baseUrl = legacyCfg.api.baseUrl;
-            }
-
-            if (!CONFIG.submitUrl && legacyCfg.submitUrl) {
-              CONFIG.submitUrl = legacyCfg.submitUrl;
-            }
-            if (!CONFIG.dashboardUrl && legacyCfg.dashboardUrl) {
-              CONFIG.dashboardUrl = legacyCfg.dashboardUrl;
-            }
-
-            console.log("🔑 API KEY (dev fallback):", CONFIG.api?.key);
-            console.log("🔐 API SECRET (dev fallback):", CONFIG.api?.secret);
-            console.log("🔗 API baseUrl (dev fallback):", CONFIG.api?.baseUrl);
-            console.log("📤 submitUrl (dev fallback):", CONFIG.submitUrl);
-            console.log("📊 dashboardUrl (dev fallback):", CONFIG.dashboardUrl);
-
+            if (!CONFIG.api.key && legacyCfg.api?.key) CONFIG.api.key = legacyCfg.api.key;
+            if (!CONFIG.api.secret && legacyCfg.api?.secret) CONFIG.api.secret = legacyCfg.api.secret;
+            if (!CONFIG.api.baseUrl && legacyCfg.api?.baseUrl) CONFIG.api.baseUrl = legacyCfg.api.baseUrl;
+            if (!CONFIG.submitUrl && legacyCfg.submitUrl) CONFIG.submitUrl = legacyCfg.submitUrl;
+            if (!CONFIG.dashboardUrl && legacyCfg.dashboardUrl) CONFIG.dashboardUrl = legacyCfg.dashboardUrl;
             finishBootstrap();
           })
           .catch((err) => {
-            console.warn(
-              "Dev /config/widget fallback failed; continuing with DB config:",
-              err
-            );
+            console.warn("Dev /config/widget fallback failed; continuing with DB config:", err);
             finishBootstrap();
           });
       }
-
-      console.log("🔑 API KEY (DB or fallback):", CONFIG.api?.key);
-      console.log("🔐 API SECRET (DB or fallback):", CONFIG.api?.secret);
-      console.log("🔗 API baseUrl (DB or fallback):", CONFIG.api?.baseUrl);
-      console.log("📤 submitUrl (DB or fallback):", CONFIG.submitUrl);
-      console.log("📊 dashboardUrl (DB or fallback):", CONFIG.dashboardUrl);
 
       finishBootstrap();
     })
@@ -623,6 +598,55 @@ function bootstrapWidget() {
       console.error("Bootstrap error:", err);
       setStatus("We could not load this widget. Please contact your school.");
     });
+}
+function bootstrapIngle() {
+  // Ingle uses its own question loading (/api/ingles/today),
+  // but widget-core expects CONFIG + QUESTIONS to exist for recording/submit UI.
+  FORM = FORM || {};
+  CONFIG = CONFIG || {};
+  CONFIG.api = CONFIG.api || {};
+
+  // Ingle bank school id
+  SCHOOL_ID = 9999;
+
+  // Seed a single “current question” so currentQuestion() has something.
+  // ingle-core will update window.QUESTIONS when it loads Today/Tomorrow.
+  if (!Array.isArray(QUESTIONS) || !QUESTIONS.length) {
+    const qText = String(document.getElementById("question")?.textContent || "").trim();
+    QUESTIONS = [
+      { id: 1, question: qText || "Ingle question (loading…)" }
+    ];
+  }
+
+  // Local dev: pull Vox API creds from /config/widget (same fallback as normal bootstrap)
+  if (isLocalHost()) {
+    return fetch("/config/widget")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((legacyCfg) => {
+        if (legacyCfg?.api) {
+          if (!CONFIG.api.key && legacyCfg.api.key) CONFIG.api.key = legacyCfg.api.key;
+          if (!CONFIG.api.secret && legacyCfg.api.secret) CONFIG.api.secret = legacyCfg.api.secret;
+          if (!CONFIG.api.baseUrl && legacyCfg.api.baseUrl) CONFIG.api.baseUrl = legacyCfg.api.baseUrl;
+        }
+        if (!CONFIG.submitUrl && legacyCfg?.submitUrl) CONFIG.submitUrl = legacyCfg.submitUrl;
+        if (!CONFIG.dashboardUrl && legacyCfg?.dashboardUrl) CONFIG.dashboardUrl = legacyCfg.dashboardUrl;
+
+        console.log("🟣 Ingle bootstrap:", {
+          SCHOOL_ID,
+          hasApi: !!(CONFIG.api && CONFIG.api.key && CONFIG.api.secret),
+          apiBaseUrl: CONFIG.api?.baseUrl || null,
+        });
+
+        finishBootstrap();
+      })
+      .catch((err) => {
+        console.warn("🟣 Ingle bootstrap: /config/widget failed; continuing:", err);
+        finishBootstrap();
+      });
+  }
+
+  console.log("🟣 Ingle bootstrap (no server config fetch).");
+  finishBootstrap();
 }
 //Dec 25
 async function getAudioDurationSecFromFile(fileOrBlob) {
@@ -1640,12 +1664,7 @@ async function onUploadChange(evt) {
     input.value = "";
   }
 }
-function onClearFileClick() {
-  resetRecordingState();
-  setStatus("Cleared. You can record or upload a new file.");
-}
-//Dec 6 update - to correct our Vercel and Render issues 
-
+//Dec 6 update - to correct our Vercel and Render issues
 async function onSubmitClick() {
   const q = currentQuestion();
   if (!q) {
@@ -1656,25 +1675,31 @@ async function onSubmitClick() {
     setStatus("Please record or upload an answer before submitting.");
     return;
   }
+
   // for Ingle
   const emailEl = document.getElementById("ingleEmail");
-  const emailForSubmit = emailEl ? String(emailEl.value || "").trim().toLowerCase() : "";
+  const emailForSubmit = emailEl
+    ? String(emailEl.value || "").trim().toLowerCase()
+    : "";
 
-   // ✅ duration in seconds captured at Stop Recording (recording) or upload decode
-   // Expect this to be set globally by setNewBlob(..., durationSec)
-   const lengthSecForSubmit =
-     (typeof LAST_AUDIO_LENGTH_SEC === "number" &&
+  // Build a local playback URL for the just-recorded blob (Ingle feed "Play")
+  let localBlobUrl = "";
+  try {
+    localBlobUrl = URL.createObjectURL(blob);
+  } catch (_) {}
+
+  // ✅ duration in seconds captured at Stop Recording (recording) or upload decode
+  const lengthSecForSubmit =
+    (typeof LAST_AUDIO_LENGTH_SEC === "number" &&
       Number.isFinite(LAST_AUDIO_LENGTH_SEC) &&
-     LAST_AUDIO_LENGTH_SEC > 0)
+      LAST_AUDIO_LENGTH_SEC > 0)
       ? Math.round(LAST_AUDIO_LENGTH_SEC)
       : null;
 
-   console.log("⏱️ length_sec for submit:", lengthSecForSubmit, {
-  raw: LAST_AUDIO_LENGTH_SEC,
-  source: LAST_AUDIO_SOURCE || null,
-});
-
-     console.log("⏱️ length_sec for submit:", lengthSecForSubmit);
+  console.log("⏱️ length_sec for submit:", lengthSecForSubmit, {
+    raw: LAST_AUDIO_LENGTH_SEC,
+    source: LAST_AUDIO_SOURCE || null,
+  });
 
   if (CONFIG && CONFIG.widgetEnabled === false) {
     const msg =
@@ -1686,7 +1711,7 @@ async function onSubmitClick() {
 
   showSubmitProgress();
 
-  // Decide where to submit:
+  // Decide where to submit scoring:
   //  1) If CONFIG.api.baseUrl is set → MSS scoring cluster (/api/vox)
   //  2) Else if CONFIG.submitUrl is set → use it as-is (absolute or relative)
   //  3) Else → fall back to our widget backend submit endpoint (API.SUBMIT_FALLBACK)
@@ -1709,14 +1734,12 @@ async function onSubmitClick() {
       submitUrl = `${BACKEND_BASE || ""}/${s}`;
     }
   } else {
-    submitUrl = API.SUBMIT_FALLBACK; // e.g. `${BACKEND_BASE}/api/widget/submit`
+    submitUrl = API.SUBMIT_FALLBACK;
   }
 
   // 🔑 Ensure /api/widget/submit also receives slug as a query param
   try {
     const u = new URL(submitUrl, window.location.origin);
-
-    // match both "/api/widget/submit" and ".../api/widget/submit/"
     if (/\/api\/widget\/submit\/?$/.test(u.pathname)) {
       if (CURRENT_SLUG && !u.searchParams.has("slug")) {
         u.searchParams.set("slug", CURRENT_SLUG);
@@ -1758,49 +1781,50 @@ async function onSubmitClick() {
   fd.append("file", fileForUpload, fileForUpload.name);
 
   // ✅ Send recording/upload duration to backend (for /api/widget/submit)
-    if (lengthSecForSubmit != null) {
-     fd.append("length_sec", String(lengthSecForSubmit));
-    }
+  if (lengthSecForSubmit != null) {
+    fd.append("length_sec", String(lengthSecForSubmit));
+  }
 
-  // 🔹 NEW: derive a canonical question text + ID once
+  // Canonical question text + ID once
   const questionId = q.id ?? q.question_id ?? null;
   const questionText = q.question || q.text || q.prompt || "";
 
-  // 🔹 Send BOTH ID and text to the backend (for /api/widget/submit)
+  // Send BOTH ID and text to backend (for /api/widget/submit)
   if (questionId != null) {
-    fd.append("questionId", String(questionId));   // existing field
-    fd.append("question_id", String(questionId));  // DB-style, for safety
+    fd.append("questionId", String(questionId));
+    fd.append("question_id", String(questionId));
   }
   if (questionText) {
     fd.append("question", questionText);
   }
+
   // Read task token from URL (Widget.html?task=...)
   const taskToken = (() => {
     try {
       const p = new URLSearchParams(window.location.search || "");
-      return String(p.get("task") || "").trim();
+      return String(
+        p.get("task") || p.get("task_token") || p.get("token") || ""
+      ).trim();
     } catch {
       return "";
     }
   })();
 
-  // ⬇️ belt+suspenders: send task token in body too
+  // belt+suspenders: send task token in body too
   if (taskToken) {
     fd.append("task_token", taskToken);
     fd.append("taskToken", taskToken);
   }
 
-  // ⬇️ still send slug in the body as well (belt + suspenders)
+  // still send slug in the body as well (belt + suspenders)
   if (CURRENT_SLUG) fd.append("slug", CURRENT_SLUG);
   if (SCHOOL_ID) fd.append("schoolId", SCHOOL_ID);
   if (CONFIG.assessmentId) fd.append("assessmentId", CONFIG.assessmentId);
 
   const t0Local = performance.now();
   setStatus("Submitting your answer…");
-  logEvent("submit_start", {
-    questionId,
-    questionText,
-  });
+
+  logEvent("submit_start", { questionId, questionText });
 
   const headers = {};
   if (CONFIG?.api) {
@@ -1808,210 +1832,228 @@ async function onSubmitClick() {
     if (CONFIG.api.secret) headers["x-api-secret"] = CONFIG.api.secret;
   }
 
-  fetch(submitUrl, {
-    method: "POST",
-    headers,
-    body: fd,
-  })
-    .then((r) =>
-      r
-        .json()
-        .catch(() => ({}))
-        .then((body) => ({ ok: r.ok, status: r.status, body }))
-    )
-    .then(async (res) => {
-      const elapsedSec = ((performance.now() - t0Local) / 1000).toFixed(1);
-      console.log("🎯 Submit response from MSS:", res);
+  // Helper to normalize
+  const norm = (s) => (s || "").replace(/\/+$/, "");
 
-            if (!res.ok) {
-        console.error("❌ Submit error:", res.status, res.body);
+  // Detect Ingle mode
+  const isIngleMode =
+    (typeof WIDGET_MODE !== "undefined" && WIDGET_MODE === "ingle") ||
+    CURRENT_SLUG === "ingle" ||
+    document.getElementById("mss-widget-root")?.classList.contains("ingle");
 
-        // Turn backend / Vox errors into friendly messages
-        const friendlyMessage = buildFriendlySubmitError(res.status, res.body);
-        setStatus(friendlyMessage);
+  try {
+    // 1) Score (or direct submit) via submitUrl
+    const r = await fetch(submitUrl, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
 
-        hideSubmitProgress();
-        logEvent("submit_error", {
-          questionId,
-          status: res.status,
-          body: res.body,
-          friendlyMessage,
-        });
-        return;
-      }
+    const body = await r.json().catch(() => ({}));
+    const elapsedSec = ((performance.now() - t0Local) / 1000).toFixed(1);
 
-      const body = res.body || {};
-      const msg = body.message || "Answer submitted successfully.";
+    console.log("🎯 Submit response:", { ok: r.ok, status: r.status, body });
 
-      // 🔹 Help + variant metadata at submit time
-      const help_level = getHelpLevelForSubmit();
-      const help_surface = getHelpSurface();
-      const widget_variant = getWidgetVariant();
-      const dashboard_variant = getDashboardVariant();
+    if (!r.ok) {
+      console.error("❌ Submit error:", r.status, body);
+      const friendlyMessage = buildFriendlySubmitError(r.status, body);
+      setStatus(friendlyMessage);
+      hideSubmitProgress();
+      logEvent("submit_error", {
+        questionId,
+        status: r.status,
+        body,
+        friendlyMessage,
+      });
+      return;
+    }
 
-      setStatus(`${msg} (in ${elapsedSec}s)`);
+    const msg = body.message || "Answer submitted successfully.";
 
-      // Are we POSTing directly to /api/widget/submit ?
-      const norm = (s) => (s || "").replace(/\/+$/, "");
-      const isDirectWidgetSubmit =
-        norm(submitUrl) === norm(API.DB_SUBMIT) ||
-        /\/api\/widget\/submit\/?$/.test(submitUrl);
+    // Help + variant metadata at submit time
+    const help_level = getHelpLevelForSubmit();
+    const help_surface = getHelpSurface();
+    const widget_variant = getWidgetVariant();
+    const dashboard_variant = getDashboardVariant();
 
-      try {
-        let submissionId;
-        let dashboardUrl;
+    setStatus(`${msg} (in ${elapsedSec}s)`);
 
-        if (isDirectWidgetSubmit && body.ok && body.submissionId) {
-          // ✅ We already hit our Node submit handler
-          submissionId = body.submissionId;
-          dashboardUrl = body.dashboardUrl;
-          console.log("✅ Direct widget submit stored:", {
-            submissionId,
-            dashboardUrl,
+    // Are we POSTing directly to /api/widget/submit ?
+    const isDirectWidgetSubmit =
+      norm(submitUrl) === norm(API.DB_SUBMIT) ||
+      /\/api\/widget\/submit\/?$/.test(new URL(submitUrl, window.location.origin).pathname);
+
+    let submissionId = null;
+    let dashboardUrl = null;
+
+    if (isDirectWidgetSubmit && body.ok && body.submissionId) {
+      // ✅ We already hit our Node submit handler
+      submissionId = body.submissionId;
+      dashboardUrl = body.dashboardUrl || null;
+      console.log("✅ Direct widget submit stored:", { submissionId, dashboardUrl });
+    } else {
+      // ✅ MSS scoring cluster → now store result
+      if (isIngleMode) {
+        // --------------------------
+        // INGLE: persist via /api/ingles/submit
+        // --------------------------
+        const questionTextFromDom = String(
+          document.getElementById("question")?.textContent || ""
+        ).trim();
+
+        const questionPk =
+          Number(window.__INGLE_TODAY_PK) ||
+          Number(currentQuestion()?.question_pk) ||
+          Number(currentQuestion()?.questionId) ||
+          Number(currentQuestion()?.question_id) ||
+          null;
+
+        if (!questionPk) {
+          console.warn("Ingle submit blocked: missing question_pk", {
+            __INGLE_TODAY_PK: window.__INGLE_TODAY_PK,
+            currentQuestion: currentQuestion?.(),
+            domQuestion: document.getElementById("question")?.textContent,
           });
-        } else {
-          // ✅ MSS scoring cluster → now store in DB via JSON submit
-
-          // (re-use the same canonical text)
-          const questionTextForDb = questionText;
-
-        // ------------------------------------------------------------
-        // Build payload for DB_SUBMIT (store MSS / dev results)
-        // ------------------------------------------------------------
-
-          // Extract task token from URL if present
-          const taskToken = (() => {
-            try {
-              const p = new URLSearchParams(window.location.search || "");
-              return String(p.get("task") || "").trim();
-            } catch {
-              return "";
-            }
-          })();
-
-          const dbPayload = {
-            // Scope
-            slug: CURRENT_SLUG,
-
-            // ✅ Task context (CRITICAL for task-mode submissions)
-            ...(taskToken ? { task_token: taskToken, taskToken } : {}),
-
-            email: emailForSubmit || null,
-
-            // Question content
-            question: questionText || null,
-
-            // Question identifiers (belt + suspenders)
-            question_id: questionId ?? null,
-            questionId: questionId ?? null,
-
-            // ✅ Duration for WPM calculation
-            length_sec: lengthSecForSubmit ?? null,
-
-            // Student resolved server-side (task mode overrides)
-            studentId: null,
-
-            // Raw MSS / Vox (or dev-mode) payload
-            mss: body,
-
-            // UX / analytics metadata
-            help_level,
-            help_surface,
-            widget_variant,
-            dashboard_variant,
-          };
-
-          console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
-
-          const dbRes = await fetch(API.DB_SUBMIT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(dbPayload),
-          });
-
-          const dbJson = await dbRes.json().catch(() => ({}));
-          if (!dbRes.ok || dbJson.ok === false) {
-            console.error("❌ DB_SUBMIT error:", dbRes.status, dbJson);
-            setStatus(
-              "We scored your answer but could not save it. Please try again later."
-            );
-            hideSubmitProgress();
-            logEvent("submit_db_error", {
-              questionId,
-              status: dbRes.status,
-              body: dbJson,
-            });
-            return;
-          }
-
-          submissionId = dbJson.submissionId || dbJson.id;
-          dashboardUrl = dbJson.dashboardUrl;
-          console.log("✅ Stored via DB_SUBMIT:", {
-            submissionId,
-            dashboardUrl,
-          });
+          setStatus("Internal error: question_pk missing. Refresh the page and try again.");
+          hideSubmitProgress();
+          return;
         }
 
-        // Fallback: make sure we have some dashboard URL
-        if (!dashboardUrl) {
-          dashboardUrl = getDashboardPath(body.dashboardUrl);
-        }
-
-        // Inline dashboard if possible, otherwise popup
-        const expanded = expandDashboard(dashboardUrl, submissionId);
-        if (!expanded) {
-          dashboardWindow = window.open(
-            dashboardUrl,
-            "_blank",
-            "noopener,noreferrer"
-          );
-          logEvent("dashboard_popup_open", {
-            submissionId,
-            url: dashboardUrl,
-          });
-        }
-
-        // Optionally lock session if full help was used
-        if (help_level === "max") {
-          SESSION_LOCKED = true;
-        }
-
-        hideSubmitProgress();
-        setRecordingUiEnabled(false);
-
-        logEvent("submit_success", {
-          questionId,
-          questionText,
-          submissionId,
+        const inglePayload = {
+          dateKey: window.__INGLE_DATEKEY || null,
+          handle: (emailForSubmit ? emailForSubmit.split("@")[0] : "anon"),
+          email: emailForSubmit || null,
+          question_pk: questionPk,
+          question: questionTextFromDom || questionText || null,
+          length_sec: lengthSecForSubmit ?? null,
+          mss: body,
           help_level,
           help_surface,
           widget_variant,
           dashboard_variant,
-          elapsedSec,
+        };
+
+        const ingRes = await fetch("/api/ingles/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(inglePayload),
         });
-      } catch (err) {
-        console.error("submit success-flow error:", err);
-        setStatus(
-          "We scored your answer but ran into a problem showing the results."
-        );
-        hideSubmitProgress();
-        logEvent("submit_flow_exception", {
-          questionId,
-          error: String(err),
+
+        const ingJson = await ingRes.json().catch(() => ({}));
+        if (!ingRes.ok || ingJson.ok === false) {
+          console.error("❌ /api/ingles/submit error:", ingRes.status, ingJson);
+          setStatus("We scored your answer but could not save it. Please try again later.");
+          hideSubmitProgress();
+          return;
+        }
+
+        submissionId = ingJson.submissionId || ingJson.id || null;
+        dashboardUrl = ingJson.dashboardUrl || null;
+
+        // ✅ push scored result into the Ingle live feed
+        try {
+          if (window.__INGLE_LAST_BLOB_URL) {
+            try { URL.revokeObjectURL(window.__INGLE_LAST_BLOB_URL); } catch {}
+          }
+          window.__INGLE_LAST_BLOB_URL = localBlobUrl;
+
+          window.dispatchEvent(
+            new CustomEvent("ingle:scored", {
+              detail: {
+                mss: body,
+                localBlobUrl,
+                dashboardUrl: dashboardUrl || "",
+                handle: inglePayload.handle || "anon",
+                submissionId,
+              },
+            })
+          );
+        } catch (e) {
+          console.warn("ingle:scored dispatch failed:", e);
+        }
+      } else {
+        // --------------------------
+        // ESL SUCCESS: persist via API.DB_SUBMIT
+        // --------------------------
+        const dbPayload = {
+          slug: CURRENT_SLUG,
+          ...(taskToken ? { task_token: taskToken, taskToken } : {}),
+          email: emailForSubmit || null,
+          question: questionText || null,
+          question_id: questionId ?? null,
+          questionId: questionId ?? null,
+          length_sec: lengthSecForSubmit ?? null,
+          studentId: null,
+          mss: body,
+          help_level,
+          help_surface,
+          widget_variant,
+          dashboard_variant,
+        };
+
+        console.log("📨 Posting MSS result to DB_SUBMIT:", dbPayload);
+
+        const dbRes = await fetch(API.DB_SUBMIT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(dbPayload),
         });
+
+        const dbJson = await dbRes.json().catch(() => ({}));
+        if (!dbRes.ok || dbJson.ok === false) {
+          console.error("❌ DB_SUBMIT error:", dbRes.status, dbJson);
+          setStatus("We scored your answer but could not save it. Please try again later.");
+          hideSubmitProgress();
+          logEvent("submit_db_error", {
+            questionId,
+            status: dbRes.status,
+            body: dbJson,
+          });
+          return;
+        }
+
+        submissionId = dbJson.submissionId || dbJson.id || null;
+        dashboardUrl = dbJson.dashboardUrl || null;
+
+        console.log("✅ Stored via DB_SUBMIT:", { submissionId, dashboardUrl });
       }
-    })
-    .catch((err) => {
-      console.error("Submit fetch error:", err);
-      setStatus(
-        "Network error while submitting. Please check your connection."
-      );
-      hideSubmitProgress();
-      logEvent("submit_exception", {
-        questionId,
-        error: String(err),
-      });
+    }
+
+    // ESL Success: dashboard behavior (Ingle can ignore for now)
+    if (!isIngleMode) {
+      if (!dashboardUrl) {
+        dashboardUrl = getDashboardPath(body.dashboardUrl);
+      }
+
+      const expanded = expandDashboard(dashboardUrl, submissionId);
+
+      if (!expanded && dashboardUrl) {
+        dashboardWindow = window.open(dashboardUrl, "_blank", "noopener,noreferrer");
+        logEvent("dashboard_popup_open", { submissionId, url: dashboardUrl });
+      }
+    }
+
+    // Optionally lock session if full help was used
+    if (!isIngleMode) {
+      const help_level = getHelpLevelForSubmit();
+      if (help_level === "max") SESSION_LOCKED = true;
+    }
+
+    hideSubmitProgress();
+    setRecordingUiEnabled(false);
+
+    logEvent("submit_success", {
+      questionId,
+      questionText,
+      submissionId,
+      elapsedSec: ((performance.now() - t0Local) / 1000).toFixed(1),
     });
+  } catch (err) {
+    console.error("Submit flow exception:", err);
+    setStatus("Network error while submitting. Please check your connection.");
+    hideSubmitProgress();
+    logEvent("submit_exception", { questionId, error: String(err) });
+  }
 } // end onSubmitClick
 
 //Dec 8 to handle error messages
@@ -2107,24 +2149,27 @@ function resetRecordingState() {
   recording = false;
 
   if (processor) {
-    processor.disconnect();
+    try { processor.disconnect(); } catch {}
     processor = null;
   }
   if (inputNode) {
-    inputNode.disconnect();
+    try { inputNode.disconnect(); } catch {}
     inputNode = null;
   }
   if (micStream) {
-    micStream.getTracks().forEach((t) => t.stop());
+    try { micStream.getTracks().forEach((t) => t.stop()); } catch {}
     micStream = null;
   }
 
+  // revoke any prior object URL
   if (objectUrl) {
-    URL.revokeObjectURL(objectUrl);
+    try { URL.revokeObjectURL(objectUrl); } catch {}
     objectUrl = null;
   }
+
   blob = null;
   blobName = null;
+  LAST_AUDIO_LENGTH_SEC = null;
 
   const tEl = $("timer");
   if (tEl) tEl.textContent = "";
@@ -2132,10 +2177,16 @@ function resetRecordingState() {
   if ($("fileInput")) $("fileInput").value = "";
   if ($("fileBadge")) $("fileBadge").textContent = "";
 
+  // ✅ Hard reset the audio control so it doesn't show stale duration/UI
   const playerWrap = $("playerWrap");
   const player = $("player");
   const lengthHint = $("lengthHint");
-  if (player) player.src = "";
+
+  if (player) {
+    try { player.pause(); } catch {}
+    try { player.removeAttribute("src"); } catch {}
+    try { player.load(); } catch {} // forces 0:00/0:00 + clears prior metadata
+  }
   if (playerWrap) playerWrap.style.display = "none";
   if (lengthHint) lengthHint.textContent = "";
 
@@ -2145,23 +2196,29 @@ function resetRecordingState() {
 
 function resetPlaybackOnly() {
   if (objectUrl) {
-    URL.revokeObjectURL(objectUrl);
+    try { URL.revokeObjectURL(objectUrl); } catch {}
     objectUrl = null;
   }
+  // also clear player src if you call this while keeping blob
+  const player = $("player");
+  const playerWrap = $("playerWrap");
+  if (player) {
+    try { player.pause(); } catch {}
+    try { player.removeAttribute("src"); } catch {}
+    try { player.load(); } catch {}
+  }
+  if (playerWrap) playerWrap.style.display = "none";
 }
 
-/* -----------------------------------------------------------------------
-   BLOB / PLAYER
-   ----------------------------------------------------------------------- */
-
 function setNewBlob(newBlob, name, durationSec) {
+  // revoke previous object URL
   if (objectUrl) {
-    URL.revokeObjectURL(objectUrl);
+    try { URL.revokeObjectURL(objectUrl); } catch {}
+    objectUrl = null;
   }
 
   blob = newBlob;
   blobName = name || "answer.wav";
-  objectUrl = URL.createObjectURL(newBlob);
 
   // ✅ Persist duration (seconds) globally for submit/WPM
   if (typeof durationSec === "number" && Number.isFinite(durationSec) && durationSec > 0) {
@@ -2170,12 +2227,20 @@ function setNewBlob(newBlob, name, durationSec) {
     LAST_AUDIO_LENGTH_SEC = null;
   }
 
+  // create fresh object URL for playback
+  objectUrl = URL.createObjectURL(newBlob);
+
   const playerWrap = $("playerWrap");
   const player = $("player");
   const lengthHint = $("lengthHint");
 
-  if (player) player.src = objectUrl;
-  if (playerWrap) playerWrap.style.display = "block";
+  if (player) {
+    player.src = objectUrl;
+    try { player.load(); } catch {} // helps prevent stale duration in some browsers
+  }
+
+  // ✅ show only when we actually have audio
+  if (playerWrap) playerWrap.style.display = ""; // respect CSS (instead of forcing "block")
 
   if (lengthHint) {
     if (LAST_AUDIO_LENGTH_SEC != null) {
