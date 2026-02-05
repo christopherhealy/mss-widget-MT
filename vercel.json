@@ -1,10 +1,12 @@
 {
   "version": 2,
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://api.eslsuccess.club/api/:path*"
-    },
+    { "source": "/api/:path*", "destination": "https://api.eslsuccess.club/api/:path*" },
+
+    { "source": "/widgets/:path*", "destination": "https://api.eslsuccess.club/widgets/:path*" },
+    { "source": "/themes/:path*", "destination": "https://api.eslsuccess.club/themes/:path*" },
+    { "source": "/js/:path*", "destination": "https://api.eslsuccess.club/js/:path*" },
+
     {
       "source": "/((?!admin-login/|admin-home/|config-admin/|admin-prompt/|widgets/|themes/|js/|css/|images/|favicon\\.ico|robots\\.txt|manifest\\.json).*)",
       "destination": "/index.html"
